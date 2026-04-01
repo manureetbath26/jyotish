@@ -68,3 +68,9 @@ model Chart {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model InterestEmail {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  registeredAt DateTime @default(now())
+}
