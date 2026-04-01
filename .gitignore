@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+*.env
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+
+# Database / secrets
+*.db
+*.sqlite
+prisma/*.db
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Registered emails (sensitive data — keep off GitHub)
+interest-emails.json
+
+# Swiss Ephemeris data files (large binaries)
+backend/*.se1
+backend/ephe/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code local config
+.claude/
+frontend/.claude/
+
+# Logs
+*.log
+npm-debug.log*
