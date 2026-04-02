@@ -38,8 +38,8 @@ export function SoulmateTab({ data }: Props) {
   const countColor = COUNT_COLOR[data.predicted_count] ?? "text-amber-400";
   const countLabel = COUNT_LABEL[data.predicted_count] ?? `${data.predicted_count} major relationships`;
 
-  // Pollinations.ai — free image generation, no API key required
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(data.image_prompt)}?width=512&height=640&nologo=true&model=flux`;
+  // Proxied through /api/soulmate-image to avoid CSP/CORS issues
+  const imageUrl = `/api/soulmate-image?prompt=${encodeURIComponent(data.image_prompt)}`;
 
   return (
     <div className="space-y-6">
