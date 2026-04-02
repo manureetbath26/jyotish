@@ -269,3 +269,21 @@ class PanchangResponse(BaseModel):
     # Avakhada Chakra
     avakhada: AvakhadaInfo
     avakhada_interpretations: AvakhadaInterpretations
+
+
+# ── Relationship Prediction ──────────────────────────────────────────────────
+
+class RelationshipRequest(BaseModel):
+    chart_data: Dict[str, Any]
+
+
+class RelationshipResponse(BaseModel):
+    predicted_count: int
+    reasons: List[str]
+    seventh_house_sign: str
+    seventh_house_lord: str
+    darakaraka: str
+    mangal_dosha: bool
+    soulmate_appearance: str
+    soulmate_personality: str
+    image_prompt: str

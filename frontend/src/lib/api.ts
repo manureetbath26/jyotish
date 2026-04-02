@@ -254,6 +254,35 @@ export async function calculatePanchang(data: {
   return res.json();
 }
 
+// ── Relationship Prediction ──────────────────────────────────────────────────
+
+export interface RelationshipResponse {
+  predicted_count: number;
+  reasons: string[];
+  seventh_house_sign: string;
+  seventh_house_lord: string;
+  darakaraka: string;
+  mangal_dosha: boolean;
+  soulmate_appearance: string;
+  soulmate_personality: string;
+  image_prompt: string;
+}
+
+export async function calculateRelationships(
+  chartData: ChartResponse
+): Promise<RelationshipResponse> {
+  const res = await fetch(`${API_BASE}/api/chart/relationships`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chart_data: chartData }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Relationship calculation failed");
+  }
+  return res.json();
+}
+
 export async function calculateTransits(
   chartData: ChartResponse,
   startDate: string,

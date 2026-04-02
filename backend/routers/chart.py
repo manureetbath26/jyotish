@@ -5,6 +5,7 @@ import pytz
 from models.schemas import (
     BirthDataInput, ChartResponse, TransitChartRequest, TransitChartResponse,
     PanchangRequest, PanchangResponse,
+    RelationshipRequest, RelationshipResponse,
 )
 from services.geocoding import geocode_place, local_to_utc
 from services.astrology import calculate_full_chart
@@ -12,6 +13,7 @@ from services.dasha import build_dasha_sequence, get_current_dasha_antardasha
 from services.yogas import calculate_yogas
 from services.transit import calculate_transit_periods, get_next_major_transit
 from services.panchang import calculate_panchang
+from services.relationships import calculate_relationships
 
 router = APIRouter(prefix="/api/chart", tags=["chart"])
 
@@ -122,6 +124,16 @@ async def get_panchang(body: PanchangRequest):
         timezone=tz_str,
         **result,
     )
+
+
+@router.post("/relationships", response_model=RelationshipResponse)
+async def predict_relationships(body: RelationshipRequest):
+    """Predict major relationships and generate soulmate portrait prompt from birth chart."""
+    try:
+        result = calculate_relationships(body.chart_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Relationship calculation error: {e}")
+    return RelationshipResponse(**result)
 
 
 @router.post("/transits", response_model=TransitChartResponse)
