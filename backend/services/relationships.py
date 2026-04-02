@@ -6,7 +6,8 @@ to predict the number of significant relationships and generate soulmate traits
 for an AI portrait prompt.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
 
 # Dual signs (Gemini=3, Virgo=6, Sagittarius=9, Pisces=12) — more restless in love
 DUAL_SIGNS = {3, 6, 9, 12}
@@ -66,6 +67,129 @@ def _house(houses: List[Dict], num: int) -> Optional[Dict]:
         if h["house_num"] == num:
             return h
     return None
+
+
+def _estimate_marriage_age(
+    chart_data: Dict[str, Any],
+    planets: List[Dict],
+    houses: List[Dict],
+    lord_7: str,
+    lord_dignity: Optional[str],
+    lord_house: int,
+    venus_dignity: Optional[str],
+    rahu_in_7: bool,
+) -> Dict[str, Any]:
+    """Estimate marriage age using 7th house factors + Vimshottari Dasha timing."""
+
+    # ── Base age from 7th house sign element ──────────────────────────────────
+    h7 = _house(houses, 7)
+    sign_7_num = h7["rashi_num"] if h7 else 7
+
+    # Air/Fire signs → earlier; Earth/Water → moderate to late
+    if sign_7_num in (1, 5, 9):   # Fire
+        base = 25
+    elif sign_7_num in (3, 7, 11): # Air
+        base = 24
+    elif sign_7_num in (2, 6, 10): # Earth
+        base = 28
+    else:                          # Water (4, 8, 12)
+        base = 27
+
+    timing_factors: List[str] = []
+
+    # ── Dignity adjustments ────────────────────────────────────────────────────
+    if lord_dignity == "exalted":
+        base -= 2
+        timing_factors.append(f"7th lord {lord_7} exalted — strong partnership drive, favours earlier union")
+    elif lord_dignity in ("own", "moolatrikona"):
+        base -= 1
+        timing_factors.append(f"7th lord {lord_7} in own/moolatrikona sign — timely, committed marriage")
+    elif lord_dignity == "debilitated":
+        base += 4
+        timing_factors.append(f"7th lord {lord_7} debilitated — delays and obstacles push marriage later")
+
+    if venus_dignity == "exalted":
+        base -= 2
+        timing_factors.append("Venus exalted — natural magnetism, relationships come early")
+    elif venus_dignity in ("own", "moolatrikona"):
+        base -= 1
+        timing_factors.append("Venus strong — harmonious relationships, supports timely marriage")
+    elif venus_dignity == "debilitated":
+        base += 3
+        timing_factors.append("Venus debilitated — relationship lessons delay commitment")
+
+    # ── Saturn influence ───────────────────────────────────────────────────────
+    saturn = _planet(planets, "Saturn")
+    sat_house = saturn["house"] if saturn else 0
+    # Saturn aspects 3rd, 7th, 10th from its position
+    sat_aspects_7 = sat_house in (1, 4, 7)  # These houses aspect the 7th
+    if sat_house == 7:
+        base += 4
+        timing_factors.append("Saturn in the 7th house — classic indicator of delayed but durable marriage")
+    elif sat_aspects_7:
+        base += 3
+        timing_factors.append(f"Saturn (house {sat_house}) aspects the 7th — marriage delayed but more enduring")
+
+    # ── Rahu ──────────────────────────────────────────────────────────────────
+    if rahu_in_7:
+        base += 2
+        timing_factors.append("Rahu in 7th — unconventional or delayed timing; may marry outside expected norms")
+
+    # ── 7th lord in dusthana ──────────────────────────────────────────────────
+    if lord_house in (6, 8, 12):
+        base += 2
+        timing_factors.append(f"7th lord in house {lord_house} — karmic delays or separations before final union")
+
+    # ── Dasha-based refinement ─────────────────────────────────────────────────
+    dasha_period_note: Optional[str] = None
+    dasha_sequence: List[Dict] = chart_data.get("dasha_sequence", [])
+    birth_date_str: str = chart_data.get("date", "")
+
+    if dasha_sequence and birth_date_str:
+        try:
+            birth_dt = datetime.strptime(birth_date_str, "%Y-%m-%d")
+            # Planets that trigger marriage in Vedic tradition
+            marriage_planets = {lord_7, "Venus", "Jupiter", "Moon"}
+
+            # Collect dashas of marriage-triggering planets that overlap age 18–45
+            candidates: List[Tuple[str, int, int]] = []
+            for dasha in dasha_sequence:
+                if dasha["planet"] not in marriage_planets:
+                    continue
+                d_start = datetime.strptime(dasha["start_date"], "%Y-%m-%d")
+                d_end   = datetime.strptime(dasha["end_date"],   "%Y-%m-%d")
+                age_s = (d_start - birth_dt).days / 365.25
+                age_e = (d_end   - birth_dt).days / 365.25
+                if age_e < 18 or age_s > 45:
+                    continue
+                candidates.append((dasha["planet"], int(max(18, age_s)), int(min(45, age_e))))
+
+            if candidates:
+                # Pick the candidate whose midpoint is closest to our base estimate
+                best = min(candidates, key=lambda c: abs((c[1] + c[2]) / 2 - base))
+                planet_name, age_lo, age_hi = best
+                # Snap base into this window if close
+                if age_lo <= base <= age_hi:
+                    pass  # already inside
+                else:
+                    base = round((age_lo + age_hi) / 2)
+                dasha_period_note = f"{planet_name} Dasha (age {age_lo}–{age_hi})"
+                timing_factors.append(
+                    f"Vimshottari Dasha of {planet_name} runs ages {age_lo}–{age_hi} — "
+                    f"a prime window for marriage activation"
+                )
+        except Exception:
+            pass
+
+    base = max(20, min(45, base))
+    age_range = f"{max(18, base - 2)}–{base + 3}"
+
+    return {
+        "estimated_marriage_age": base,
+        "marriage_age_range": age_range,
+        "marriage_dasha_period": dasha_period_note,
+        "marriage_timing_factors": timing_factors,
+    }
 
 
 def calculate_relationships(chart_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -208,6 +332,13 @@ def calculate_relationships(chart_data: Dict[str, Any]) -> Dict[str, Any]:
         f"highly detailed face, beautiful natural expression, 8k ultra quality."
     )
 
+    # ── Marriage age estimate ──────────────────────────────────────────────────
+    marriage = _estimate_marriage_age(
+        chart_data, planets, houses,
+        lord_7, lord_dignity, lord_house,
+        venus_dignity, rahu_in_7,
+    )
+
     return {
         "predicted_count": count,
         "reasons": reasons,
@@ -218,4 +349,5 @@ def calculate_relationships(chart_data: Dict[str, Any]) -> Dict[str, Any]:
         "soulmate_appearance": appearance,
         "soulmate_personality": personality,
         "image_prompt": image_prompt,
+        **marriage,
     }

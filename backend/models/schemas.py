@@ -287,3 +287,7 @@ class RelationshipResponse(BaseModel):
     soulmate_appearance: str
     soulmate_personality: str
     image_prompt: str
+    estimated_marriage_age: int
+    marriage_age_range: str
+    marriage_dasha_period: Optional[str]
+    marriage_timing_factors: List[str]

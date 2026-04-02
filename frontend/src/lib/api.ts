@@ -266,6 +266,10 @@ export interface RelationshipResponse {
   soulmate_appearance: string;
   soulmate_personality: string;
   image_prompt: string;
+  estimated_marriage_age: number;
+  marriage_age_range: string;
+  marriage_dasha_period: string | null;
+  marriage_timing_factors: string[];
 }
 
 export async function calculateRelationships(

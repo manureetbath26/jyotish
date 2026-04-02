@@ -58,6 +58,35 @@ export function SoulmateTab({ data }: Props) {
         </p>
       </div>
 
+      {/* ── Marriage age ── */}
+      <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6">
+        <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Estimated Marriage Age</p>
+        <div className="flex items-end gap-3 mb-1">
+          <span className="text-6xl font-bold leading-none text-sky-400">
+            {data.estimated_marriage_age}
+          </span>
+          <div className="pb-1 space-y-0.5">
+            <p className="text-slate-300 text-base">years old</p>
+            <p className="text-xs text-slate-500">likely window: {data.marriage_age_range}</p>
+          </div>
+        </div>
+        {data.marriage_dasha_period && (
+          <p className="text-xs text-amber-400/80 mt-2">
+            ✦ Peak activation during {data.marriage_dasha_period}
+          </p>
+        )}
+        {data.marriage_timing_factors.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {data.marriage_timing_factors.map((f, i) => (
+              <div key={i} className="flex gap-2 text-sm text-slate-400">
+                <span className="text-sky-500 shrink-0 mt-0.5">·</span>
+                <span>{f}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ── Reasons ── */}
       <div className="space-y-3">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Astrological Factors</h3>
