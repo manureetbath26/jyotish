@@ -118,6 +118,15 @@ export async function getUserCharts() {
   return res.json();
 }
 
+export interface TransitDetail {
+  planet: string;
+  influence: "favorable" | "unfavorable";
+  transit_rashi: string;
+  transit_degree: number;
+  natal_house: number;
+  reason: string;
+}
+
 export interface TransitPeriod {
   start_date: string;
   end_date: string;
@@ -127,6 +136,9 @@ export interface TransitPeriod {
   active_planets: string[];
   description: string;
   guidance: string;
+  rating: number; // 1-5
+  rating_label: string;
+  transit_details: TransitDetail[];
 }
 
 export interface MajorTransitEvent {

@@ -124,6 +124,15 @@ class UserChartResponse(BaseModel):
     chart_data: Dict[str, Any]
 
 
+class TransitDetail(BaseModel):
+    planet: str
+    influence: str  # "favorable" | "unfavorable"
+    transit_rashi: str
+    transit_degree: float
+    natal_house: int
+    reason: str  # e.g. "conjunct natal Venus" or "transiting house 7"
+
+
 class TransitPeriod(BaseModel):
     start_date: str
     end_date: str
@@ -133,6 +142,9 @@ class TransitPeriod(BaseModel):
     active_planets: List[str]
     description: str = ""
     guidance: str = ""
+    rating: int = 3  # 1-5 scale: 1=Very Challenging, 5=Very Good
+    rating_label: str = "Neutral"
+    transit_details: List[TransitDetail] = []
 
 
 class TransitTimelineResponse(BaseModel):

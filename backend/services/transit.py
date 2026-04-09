@@ -279,6 +279,24 @@ DASHA_EFFECTIVENESS = {
 }
 
 
+def compute_rating(period_type: str, strength: str) -> Tuple[int, str]:
+    """
+    Map period type + strength to a 1-5 rating.
+
+    Returns:
+        (rating, label) e.g. (5, "Very Good")
+    """
+    if period_type == "favorable":
+        if strength == "strong":
+            return (5, "Very Good")
+        return (4, "Good")
+    if period_type == "unfavorable":
+        if strength == "strong":
+            return (1, "Very Challenging")
+        return (2, "Challenging")
+    return (3, "Neutral")
+
+
 def build_period_interpretation(
     life_area: str,
     period_type: str,
@@ -502,6 +520,7 @@ def calculate_transit_periods(
             favorable_count = 0
             unfavorable_count = 0
             active_planets = []
+            transit_details_day = []
 
             for planet_name, transit_lon in transit_positions.items():
                 if planet_name not in natal_positions:
@@ -514,13 +533,36 @@ def calculate_transit_periods(
                 in_favorable_house = natal_house in rules["houses"]
                 in_unfavorable_house = natal_house in rules.get("houses_unfav", [])
 
+                # Determine transit rashi
+                transit_rashi_num = int(transit_lon / 30)
+                transit_rashi = RASHI_NAMES[transit_rashi_num % 12]
+                transit_house = ((transit_rashi_num - int(natal_positions.get("Sun", natal_positions.get(list(natal_positions.keys())[0]))["longitude"] / 30)) % 12) + 1
+
                 if (conjoining or in_favorable_house) and planet_name in rules["favorable_planets"]:
                     favorable_count += 1
                     active_planets.append((planet_name, "favorable"))
+                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {natal_house}"
+                    transit_details_day.append({
+                        "planet": planet_name,
+                        "influence": "favorable",
+                        "transit_rashi": transit_rashi,
+                        "transit_degree": round(transit_lon % 30, 1),
+                        "natal_house": natal_house,
+                        "reason": reason,
+                    })
 
                 if (conjoining or in_unfavorable_house) and planet_name in rules["unfavorable_planets"]:
                     unfavorable_count += 1
                     active_planets.append((planet_name, "unfavorable"))
+                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {natal_house}"
+                    transit_details_day.append({
+                        "planet": planet_name,
+                        "influence": "unfavorable",
+                        "transit_rashi": transit_rashi,
+                        "transit_degree": round(transit_lon % 30, 1),
+                        "natal_house": natal_house,
+                        "reason": reason,
+                    })
 
             if favorable_count > unfavorable_count:
                 status = "favorable"
@@ -531,7 +573,8 @@ def calculate_transit_periods(
 
             current_assessment[life_area] = {
                 "status": status,
-                "planets": active_planets
+                "planets": active_planets,
+                "transit_details": transit_details_day,
             }
 
         # Detect status changes per life area and record completed periods
@@ -555,6 +598,7 @@ def calculate_transit_periods(
                     interp = build_period_interpretation(
                         life_area, prev_status, active_planet_names, strength, dur
                     )
+                    rating, rating_label = compute_rating(prev_status, strength)
                     timeline[life_area].append({
                         "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                         "end_date": period_end.strftime("%Y-%m-%d"),
@@ -564,6 +608,9 @@ def calculate_transit_periods(
                         "active_planets": active_planet_names,
                         "description": interp["description"],
                         "guidance": interp["guidance"],
+                        "rating": rating,
+                        "rating_label": rating_label,
+                        "transit_details": prev.get("transit_details", []),
                     })
                 period_starts[life_area] = current_date
 
@@ -584,6 +631,7 @@ def calculate_transit_periods(
             interp = build_period_interpretation(
                 life_area, assessment["status"], active_planet_names, strength, dur
             )
+            rating, rating_label = compute_rating(assessment["status"], strength)
             timeline[life_area].append({
                 "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                 "end_date": end_date.strftime("%Y-%m-%d"),
@@ -593,6 +641,9 @@ def calculate_transit_periods(
                 "active_planets": active_planet_names,
                 "description": interp["description"],
                 "guidance": interp["guidance"],
+                "rating": rating,
+                "rating_label": rating_label,
+                "transit_details": assessment.get("transit_details", []),
             })
 
     return timeline
