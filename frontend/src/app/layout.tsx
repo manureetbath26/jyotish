@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import { Navbar } from "@/components/Navbar";
+import { PremiumProvider } from "@/components/PremiumLock";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -74,10 +75,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-slate-950 text-slate-100">
         <SessionProvider>
-          <Navbar />
-          <main className="max-w-7xl mx-auto px-4 py-8">
-            {children}
-          </main>
+          <PremiumProvider>
+            <Navbar />
+            <main className="max-w-7xl mx-auto px-4 py-8">
+              {children}
+            </main>
+          </PremiumProvider>
         </SessionProvider>
       </body>
     </html>

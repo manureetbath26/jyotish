@@ -18,9 +18,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts Account[]
-  sessions Session[]
-  charts   Chart[]
+  accounts      Account[]
+  sessions      Session[]
+  charts        Chart[]
+  subscriptions Subscription[]
+  payments      Payment[]
 }
 
 model Account {
@@ -74,4 +76,45 @@ model InterestEmail {
   id           String   @id @default(cuid())
   email        String   @unique
   registeredAt DateTime @default(now())
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  status    String   @default("active") // active, expired, cancelled
+  plan      String   @default("monthly")
+  amount    Int      // in paise (50000 = INR 500)
+  startDate DateTime @default(now())
+  endDate   DateTime
+  couponId  String?
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon? @relation(fields: [couponId], references: [id])
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  userId           String
+  amount           Int      // in paise
+  method           String   @default("upi")
+  upiTransactionId String?
+  status           String   @default("pending") // pending, verified, rejected
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Coupon {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  type      String    @default("unlimited") // unlimited, percentage, fixed
+  value     Int?      // discount value (percentage or fixed paise)
+  maxUses   Int?      // null = unlimited uses
+  usedCount Int       @default(0)
+  active    Boolean   @default(true)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  subscriptions Subscription[]
 }

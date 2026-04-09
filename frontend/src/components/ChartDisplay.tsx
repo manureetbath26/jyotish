@@ -11,6 +11,7 @@ import { YogaTab } from "./YogaTab";
 import { TransitCalculator } from "./TransitCalculator";
 import { ChartInterpretation } from "./ChartInterpretation";
 import { PanchangTab } from "./PanchangTab";
+import { PremiumLock } from "./PremiumLock";
 
 interface Props {
   chart: ChartResponse;
@@ -168,13 +169,15 @@ export function ChartDisplay({ chart, onSave }: Props) {
         {tab === "houses"  && <HouseTable houses={chart.houses} />}
 
         {tab === "dasha" && (
-          <DashaDisplay
-            currentDasha={chart.current_dasha}
-            currentAntardasha={chart.current_antardasha}
-            dashaSequence={chart.dasha_sequence}
-            planets={chart.planets}
-            lagna={chart.lagna}
-          />
+          <PremiumLock>
+            <DashaDisplay
+              currentDasha={chart.current_dasha}
+              currentAntardasha={chart.current_antardasha}
+              dashaSequence={chart.dasha_sequence}
+              planets={chart.planets}
+              lagna={chart.lagna}
+            />
+          </PremiumLock>
         )}
 
         {tab === "navamsa" && (

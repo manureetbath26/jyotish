@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ChartResponse, CurrentTransitResponse, calculateCurrentTransits } from "@/lib/api";
 import { TransitTimeline } from "./TransitTimeline";
 import { NorthIndianChart } from "./charts/NorthIndianChart";
+import { PremiumLock } from "./PremiumLock";
 
 interface TransitData {
   start_date: string;
@@ -155,7 +156,8 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
         )}
       </div>
 
-      {/* Configuration Panel */}
+      {/* Configuration Panel — Premium */}
+      <PremiumLock>
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
         {/* Date Range */}
         <div>
@@ -288,6 +290,7 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
           )}
         </div>
       )}
+      </PremiumLock>
     </div>
   );
 }

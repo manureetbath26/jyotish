@@ -5,6 +5,7 @@ import { SouthIndianChart } from "./charts/SouthIndianChart";
 import { NorthIndianChart } from "./charts/NorthIndianChart";
 import { HouseInfo } from "@/lib/api";
 import { NavamsaInterpretation } from "./NavamsaInterpretation";
+import { PremiumLock } from "./PremiumLock";
 
 type ChartStyle = "north" | "south";
 
@@ -104,7 +105,9 @@ export function NavamsaTab({ navamsaLagna, navamsaPlanets }: Props) {
         />
       )}
 
-      <NavamsaInterpretation navamsaLagna={navamsaLagna} navamsaPlanets={navamsaPlanets} />
+      <PremiumLock>
+        <NavamsaInterpretation navamsaLagna={navamsaLagna} navamsaPlanets={navamsaPlanets} />
+      </PremiumLock>
 
       {/* Navamsa planet table */}
       <div className="overflow-x-auto rounded-xl border border-slate-800">
