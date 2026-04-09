@@ -157,6 +157,33 @@ export interface TransitChartResponse {
   summary: Record<string, string>;
 }
 
+export interface CurrentTransitResponse {
+  transit_date: string;
+  planets: PlanetPosition[];
+  houses: HouseInfo[];
+  lagna: string;
+  lagna_degree: number;
+}
+
+export async function calculateCurrentTransits(
+  ayanamshaValue: number,
+  natalLagnaDegree: number,
+): Promise<CurrentTransitResponse> {
+  const res = await fetch("/api/chart/current-transits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ayanamsha_value: ayanamshaValue,
+      natal_lagna_degree: natalLagnaDegree,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to fetch current transits");
+  }
+  return res.json();
+}
+
 // ── Panchang & Avakhada ──────────────────────────────────────────────────────
 
 export interface TithiInfo {

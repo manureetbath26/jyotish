@@ -359,6 +359,136 @@ def build_period_interpretation(
     return {"description": description, "guidance": guidance}
 
 
+NAKSHATRA_NAMES = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
+    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishtha",
+    "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+]
+
+RASHI_LORDS = {
+    "Aries": "Mars", "Taurus": "Venus", "Gemini": "Mercury", "Cancer": "Moon",
+    "Leo": "Sun", "Virgo": "Mercury", "Libra": "Venus", "Scorpio": "Mars",
+    "Sagittarius": "Jupiter", "Capricorn": "Saturn", "Aquarius": "Saturn", "Pisces": "Jupiter",
+}
+
+
+def get_current_transit_positions(
+    ayanamsha_val: float,
+    natal_lagna_degree: float,
+) -> Dict:
+    """
+    Get current planet positions for today, mapped onto the natal house framework.
+
+    Returns dict with transit_date, planets (PlanetPosition-compatible dicts),
+    houses (HouseInfo list based on natal lagna), lagna, and lagna_degree.
+    """
+    now = datetime.utcnow()
+    natal_lagna_rashi_num = int(natal_lagna_degree / 30)  # 0-indexed
+
+    # Compute natal house framework (12 houses from natal lagna)
+    lagna_sign = RASHI_NAMES[natal_lagna_rashi_num % 12]
+    houses = []
+    for i in range(12):
+        rashi_idx = (natal_lagna_rashi_num + i) % 12
+        rashi = RASHI_NAMES[rashi_idx]
+        houses.append({
+            "house_num": i + 1,
+            "rashi": rashi,
+            "rashi_num": rashi_idx + 1,
+            "lord": RASHI_LORDS.get(rashi, ""),
+            "occupants": [],
+        })
+
+    # Compute transit planet positions
+    planets = []
+    flag = swe.FLG_SWIEPH | swe.FLG_SPEED
+    jd = swe.julday(now.year, now.month, now.day, now.hour + now.minute / 60.0, 1)
+
+    rahu_lon = 0.0
+    rahu_speed = 0.0
+
+    for planet_num, planet_name in PLANET_NAMES.items():
+        pos, _ = swe.calc_ut(jd, planet_num, flag)
+        tropical_lng = pos[0]
+        speed = pos[3]
+        sidereal_lng = (tropical_lng - ayanamsha_val) % 360
+
+        rashi_num_0 = int(sidereal_lng / 30)  # 0-indexed
+        rashi = RASHI_NAMES[rashi_num_0 % 12]
+        degree_in_rashi = sidereal_lng % 30
+        house = ((rashi_num_0 - natal_lagna_rashi_num) % 12) + 1
+
+        # Nakshatra
+        nak_size = 360.0 / 27
+        nak_index = min(int(sidereal_lng / nak_size), 26)
+        remainder = sidereal_lng - nak_index * nak_size
+        pada = min(int(remainder / (nak_size / 4)) + 1, 4)
+        nakshatra = NAKSHATRA_NAMES[nak_index]
+
+        is_retrograde = speed < 0
+
+        if planet_name == "Rahu":
+            rahu_lon = sidereal_lng
+            rahu_speed = speed
+            is_retrograde = True  # Rahu always retrograde in mean node
+
+        planets.append({
+            "name": planet_name,
+            "longitude": round(sidereal_lng, 4),
+            "rashi": rashi,
+            "rashi_num": rashi_num_0 + 1,
+            "degree_in_rashi": round(degree_in_rashi, 4),
+            "house": house,
+            "nakshatra": nakshatra,
+            "nakshatra_pada": pada,
+            "is_retrograde": is_retrograde,
+            "dignity": None,
+            "lord_of_houses": [],
+        })
+
+    # Add Ketu (Rahu + 180°)
+    ketu_lon = (rahu_lon + 180) % 360
+    ketu_rashi_num_0 = int(ketu_lon / 30)
+    ketu_rashi = RASHI_NAMES[ketu_rashi_num_0 % 12]
+    ketu_deg = ketu_lon % 30
+    ketu_house = ((ketu_rashi_num_0 - natal_lagna_rashi_num) % 12) + 1
+    nak_size = 360.0 / 27
+    ketu_nak_idx = min(int(ketu_lon / nak_size), 26)
+    ketu_remainder = ketu_lon - ketu_nak_idx * nak_size
+    ketu_pada = min(int(ketu_remainder / (nak_size / 4)) + 1, 4)
+
+    planets.append({
+        "name": "Ketu",
+        "longitude": round(ketu_lon, 4),
+        "rashi": ketu_rashi,
+        "rashi_num": ketu_rashi_num_0 + 1,
+        "degree_in_rashi": round(ketu_deg, 4),
+        "house": ketu_house,
+        "nakshatra": NAKSHATRA_NAMES[ketu_nak_idx],
+        "nakshatra_pada": ketu_pada,
+        "is_retrograde": True,
+        "dignity": None,
+        "lord_of_houses": [],
+    })
+
+    # Mark house occupants
+    for p in planets:
+        h = p["house"]
+        for house in houses:
+            if house["house_num"] == h:
+                house["occupants"].append(p["name"])
+
+    return {
+        "transit_date": now.strftime("%Y-%m-%d"),
+        "planets": planets,
+        "houses": houses,
+        "lagna": lagna_sign,
+        "lagna_degree": natal_lagna_degree,
+    }
+
+
 def get_planet_position_on_date(
     planet_num: int,
     utc_datetime: datetime,

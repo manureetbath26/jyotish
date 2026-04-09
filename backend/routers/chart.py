@@ -4,6 +4,7 @@ import pytz
 
 from models.schemas import (
     BirthDataInput, ChartResponse, TransitChartRequest, TransitChartResponse,
+    CurrentTransitRequest, CurrentTransitResponse,
     PanchangRequest, PanchangResponse,
     RelationshipRequest, RelationshipResponse,
 )
@@ -11,7 +12,7 @@ from services.geocoding import geocode_place, local_to_utc
 from services.astrology import calculate_full_chart
 from services.dasha import build_dasha_sequence, get_current_dasha_antardasha
 from services.yogas import calculate_yogas
-from services.transit import calculate_transit_periods, get_next_major_transit
+from services.transit import calculate_transit_periods, get_next_major_transit, get_current_transit_positions
 from services.panchang import calculate_panchang
 from services.relationships import calculate_relationships
 
@@ -211,3 +212,16 @@ async def calculate_transits(body: TransitChartRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transit calculation error: {e}")
+
+
+@router.post("/current-transits", response_model=CurrentTransitResponse)
+async def current_transits(body: CurrentTransitRequest):
+    """Get current planet positions for today, in the natal house framework."""
+    try:
+        result = get_current_transit_positions(
+            body.ayanamsha_value,
+            body.natal_lagna_degree,
+        )
+        return CurrentTransitResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Current transit error: {e}")

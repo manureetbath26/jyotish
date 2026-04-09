@@ -160,6 +160,19 @@ class MajorTransitEvent(BaseModel):
     transit_position: float
 
 
+class CurrentTransitRequest(BaseModel):
+    ayanamsha_value: float
+    natal_lagna_degree: float
+
+
+class CurrentTransitResponse(BaseModel):
+    transit_date: str
+    planets: List[PlanetPosition]
+    houses: List[HouseInfo]
+    lagna: str
+    lagna_degree: float
+
+
 class TransitChartRequest(BaseModel):
     chart_data: Dict[str, Any]
     start_date: str = Field(..., description="Date in YYYY-MM-DD format")

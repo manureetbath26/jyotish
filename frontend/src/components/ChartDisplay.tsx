@@ -6,6 +6,7 @@ import { SouthIndianChart } from "./charts/SouthIndianChart";
 import { PlanetTable } from "./PlanetTable";
 import { HouseTable } from "./HouseTable";
 import { DashaDisplay } from "./DashaDisplay";
+import { DashaInterpretation } from "./DashaInterpretation";
 import { NavamsaTab } from "./NavamsaTab";
 import { YogaTab } from "./YogaTab";
 import { TransitCalculator } from "./TransitCalculator";
@@ -185,11 +186,14 @@ export function ChartDisplay({ chart, onSave }: Props) {
         {tab === "houses"  && <HouseTable houses={chart.houses} />}
 
         {tab === "dasha" && (
-          <DashaDisplay
-            currentDasha={chart.current_dasha}
-            currentAntardasha={chart.current_antardasha}
-            dashaSequence={chart.dasha_sequence}
-          />
+          <div className="space-y-6">
+            <DashaDisplay
+              currentDasha={chart.current_dasha}
+              currentAntardasha={chart.current_antardasha}
+              dashaSequence={chart.dasha_sequence}
+            />
+            <DashaInterpretation chart={chart} />
+          </div>
         )}
 
         {tab === "navamsa" && (

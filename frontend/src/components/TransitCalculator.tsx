@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { ChartResponse } from "@/lib/api";
+import React, { useState, useEffect } from "react";
+import { ChartResponse, CurrentTransitResponse, calculateCurrentTransits } from "@/lib/api";
 import { TransitTimeline } from "./TransitTimeline";
+import { NorthIndianChart } from "./charts/NorthIndianChart";
 
 interface TransitData {
   start_date: string;
@@ -37,6 +38,17 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
   const [transitData, setTransitData] = useState<TransitData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Current transit chart state
+  const [currentTransit, setCurrentTransit] = useState<CurrentTransitResponse | null>(null);
+  const [transitChartLoading, setTransitChartLoading] = useState(true);
+
+  useEffect(() => {
+    calculateCurrentTransits(chart.ayanamsha_value, chart.lagna_degree)
+      .then(setCurrentTransit)
+      .catch(() => {})
+      .finally(() => setTransitChartLoading(false));
+  }, [chart.ayanamsha_value, chart.lagna_degree]);
 
   const handleAreaToggle = (areaId: string) => {
     setSelectedAreas(prev =>
@@ -91,8 +103,58 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
     }
   };
 
+  const PLANET_ABBR: Record<string, string> = {
+    Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me",
+    Jupiter: "Ju", Venus: "Ve", Saturn: "Sa", Rahu: "Ra", Ketu: "Ke",
+  };
+
   return (
     <div className="space-y-6">
+      {/* Current Transit Chart */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-amber-400 mb-1">🌍 Current Transit Chart</h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Planet positions for today ({currentTransit?.transit_date ?? "loading..."}) in your natal house framework
+        </p>
+
+        {transitChartLoading && (
+          <div className="flex items-center justify-center h-40 text-slate-500">
+            <div className="text-center space-y-3">
+              <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm">Calculating current transits…</p>
+            </div>
+          </div>
+        )}
+
+        {currentTransit && !transitChartLoading && (
+          <div className="space-y-4">
+            <NorthIndianChart
+              lagna={currentTransit.lagna}
+              lagna_degree={currentTransit.lagna_degree}
+              planets={currentTransit.planets}
+              houses={currentTransit.houses}
+            />
+
+            {/* Planet position summary grid */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {currentTransit.planets.map(p => (
+                <div
+                  key={p.name}
+                  className="bg-slate-800/60 border border-slate-700 rounded-lg px-2 py-1.5 text-center"
+                >
+                  <p className="text-xs font-bold text-slate-300">
+                    {PLANET_ABBR[p.name] ?? p.name}{p.is_retrograde ? " ᴿ" : ""}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {p.rashi.slice(0, 3)} {p.degree_in_rashi.toFixed(1)}°
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Configuration Panel */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
         {/* Date Range */}
