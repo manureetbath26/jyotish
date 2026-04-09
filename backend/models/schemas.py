@@ -296,23 +296,3 @@ class PanchangResponse(BaseModel):
     avakhada_interpretations: AvakhadaInterpretations
 
 
-# ── Relationship Prediction ──────────────────────────────────────────────────
-
-class RelationshipRequest(BaseModel):
-    chart_data: Dict[str, Any]
-
-
-class RelationshipResponse(BaseModel):
-    predicted_count: int
-    reasons: List[str]
-    seventh_house_sign: str
-    seventh_house_lord: str
-    darakaraka: str
-    mangal_dosha: bool
-    soulmate_appearance: str
-    soulmate_personality: str
-    image_prompt: str
-    estimated_marriage_age: int
-    marriage_age_range: str
-    marriage_dasha_period: Optional[str]
-    marriage_timing_factors: List[str]

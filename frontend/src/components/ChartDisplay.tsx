@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ChartResponse, PanchangResponse, RelationshipResponse, calculatePanchang, calculateRelationships } from "@/lib/api";
+import { ChartResponse, PanchangResponse, calculatePanchang } from "@/lib/api";
 import { NorthIndianChart } from "./charts/NorthIndianChart";
 import { SouthIndianChart } from "./charts/SouthIndianChart";
 import { PlanetTable } from "./PlanetTable";
@@ -11,14 +11,13 @@ import { YogaTab } from "./YogaTab";
 import { TransitCalculator } from "./TransitCalculator";
 import { ChartInterpretation } from "./ChartInterpretation";
 import { PanchangTab } from "./PanchangTab";
-import { SoulmateTab } from "./SoulmateTab";
 
 interface Props {
   chart: ChartResponse;
   onSave?: () => void;
 }
 
-type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "transits" | "soulmate";
+type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "transits";
 type ChartStyle = "north" | "south";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -30,7 +29,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "navamsa", label: "Navamsa (D-9)" },
   { id: "yogas",   label: "Yogas" },
   { id: "transits",  label: "Transits 🌙" },
-  { id: "soulmate",  label: "Soulmate ♥" },
 ];
 
 export function ChartDisplay({ chart, onSave }: Props) {
@@ -39,10 +37,6 @@ export function ChartDisplay({ chart, onSave }: Props) {
   const [panchang, setPanchang] = useState<PanchangResponse | null>(null);
   const [panchangLoading, setPanchangLoading] = useState(false);
   const [panchangError, setPanchangError] = useState<string | null>(null);
-
-  const [soulmate, setSoulmate] = useState<RelationshipResponse | null>(null);
-  const [soulmateLoading, setSoulmateLoading] = useState(false);
-  const [soulmateError, setSoulmateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (tab === "panchang" && !panchang && !panchangLoading) {
@@ -59,17 +53,6 @@ export function ChartDisplay({ chart, onSave }: Props) {
         .finally(() => setPanchangLoading(false));
     }
   }, [tab, chart, panchang, panchangLoading]);
-
-  useEffect(() => {
-    if (tab === "soulmate" && !soulmate && !soulmateLoading) {
-      setSoulmateLoading(true);
-      setSoulmateError(null);
-      calculateRelationships(chart)
-        .then(setSoulmate)
-        .catch(e => setSoulmateError(e instanceof Error ? e.message : "Failed to load prediction"))
-        .finally(() => setSoulmateLoading(false));
-    }
-  }, [tab, chart, soulmate, soulmateLoading]);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -207,25 +190,6 @@ export function ChartDisplay({ chart, onSave }: Props) {
 
         {tab === "transits" && (
           <TransitCalculator chart={chart} />
-        )}
-
-        {tab === "soulmate" && (
-          <div>
-            {soulmateLoading && (
-              <div className="flex items-center justify-center h-40 text-slate-500">
-                <div className="text-center space-y-3">
-                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-sm">Reading the stars…</p>
-                </div>
-              </div>
-            )}
-            {soulmateError && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-sm text-red-400">
-                {soulmateError}
-              </div>
-            )}
-            {soulmate && !soulmateLoading && <SoulmateTab data={soulmate} />}
-          </div>
         )}
       </div>
     </div>

@@ -103,7 +103,6 @@ export default function HomePage() {
       "Avakhada Chakra",
       "Yoga detection and analysis",
       "Current transit chart with predictions",
-      "Soulmate compatibility analysis",
       "Lahiri, KP and Raman ayanamsha",
       "North and South Indian chart styles",
     ],
@@ -331,7 +330,7 @@ export default function HomePage() {
               {
                 step: "3",
                 title: "Explore Your Chart",
-                desc: "Browse through Panchang, Birth Chart, Planets, Houses, Dasha, Navamsa, Yogas, Transits, and Soulmate tabs for a comprehensive reading.",
+                desc: "Browse through Panchang, Birth Chart, Planets, Houses, Dasha, Navamsa, Yogas, and Transits tabs for a comprehensive reading.",
               },
             ].map(item => (
               <div key={item.step} className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
