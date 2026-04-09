@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+
+const UPI_DEEP_LINK = "upi://pay?pa=9872653657@ybl&pn=Jyotish&am=500&cu=INR&tn=Jyotish%20Premium";
 
 export default function SubscribePage() {
   const { status } = useSession();
@@ -142,16 +145,23 @@ export default function SubscribePage() {
           Pay via UPI
         </h2>
 
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <p className="text-xs text-slate-500 mb-1">UPI ID</p>
-          <p className="text-amber-400 font-mono text-sm font-semibold select-all">
-            jyotish@upi
+        <div className="flex flex-col items-center gap-3">
+          <div className="bg-white p-3 rounded-xl">
+            <QRCodeSVG
+              value={UPI_DEEP_LINK}
+              size={200}
+              level="H"
+              includeMargin={false}
+            />
+          </div>
+          <p className="text-xs text-slate-500 text-center">
+            Scan with any UPI app (GPay, PhonePe, Paytm, etc.)
           </p>
         </div>
 
         <ol className="text-slate-400 text-sm space-y-1 list-decimal list-inside">
-          <li>Open any UPI app</li>
-          <li>Pay ₹500 to <span className="text-amber-400 font-mono">jyotish@upi</span></li>
+          <li>Scan the QR code above with any UPI app</li>
+          <li>Complete the payment of ₹500</li>
           <li>Enter your UPI transaction reference below</li>
         </ol>
 
