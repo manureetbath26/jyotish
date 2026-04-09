@@ -31,8 +31,14 @@ export function BirthForm({ onSubmit, loading }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedRef = useRef(false); // true when user just picked a suggestion
 
   useEffect(() => {
+    // Skip search if user just selected a suggestion
+    if (selectedRef.current) {
+      selectedRef.current = false;
+      return;
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const results = await searchPlaces(place);
@@ -96,7 +102,7 @@ export function BirthForm({ onSubmit, loading }: Props) {
             {suggestions.map((s, i) => (
               <li
                 key={i}
-                onMouseDown={() => { setPlace(s); setShowSuggestions(false); }}
+                onMouseDown={() => { selectedRef.current = true; setPlace(s); setShowSuggestions(false); setSuggestions([]); }}
                 className="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer truncate"
               >
                 {s}
