@@ -1,0 +1,18 @@
+{
+  "name": "Jyotish — Free Kundli & Vedic Birth Chart Calculator",
+  "short_name": "Jyotish",
+  "description": "Free online Kundli calculator with Vedic birth chart, Dasha, Navamsa, Panchang, Yogas and Transit predictions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "categories": ["lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
