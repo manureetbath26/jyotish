@@ -757,7 +757,123 @@ function detectYogas(chart: ChartResponse, lordshipsMap: Record<string, number[]
   return yogas;
 }
 
-// ─── Upcoming Highlights Builder ────────────────────────────────────────────
+
+// Age cutoff helpers
+const MAX_AGE = 100;
+const MAX_CHILDBEARING_AGE = 50;
+
+function getBirthYear(chart: ChartResponse): number {
+  // chart.date is typically "YYYY-MM-DD" or "DD-MM-YYYY" or similar
+  const parts = chart.date.match(/(\d{4})/);
+  if (parts) return parseInt(parts[1], 10);
+  return new Date().getFullYear() - 30; // fallback
+}
+
+function getAgeAtDate(birthYear: number, dateStr: string): number {
+  const year = new Date(dateStr).getFullYear();
+  return year - birthYear;
+}
+
+// ─── Highlight Event Definitions (scoring-based) ───────────────────────────
+
+interface HighlightEventDef {
+  id: string;
+  event: string;
+  category: string;
+  type: "positive" | "negative" | "neutral";
+  /** Houses that, when lorded or occupied by MD/AD planet, increase relevance */
+  relevantHouses: number[];
+  /** Natural karaka planets — extra score when they're the MD or AD lord */
+  karakaPlanets: string[];
+  /** Which house combinations between MD+AD are especially strong */
+  powerCombos: number[][];
+  /** Minimum score to generate a highlight */
+  threshold: number;
+  /** If true, only trigger during challenging/mixed nature */
+  requiresChallenging?: boolean;
+  /** Age cutoff (e.g. children only before 50) */
+  maxAge?: number;
+}
+
+const HIGHLIGHT_EVENTS: HighlightEventDef[] = [
+  {
+    id: "marriage", event: "Marriage / Committed Partnership", category: "marriage", type: "positive",
+    relevantHouses: [7, 2, 1, 11], karakaPlanets: ["Venus"],
+    powerCombos: [[7, 2], [7, 1], [7, 11], [7, 5]], threshold: 4,
+  },
+  {
+    id: "romance", event: "Romance & Love", category: "romance", type: "positive",
+    relevantHouses: [5, 7, 11], karakaPlanets: ["Venus", "Moon"],
+    powerCombos: [[5, 7], [5, 11]], threshold: 3,
+  },
+  {
+    id: "children", event: "Children / Progeny", category: "children", type: "positive",
+    relevantHouses: [5, 9, 2], karakaPlanets: ["Jupiter"],
+    powerCombos: [[5, 2], [5, 9]], threshold: 4, maxAge: MAX_CHILDBEARING_AGE,
+  },
+  {
+    id: "career_growth", event: "Career Advancement / Peak", category: "career_growth", type: "positive",
+    relevantHouses: [10, 6, 11, 1], karakaPlanets: ["Sun", "Saturn"],
+    powerCombos: [[10, 11], [10, 1], [10, 9], [6, 10]], threshold: 4,
+  },
+  {
+    id: "wealth", event: "Wealth Accumulation", category: "wealth", type: "positive",
+    relevantHouses: [2, 11, 9, 5], karakaPlanets: ["Jupiter", "Venus"],
+    powerCombos: [[2, 11], [2, 9], [11, 9]], threshold: 4,
+  },
+  {
+    id: "property", event: "Property / Vehicle Acquisition", category: "property", type: "positive",
+    relevantHouses: [4, 11, 2], karakaPlanets: ["Mars", "Moon"],
+    powerCombos: [[4, 11], [4, 2]], threshold: 3,
+  },
+  {
+    id: "education", event: "Education & Knowledge", category: "education", type: "positive",
+    relevantHouses: [4, 5, 9], karakaPlanets: ["Jupiter", "Mercury"],
+    powerCombos: [[4, 5], [5, 9], [4, 9]], threshold: 3,
+  },
+  {
+    id: "fame", event: "Fame & Recognition", category: "fame", type: "positive",
+    relevantHouses: [10, 1, 5, 11], karakaPlanets: ["Sun", "Rahu"],
+    powerCombos: [[10, 1], [10, 5], [1, 11]], threshold: 4,
+  },
+  {
+    id: "new_business", event: "New Business / Venture", category: "new_business", type: "positive",
+    relevantHouses: [7, 10, 3, 11], karakaPlanets: ["Mercury"],
+    powerCombos: [[7, 10], [3, 11], [10, 3]], threshold: 4,
+  },
+  {
+    id: "foreign_travel", event: "Foreign Travel / Opportunity", category: "foreign_travel", type: "positive",
+    relevantHouses: [9, 12, 3], karakaPlanets: ["Rahu"],
+    powerCombos: [[9, 12], [12, 3]], threshold: 3,
+  },
+  {
+    id: "spiritual_growth", event: "Spiritual Awakening / Growth", category: "spiritual_growth", type: "positive",
+    relevantHouses: [9, 12, 5], karakaPlanets: ["Ketu", "Jupiter"],
+    powerCombos: [[9, 12], [5, 9]], threshold: 3,
+  },
+  {
+    id: "health_issues", event: "Health Awareness Period", category: "health_issues", type: "negative",
+    relevantHouses: [6, 8, 1, 12], karakaPlanets: ["Saturn", "Mars"],
+    powerCombos: [[6, 8], [8, 12], [1, 6]], threshold: 4, requiresChallenging: true,
+  },
+  {
+    id: "relationship_conflict", event: "Relationship Challenges", category: "relationship_conflict", type: "negative",
+    relevantHouses: [7, 6, 12, 8], karakaPlanets: ["Mars", "Saturn", "Rahu"],
+    powerCombos: [[7, 6], [7, 12], [7, 8]], threshold: 4, requiresChallenging: true,
+  },
+  {
+    id: "financial_loss", event: "Financial Caution Period", category: "financial_loss", type: "negative",
+    relevantHouses: [12, 6, 8, 2], karakaPlanets: ["Rahu", "Saturn"],
+    powerCombos: [[12, 2], [8, 2], [12, 6]], threshold: 4, requiresChallenging: true,
+  },
+  {
+    id: "career_setback", event: "Career Transition / Setback", category: "career_setback", type: "negative",
+    relevantHouses: [10, 8, 12], karakaPlanets: ["Saturn", "Rahu"],
+    powerCombos: [[10, 8], [10, 12]], threshold: 4, requiresChallenging: true,
+  },
+];
+
+// ─── Upcoming Highlights Builder (Scoring-Based) ───────────────────────────
 
 function buildUpcomingHighlights(
   dashaPredictions: DashaPrediction[],
@@ -770,143 +886,159 @@ function buildUpcomingHighlights(
   const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
   const birthYr = getBirthYear(chart);
   const maxYear = birthYr + MAX_AGE;
-  const maxChildYear = birthYr + MAX_CHILDBEARING_AGE;
+  const yogakaraka = getYogakaraka(lagna);
 
   for (const dp of dashaPredictions) {
     const dpEnd = new Date(dp.endDate);
-    if (dpEnd < fiveYearsAgo) continue; // Skip very old periods
+    if (dpEnd < fiveYearsAgo) continue;
+
+    // MD lordships (effective — handles Rahu/Ketu)
+    const mdLordships = getEffectiveLordships(
+      dp.planet, lordshipsMap[dp.planet] || [], chart, lordshipsMap
+    );
+    const mdPlanet = getPlanet(chart, dp.planet);
+    const mdHouse = mdPlanet?.house || 1;
+    const mdDignity = mdPlanet?.dignity || null;
+    const mdIsStrong = mdDignity === "exalted" || mdDignity === "own" || mdDignity === "mooltrikona";
 
     for (const ad of dp.antardashaHighlights) {
       const adEnd = new Date(ad.endDate);
       if (adEnd < fiveYearsAgo) continue;
 
       const adStartYear = new Date(ad.startDate).getFullYear();
-      // Skip antardasha periods beyond age 100
       if (adStartYear > maxYear) continue;
+      const adAge = adStartYear - birthYr;
 
-      const adLordships = lordshipsMap[ad.planet] || [];
-      const adPlanet = getPlanet(chart, ad.planet);
-      const mdLordships = lordshipsMap[dp.planet] || [];
+      // AD lordships (effective — handles Rahu/Ketu)
+      const adLordships = getEffectiveLordships(
+        ad.planet, lordshipsMap[ad.planet] || [], chart, lordshipsMap
+      );
+      const adPlanetData = getPlanet(chart, ad.planet);
+      const adHouse = adPlanetData?.house || 1;
+      const adDignity = adPlanetData?.dignity || null;
+      const adIsStrong = adDignity === "exalted" || adDignity === "own" || adDignity === "mooltrikona";
 
-      // Check for significant event combinations
-      // Marriage: 7th lord + 2nd lord or Venus dasha/antardasha
-      if ((mdLordships.includes(7) || adLordships.includes(7)) &&
-          (mdLordships.includes(2) || adLordships.includes(2) || ad.planet === "Venus" || dp.planet === "Venus")) {
+      // Combined lordship set for this MD-AD pair
+      const combinedHouses = new Set([...mdLordships, ...adLordships]);
+
+      for (const evt of HIGHLIGHT_EVENTS) {
+        // Age cutoff
+        if (evt.maxAge && adAge > evt.maxAge) continue;
+
+        // For negative events, only trigger during challenging/mixed periods
+        if (evt.requiresChallenging && ad.nature !== "challenging" && ad.nature !== "mixed") continue;
+
+        // ── SCORING ──
+        let score = 0;
+        const reasons: string[] = [];
+
+        // 1. Lordship relevance: +2 for each relevant house lorded by MD or AD
+        const mdRelevantHouses = mdLordships.filter(h => evt.relevantHouses.includes(h));
+        const adRelevantHouses = adLordships.filter(h => evt.relevantHouses.includes(h));
+        for (const h of mdRelevantHouses) {
+          score += 2;
+          reasons.push(`${dp.planet} lords the ${ordinal(h)} house`);
+        }
+        for (const h of adRelevantHouses) {
+          score += 2;
+          reasons.push(`${ad.planet} lords the ${ordinal(h)} house`);
+        }
+
+        // 2. Occupancy: +1 if MD or AD planet sits in a relevant house
+        if (evt.relevantHouses.includes(mdHouse)) {
+          score += 1;
+          reasons.push(`${dp.planet} placed in ${ordinal(mdHouse)} house`);
+        }
+        if (evt.relevantHouses.includes(adHouse)) {
+          score += 1;
+          reasons.push(`${ad.planet} placed in ${ordinal(adHouse)} house`);
+        }
+
+        // 3. Natural karaka bonus: +2 if either planet is a karaka for this event
+        if (evt.karakaPlanets.includes(dp.planet)) {
+          score += 2;
+          reasons.push(`${dp.planet} is natural significator`);
+        }
+        if (evt.karakaPlanets.includes(ad.planet)) {
+          score += 2;
+          reasons.push(`${ad.planet} is natural significator`);
+        }
+
+        // 4. Power combo bonus: +2 if MD+AD lordships together cover a power combo
+        for (const combo of evt.powerCombos) {
+          const coversAll = combo.every(h => combinedHouses.has(h));
+          if (coversAll) {
+            score += 2;
+            reasons.push(`${combo.map(h => ordinal(h)).join(" + ")} lord combination activated`);
+            break; // Only count one power combo
+          }
+        }
+
+        // 5. Dignity bonus: +1 for each strong planet
+        if (mdIsStrong && mdRelevantHouses.length > 0) {
+          score += 1;
+          reasons.push(`${dp.planet} in ${mdDignity}`);
+        }
+        if (adIsStrong && adRelevantHouses.length > 0) {
+          score += 1;
+          reasons.push(`${ad.planet} in ${adDignity}`);
+        }
+
+        // 6. Yogakaraka bonus: +2
+        if (dp.planet === yogakaraka || ad.planet === yogakaraka) {
+          const ykPlanet = dp.planet === yogakaraka ? dp.planet : ad.planet;
+          score += 2;
+          reasons.push(`${ykPlanet} is Yogakaraka`);
+        }
+
+        // 7. Debilitation penalty: -1 for weakened planets
+        if (mdDignity === "debilitated" && mdRelevantHouses.length > 0) score -= 1;
+        if (adDignity === "debilitated" && adRelevantHouses.length > 0) score -= 1;
+
+        // 8. Favorable period bonus: +1 for very_favorable AD nature
+        if (ad.nature === "very_favorable" && evt.type === "positive") score += 1;
+        if (ad.nature === "challenging" && evt.type === "negative") score += 1;
+
+        // ── Check threshold
+        if (score < evt.threshold) continue;
+
+        // ── Determine likelihood from score
+        let likelihood: "very_likely" | "likely" | "possible" = "possible";
+        if (score >= evt.threshold + 4) likelihood = "very_likely";
+        else if (score >= evt.threshold + 2) likelihood = "likely";
+
+        // ── Build rich reasoning (like the manual demo analysis)
+        const mdHouseStr = mdLordships.length > 0
+          ? `${ordinal(mdLordships[0])}${mdLordships.length > 1 ? "+" + ordinal(mdLordships[1]) : ""} lord`
+          : `placed in house ${mdHouse}`;
+        const adHouseStr = adLordships.length > 0
+          ? `${ordinal(adLordships[0])}${adLordships.length > 1 ? "+" + ordinal(adLordships[1]) : ""} lord`
+          : `placed in house ${adHouse}`;
+
+        let reasoning = `${dp.planet} (${mdHouseStr}) with ${ad.planet} (${adHouseStr})`;
+
+        // Add dignity info
+        if (mdIsStrong) reasoning += ` \u2014 ${dp.planet} in ${mdDignity}`;
+        if (adIsStrong) reasoning += ` \u2014 ${ad.planet} in ${adDignity}`;
+
+        // Add the key reason
+        const uniqueReasons = [...new Set(reasons)];
+        if (uniqueReasons.length > 0) {
+          reasoning += `. ${uniqueReasons.slice(0, 3).join("; ")}`;
+        }
+
+        // Add event-specific interpretation
+        reasoning += `. ${getEventInterpretation(evt, score, dp.planet, ad.planet)}`;
+
         highlights.push({
-          event: "Marriage / Committed Partnership",
-          category: "marriage",
-          type: "positive",
+          event: evt.event,
+          category: evt.category,
+          type: evt.type,
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
           startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: ad.nature === "very_favorable" || ad.nature === "favorable" ? "very_likely" : "likely",
-          reasoning: `${dp.planet} (lord of houses ${mdLordships.join(",")}) with ${ad.planet} (lord of houses ${adLordships.join(",")}) activates the 7th house of partnerships. This combination creates a window where committed relationships or marriage are strongly indicated.`,
-        });
-      }
-
-      // Children: 5th lord activation (only before childbearing age)
-      if (adStartYear <= maxChildYear &&
-          (mdLordships.includes(5) || adLordships.includes(5)) &&
-          (ad.planet === "Jupiter" || dp.planet === "Jupiter" || mdLordships.includes(2) || adLordships.includes(2))) {
-        highlights.push({
-          event: "Children / Progeny",
-          category: "children",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: ad.nature === "very_favorable" ? "very_likely" : "likely",
-          reasoning: `The 5th house of children is activated during ${dp.planet}-${ad.planet}. ${ad.planet === "Jupiter" ? "Jupiter as the natural significator of children strengthens this indicator." : `The lordship connections to the 5th house create a supportive window.`}`,
-        });
-      }
-
-      // Career peak: 10th lord + 11th lord or Sun strong
-      if ((mdLordships.includes(10) || adLordships.includes(10)) &&
-          (mdLordships.includes(11) || adLordships.includes(11) || ad.nature === "very_favorable")) {
-        highlights.push({
-          event: "Career Advancement / Peak",
-          category: "career_growth",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: ad.nature === "very_favorable" ? "very_likely" : "likely",
-          reasoning: `The 10th house (career) and 11th house (gains) are both activated during this period. This creates favorable conditions for promotions, recognition, and professional milestones.`,
-        });
-      }
-
-      // Wealth surge: 2nd + 11th lords
-      if ((mdLordships.includes(2) && adLordships.includes(11)) ||
-          (mdLordships.includes(11) && adLordships.includes(2))) {
-        highlights.push({
-          event: "Wealth Accumulation",
-          category: "wealth",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: "likely",
-          reasoning: `The 2nd lord (wealth) and 11th lord (gains) are activated together, creating a strong indicator for financial growth during this window.`,
-        });
-      }
-
-      // Property: 4th lord activation
-      if ((mdLordships.includes(4) || adLordships.includes(4)) &&
-          (ad.planet === "Mars" || dp.planet === "Mars" || adLordships.includes(11))) {
-        highlights.push({
-          event: "Property / Vehicle Acquisition",
-          category: "property",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: "possible",
-          reasoning: `The 4th house of property and fixed assets is activated. ${ad.planet === "Mars" ? "Mars as the natural significator of property strengthens this." : "Combined with gains (11th) connections, this is a window for property matters."}`,
-        });
-      }
-
-      // Health caution: 6th/8th lord in challenging nature
-      if ((mdLordships.includes(6) || mdLordships.includes(8) || adLordships.includes(6) || adLordships.includes(8)) &&
-          (ad.nature === "challenging" || ad.nature === "mixed")) {
-        highlights.push({
-          event: "Health Awareness Period",
-          category: "health_issues",
-          type: "negative",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: "possible",
-          reasoning: `The 6th/8th house lords are active during a ${ad.nature} sub-period. This is simply a call for mindfulness about health \u2014 regular check-ups and self-care during this window can be beneficial. This is not a prediction of illness, but an indicator for preventive awareness.`,
-        });
-      }
-
-      // Foreign travel: 9th/12th + Rahu
-      if ((mdLordships.includes(12) || adLordships.includes(12) || mdLordships.includes(9) || adLordships.includes(9)) &&
-          (ad.planet === "Rahu" || dp.planet === "Rahu")) {
-        highlights.push({
-          event: "Foreign Travel / Opportunity",
-          category: "foreign_travel",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: "likely",
-          reasoning: `Rahu's involvement with the 9th/12th house lords creates strong indicators for foreign connections, travel, or opportunities from abroad during this window.`,
-        });
-      }
-
-      // Spiritual growth: Ketu + 9th/12th
-      if ((ad.planet === "Ketu" || dp.planet === "Ketu") &&
-          (mdLordships.includes(9) || mdLordships.includes(12) || adLordships.includes(9) || adLordships.includes(12))) {
-        highlights.push({
-          event: "Spiritual Awakening / Growth",
-          category: "spiritual_growth",
-          type: "positive",
-          window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
-          startDateRaw: ad.startDate,
-          dashaContext: `${dp.planet}-${ad.planet} period`,
-          likelihood: "possible",
-          reasoning: `Ketu's moksha-giving nature combined with 9th/12th house activation creates a window for deeper spiritual understanding and inner growth.`,
+          likelihood,
+          reasoning,
         });
       }
     }
@@ -923,7 +1055,18 @@ function buildUpcomingHighlights(
     }
   }
 
-  const deduped = Array.from(seen.values());
+  // Also deduplicate by category+dashaContext to avoid repeating same event in same MD-AD
+  const seen2 = new Map<string, LifeHighlight>();
+  for (const [, h] of seen) {
+    const key = `${h.category}-${h.dashaContext}`;
+    const existing = seen2.get(key);
+    const order = { very_likely: 0, likely: 1, possible: 2 };
+    if (!existing || order[h.likelihood] < order[existing.likelihood]) {
+      seen2.set(key, h);
+    }
+  }
+
+  const deduped = Array.from(seen2.values());
 
   // Sort chronologically by startDateRaw, then by likelihood
   deduped.sort((a, b) => {
@@ -934,6 +1077,87 @@ function buildUpcomingHighlights(
   });
 
   return deduped;
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function getEventInterpretation(
+  evt: HighlightEventDef,
+  score: number,
+  mdPlanet: string,
+  adPlanet: string,
+): string {
+  const strong = score >= evt.threshold + 4;
+  const moderate = score >= evt.threshold + 2;
+
+  switch (evt.id) {
+    case "marriage":
+      if (strong) return "This is a STRONG marriage indicator \u2014 multiple house activations create a compelling window for committed partnership or marriage.";
+      if (moderate) return "This combination creates a supportive window for committed relationships or marriage.";
+      return "Partnership themes are activated during this period, with possibilities for deeper commitment.";
+
+    case "romance":
+      if (strong) return "A particularly romantic period with strong 5th house activation \u2014 love, attraction, and emotional bonding are strongly indicated.";
+      return "Romance and emotional connections are highlighted during this window.";
+
+    case "children":
+      if (strong) return "Very strong indicators for children/progeny \u2014 the 5th house activation combined with Jupiter's blessing creates ideal conditions.";
+      if (moderate) return "The 5th house of children is well-activated, creating a supportive window for progeny.";
+      return "The lordship connections to the 5th house create possibilities for children during this period.";
+
+    case "career_growth":
+      if (strong) return "An exceptional period for career \u2014 10th house activation with gains (11th) suggests major professional advancement, promotion, or recognition.";
+      if (moderate) return "Career growth is well-supported with 10th house activation \u2014 good time for initiatives and taking on greater responsibility.";
+      return "Professional themes are activated, with gradual progress likely during this window.";
+
+    case "wealth":
+      if (strong) return "A powerful wealth combination \u2014 2nd (wealth) and 11th (gains) lord activation creates strong indicators for financial growth and prosperity.";
+      if (moderate) return "Financial matters are well-supported during this window, with good potential for income growth.";
+      return "Moderate financial improvements are indicated as wealth houses are activated.";
+
+    case "property":
+      if (strong) return "Strong indicators for property acquisition or vehicle purchase \u2014 4th house activation with supporting factors.";
+      return "Property and fixed asset themes are activated during this window.";
+
+    case "education":
+      if (strong) return "Excellent period for learning, higher education, or academic achievement.";
+      return "Educational pursuits and knowledge acquisition are favored during this period.";
+
+    case "fame":
+      if (strong) return "A powerful period for public recognition, fame, and social status elevation.";
+      return "Opportunities for recognition and visibility are indicated.";
+
+    case "new_business":
+      if (strong) return "Strong indicators for launching new ventures or business expansion.";
+      return "Entrepreneurial themes are activated \u2014 consider new initiatives carefully.";
+
+    case "foreign_travel":
+      if (strong) return "Very strong indicators for foreign travel, overseas opportunities, or international connections.";
+      return "Foreign connections and travel opportunities are indicated during this window.";
+
+    case "spiritual_growth":
+      if (strong) return "A profound period for spiritual development, inner growth, and transcendental experiences.";
+      return "Inner growth and spiritual awareness are highlighted during this period.";
+
+    case "health_issues":
+      return "This is simply a call for mindfulness about health \u2014 regular check-ups and self-care during this window can be beneficial. This is not a prediction of illness, but an indicator for preventive awareness.";
+
+    case "relationship_conflict":
+      return "Relationship dynamics may require extra patience and communication during this period. Awareness itself is a powerful tool for maintaining harmony.";
+
+    case "financial_loss":
+      return "Exercise prudence with financial decisions during this window. Avoid speculative investments and focus on preserving what you have.";
+
+    case "career_setback":
+      return "Career transitions or temporary setbacks are possible. This can also be a period of meaningful professional reinvention if approached with openness.";
+
+    default:
+      return "This period activates relevant themes \u2014 stay mindful and proactive.";
+  }
 }
 
 function splitHighlights(
@@ -959,22 +1183,6 @@ function splitHighlights(
 }
 
 // ─── Main Export ────────────────────────────────────────────────────────────
-
-// Age cutoff helpers
-const MAX_AGE = 100;
-const MAX_CHILDBEARING_AGE = 50;
-
-function getBirthYear(chart: ChartResponse): number {
-  // chart.date is typically "YYYY-MM-DD" or "DD-MM-YYYY" or similar
-  const parts = chart.date.match(/(\d{4})/);
-  if (parts) return parseInt(parts[1], 10);
-  return new Date().getFullYear() - 30; // fallback
-}
-
-function getAgeAtDate(birthYear: number, dateStr: string): number {
-  const year = new Date(dateStr).getFullYear();
-  return year - birthYear;
-}
 
 export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport {
   const lagna = chart.lagna;
