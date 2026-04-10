@@ -24,3 +24,31 @@ export async function GET(
 
   return Response.json(purchase);
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const purchase = await prisma.reportPurchase.findUnique({
+    where: { id },
+  });
+
+  if (!purchase) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (purchase.userId !== session.user.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await prisma.reportPurchase.delete({ where: { id } });
+
+  return Response.json({ success: true });
+}

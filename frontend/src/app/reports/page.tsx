@@ -70,6 +70,23 @@ export default function ReportsPage() {
   const { data: session } = useSession();
   const [myReports, setMyReports] = useState<PurchasedReport[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/reports/purchase/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setMyReports((prev) => prev.filter((r) => r.id !== id));
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -100,34 +117,79 @@ export default function ReportsPage() {
             {myReports.map((r) => {
               const reportDef = REPORT_TYPES.find((t) => t.id === r.reportType);
               const reportHref = reportDef ? `${reportDef.href}?id=${r.id}` : `/reports/ayurvedic?id=${r.id}`;
+              const isConfirming = confirmDeleteId === r.id;
+              const isDeleting = deletingId === r.id;
               return (
-              <Link
+              <div
                 key={r.id}
-                href={reportHref}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors"
+                className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors relative"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      {REPORT_TYPES.find((t) => t.id === r.reportType)?.title ?? r.reportType}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {r.birthName ? `${r.birthName} \u00b7 ` : ""}
-                      {r.birthData.date} \u00b7 {r.birthData.place?.split(",")[0]}
-                    </p>
-                    <p className="text-xs text-slate-600 mt-1">
-                      {new Date(r.createdAt).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </p>
+                {/* Confirm delete overlay */}
+                {isConfirming && (
+                  <div className="absolute inset-0 bg-slate-900/95 rounded-xl flex items-center justify-center z-10 p-4">
+                    <div className="text-center space-y-3">
+                      <p className="text-sm text-slate-300">Delete this report?</p>
+                      <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                      <div className="flex gap-2 justify-center">
+                        <button
+                          onClick={() => handleDelete(r.id)}
+                          disabled={isDeleting}
+                          className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-medium hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                        >
+                          {isDeleting ? "Deleting..." : "Yes, delete"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-3 py-1.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-lg text-xs font-medium hover:bg-slate-700 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5">
-                    Purchased
-                  </span>
-                </div>
-              </Link>
+                )}
+
+                <Link href={reportHref}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">
+                        {REPORT_TYPES.find((t) => t.id === r.reportType)?.title ?? r.reportType}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {r.birthName ? `${r.birthName} \u00b7 ` : ""}
+                        {r.birthData.date} \u00b7 {r.birthData.place?.split(",")[0]}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        {new Date(r.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5">
+                      Purchased
+                    </span>
+                  </div>
+                </Link>
+                {/* Delete button */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmDeleteId(r.id);
+                  }}
+                  className="absolute top-2 right-2 p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  title="Delete report"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                  </svg>
+                </button>
+              </div>
               );
             })}
           </div>
