@@ -64,6 +64,12 @@ LIFE_AREA_RULES = {
         "unfavorable_planets": ["Saturn", "Mars", "Rahu"],
         "houses": [4, 9],  # 4th family, 9th father/religion
         "houses_unfav": [6, 8, 12]
+    },
+    "self_confidence": {
+        "favorable_planets": ["Sun", "Mars", "Jupiter"],
+        "unfavorable_planets": ["Saturn", "Rahu", "Moon"],
+        "houses": [1, 5, 9],  # 1st self, 5th intelligence/confidence, 9th fortune/dharma
+        "houses_unfav": [6, 8, 12]
     }
 }
 
@@ -79,6 +85,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Sun illuminates your professional reputation. Authority figures notice your work; recognition and promotion are likely.",
         "finances":   "Sun supports steady income and government-related financial gains. Father or authority figures may assist.",
         "family":     "Sun energizes family leadership and paternal bonds. Father figures and elders offer support.",
+        "self_confidence": "Sun is the natural significator of self and confidence. This is one of the best periods for personal empowerment, leadership, and asserting your identity.",
     },
     "Moon": {
         "love_life":  "Moon heightens emotional sensitivity and romantic intuition. Deep emotional bonding is possible.",
@@ -86,6 +93,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Moon favours careers involving the public, hospitality, or nurturing roles. Popularity rises.",
         "finances":   "Moon supports gains through public dealings, real estate, or maternal inheritance.",
         "family":     "Moon strengthens bonds with mother and female family members. Home atmosphere becomes nurturing.",
+        "self_confidence": "Moon brings emotional stability and inner peace. Self-awareness deepens and intuition guides confident decision-making.",
     },
     "Mars": {
         "love_life":  "Mars adds passion and drive to romantic pursuits. Physical chemistry is heightened.",
@@ -93,6 +101,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Mars provides competitive energy. Excellent for leadership, sports, engineering, or military roles.",
         "finances":   "Mars supports bold financial moves and real-estate gains. Courage in investments pays off.",
         "family":     "Mars energises brothers and siblings. Protective instincts for family are strong.",
+        "self_confidence": "Mars ignites courage, willpower, and assertiveness. You feel bold, decisive, and ready to take on challenges head-on.",
     },
     "Mercury": {
         "love_life":  "Mercury enhances communication in relationships. Meaningful conversations deepen understanding with partners.",
@@ -100,6 +109,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Mercury accelerates business, trade, writing, and communication. Contracts and negotiations go smoothly.",
         "finances":   "Mercury favours short-term trading, intellectual income, and business deals. Quick financial gains.",
         "family":     "Mercury improves communication within the family. Misunderstandings are resolved through dialogue.",
+        "self_confidence": "Mercury sharpens intellect and communication skills. You express yourself articulately, boosting self-assurance in social situations.",
     },
     "Jupiter": {
         "love_life":  "Jupiter expands love and brings blessings in relationships. Marriage, engagement, or new romance is highly favoured.",
@@ -107,6 +117,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Jupiter brings growth, promotions, and expansion of professional opportunities. Teachers or mentors assist.",
         "finances":   "Jupiter is the strongest planet for wealth. Investments, savings, and unexpected financial gains are strongly indicated.",
         "family":     "Jupiter blesses family harmony, children, and wisdom from elders. Religious or spiritual family events are likely.",
+        "self_confidence": "Jupiter expands wisdom, optimism, and self-belief. You feel guided by a higher purpose and radiate natural authority and grace.",
     },
     "Venus": {
         "love_life":  "Venus is the planet of love — this is one of the best periods for romance, marriage, and deep emotional connection.",
@@ -114,6 +125,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Venus favours creative fields, fashion, arts, luxury, and diplomacy. Charm opens professional doors.",
         "finances":   "Venus brings luxury purchases, artistic income, and material comforts. Financial pleasure is indicated.",
         "family":     "Venus promotes love, peace, and beauty in home life. Relationships with spouse and women in family improve.",
+        "self_confidence": "Venus enhances personal charm, attractiveness, and social confidence. You feel comfortable in your own skin and draw people towards you.",
     },
     "Saturn": {
         "love_life":  "Saturn brings stable, long-term commitment. While slow, relationships formed now are built to last.",
@@ -121,6 +133,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Saturn rewards hard work with lasting career progress. Long-term projects and structured roles thrive.",
         "finances":   "Saturn supports disciplined saving and long-term investments. Frugality now brings future security.",
         "family":     "Saturn strengthens family responsibilities and respect for elders. Commitment to family duties is rewarded.",
+        "self_confidence": "Saturn builds quiet, earned confidence through discipline and perseverance. Self-worth grows from overcoming real challenges.",
     },
     "Rahu": {
         "love_life":  "Rahu creates unconventional romantic opportunities. Foreign or unusual connections may arise.",
@@ -128,6 +141,7 @@ PLANET_FAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Rahu accelerates ambition and foreign career opportunities. Technology and innovation sectors benefit.",
         "finances":   "Rahu can bring sudden, unexpected financial gains through unconventional means.",
         "family":     "Rahu may bring in foreign or unconventional family influences. New family connections are possible.",
+        "self_confidence": "Rahu amplifies ambition and desire for recognition. You feel driven to break boundaries and reinvent yourself boldly.",
     },
 }
 
@@ -139,6 +153,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Mars creates conflicts with colleagues or superiors. Impulsive decisions can derail progress.",
         "finances":   "Mars risks hasty financial decisions, losses from overconfidence, and unexpected expenses.",
         "family":     "Mars stirs conflicts with brothers and male family members. Heated arguments are likely.",
+        "self_confidence": "Mars creates aggression, recklessness, and false bravado. Impulsive actions may lead to embarrassment or conflict.",
     },
     "Saturn": {
         "love_life":  "Saturn creates distance, delays, and coldness in relationships. Loneliness or separation may be felt.",
@@ -146,6 +161,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Saturn brings obstacles, delays, and hard lessons at work. Patience and perseverance are essential.",
         "finances":   "Saturn restricts cash flow, brings unexpected bills, and warns against risky investments.",
         "family":     "Saturn creates burdens, grief, or separation in family matters. Responsibilities feel heavy.",
+        "self_confidence": "Saturn brings self-doubt, fear of failure, and feelings of inadequacy. Patience is key — this period builds resilience through hardship.",
     },
     "Rahu": {
         "love_life":  "Rahu creates confusion, obsession, and deception in relationships. Hidden agendas or illusions may surface.",
@@ -153,6 +169,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Rahu causes sudden disruptions, instability, and deceptive colleagues. Verify everything carefully.",
         "finances":   "Rahu risks financial fraud, unexpected losses, and poor judgement in investments. Be very cautious.",
         "family":     "Rahu can cause hidden conflicts, misunderstandings, and sudden changes in family dynamics.",
+        "self_confidence": "Rahu creates identity confusion, obsessive comparison with others, and inflated ego. Ground yourself and avoid chasing illusions of grandeur.",
     },
     "Sun": {
         "love_life":  "Sun's ego can create power struggles and pride issues in relationships. Avoid being domineering.",
@@ -160,6 +177,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Sun can make authority figures difficult. Conflicts with bosses or government bodies are possible.",
         "finances":   "Sun can bring financial ego-driven decisions. Avoid overspending on status symbols.",
         "family":     "Sun may create conflicts with father or authority figures at home.",
+        "self_confidence": "Sun afflicted creates arrogance, ego clashes, and a need for constant validation. Humility is the antidote.",
     },
     "Moon": {
         "love_life":  "Moon creates emotional volatility and mood swings in relationships. Oversensitivity can cause issues.",
@@ -167,6 +185,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Moon brings instability and inconsistency at work. Avoid making important decisions on impulse.",
         "finances":   "Moon causes impulsive spending and financial instability tied to emotional states.",
         "family":     "Moon creates tension with mother or maternal figures. Emotional misunderstandings at home.",
+        "self_confidence": "Moon creates emotional fragility, self-pity, and indecisiveness. Inner stability wavers and overthinking erodes confidence.",
     },
     "Mercury": {
         "love_life":  "Mercury causes miscommunication and misunderstandings in relationships. Think before speaking.",
@@ -174,6 +193,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Mercury creates communication errors, contract disputes, and travel delays. Double-check everything.",
         "finances":   "Mercury risks poor financial decisions, fraudulent dealings, and contract disputes.",
         "family":     "Mercury causes arguments and miscommunication within family. Listen more, talk less.",
+        "self_confidence": "Mercury afflicted brings nervousness, overthinking, and inability to express yourself clearly. Self-doubt creeps in through mental fog.",
     },
     "Venus": {
         "love_life":  "Venus's affliction can bring jealousy, indulgence, and relationship dissatisfaction.",
@@ -181,6 +201,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Venus can cause laziness, over-reliance on charm, and conflicts in creative fields.",
         "finances":   "Venus risks overspending on luxuries, financial excess, and poor material judgements.",
         "family":     "Venus can create disputes over wealth, possessions, or aesthetic differences in family.",
+        "self_confidence": "Venus afflicted makes you overly dependent on external validation and appearance. Self-worth becomes tied to others' approval.",
     },
     "Jupiter": {
         "love_life":  "Jupiter's affliction brings overconfidence and unrealistic expectations in relationships.",
@@ -188,6 +209,7 @@ PLANET_UNFAVORABLE_MEANINGS: Dict[str, Dict[str, str]] = {
         "career":     "Jupiter's affliction can lead to overexpansion, poor judgement, and failed big plans.",
         "finances":   "Jupiter afflicted risks overconfidence in investments and expansion beyond means.",
         "family":     "Jupiter afflicted may cause disputes with elders, religious differences, or family overreach.",
+        "self_confidence": "Jupiter afflicted creates overconfidence, poor judgement, and a false sense of invincibility. Stay grounded and realistic.",
     },
 }
 

@@ -24,6 +24,7 @@ const LIFE_AREAS = [
   { id: "career", label: "💼 Career", description: "Work, recognition, advancement" },
   { id: "finances", label: "💰 Finances", description: "Money, wealth, prosperity" },
   { id: "family", label: "👨‍👩‍👧‍👦 Family", description: "Family relationships and harmony" },
+  { id: "self_confidence", label: "🦁 Self / Confidence", description: "Self-esteem, courage, personal power" },
 ];
 
 export function TransitCalculator({ chart }: TransitCalculatorProps) {
