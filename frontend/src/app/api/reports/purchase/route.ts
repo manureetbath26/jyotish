@@ -16,8 +16,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Determine amount based on coupon
-  let amount = 20000; // INR 200 in paise
+  // Determine base price by report type (in paise)
+  const REPORT_PRICES: Record<string, number> = {
+    ayurvedic_wellness: 20000,       // INR 200
+    life_events_prediction: 80000,   // INR 800
+  };
+  let amount = REPORT_PRICES[reportType] ?? 20000;
   let isFree = false;
   if (couponCode) {
     const couponEntry = VALID_COUPONS[couponCode.trim().toUpperCase()];

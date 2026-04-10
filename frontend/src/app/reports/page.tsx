@@ -12,7 +12,38 @@ interface PurchasedReport {
   createdAt: string;
 }
 
-const REPORT_TYPES = [
+const REPORT_TYPES: Array<{
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  currency: string;
+  href: string;
+  icon: string;
+  badge?: string;
+  features: string[];
+}> = [
+  {
+    id: "life_events_prediction",
+    title: "Life Events Prediction Report",
+    description:
+      "A comprehensive life prediction report based on your Vimshottari Dasha timeline, house lordships, and planetary strengths. Covers marriage, children, career growth, wealth, health, relationships, and more \u2014 with empathetic, nuanced guidance for each life phase.",
+    price: 800,
+    currency: "INR",
+    href: "/reports/life-events",
+    icon: "\u{1F52E}",
+    badge: "Most Popular",
+    features: [
+      "Complete 12-House Life Area Analysis",
+      "Planetary Strength & Dignity Assessment",
+      "20+ Life Event Category Predictions",
+      "Full Dasha Timeline with Event Mapping",
+      "Current Period Deep Dive & Remedies",
+      "Top 15 Upcoming Life Highlights",
+      "Key Yoga Influences (Raja, Dhana, etc.)",
+      "Empathetic Guidance & Cautions",
+    ],
+  },
   {
     id: "ayurvedic_wellness",
     title: "Ayurvedic Wellness Report",
@@ -66,10 +97,13 @@ export default function ReportsPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-amber-400">My Reports</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {myReports.map((r) => (
+            {myReports.map((r) => {
+              const reportDef = REPORT_TYPES.find((t) => t.id === r.reportType);
+              const reportHref = reportDef ? `${reportDef.href}?id=${r.id}` : `/reports/ayurvedic?id=${r.id}`;
+              return (
               <Link
                 key={r.id}
-                href={`/reports/ayurvedic?id=${r.id}`}
+                href={reportHref}
                 className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors"
               >
                 <div className="flex items-start justify-between">
@@ -94,7 +128,8 @@ export default function ReportsPage() {
                   </span>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -119,6 +154,11 @@ export default function ReportsPage() {
                     <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
                       <span className="text-2xl">{report.icon}</span>
                       {report.title}
+                      {report.badge && (
+                        <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5 font-medium">
+                          {report.badge}
+                        </span>
+                      )}
                     </h3>
                     <p className="text-sm text-slate-400 mt-2 leading-relaxed">{report.description}</p>
                   </div>
@@ -154,7 +194,7 @@ export default function ReportsPage() {
       {/* Coming soon placeholder */}
       <section className="border border-dashed border-slate-800 rounded-2xl p-8 text-center">
         <p className="text-slate-600 text-sm">
-          More reports coming soon \u2014 Career & Finance Report, Marriage Compatibility Report, Annual Prediction Report
+          More reports coming soon \u2014 Career & Finance Report, Marriage Compatibility Report, Annual Transit Report
         </p>
       </section>
     </div>
