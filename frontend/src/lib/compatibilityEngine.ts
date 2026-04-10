@@ -293,17 +293,23 @@ function scoreNadi(nak1: number, nak2: number): KootScore {
 // ---------------------------------------------------------------------------
 // Synastry: planet-to-planet house analysis
 // ---------------------------------------------------------------------------
-function computeSynastry(chart1: ChartResponse, chart2: ChartResponse, name1: string, name2: string): SynastryAspect[] {
+function computeSynastry(chart1: ChartResponse, chart2: ChartResponse, name1: string, name2: string, relationship: string): SynastryAspect[] {
   const aspects: SynastryAspect[] = [];
-  const keyPairs: [string, string, string][] = [
-    ["Sun", "Sun", "ego & identity"],
-    ["Moon", "Moon", "emotional connection"],
-    ["Venus", "Mars", "romantic & physical chemistry"],
-    ["Jupiter", "Moon", "emotional growth & wisdom"],
-    ["Saturn", "Moon", "emotional responsibility & karmic bond"],
-    ["Venus", "Jupiter", "love, generosity & shared values"],
-    ["Sun", "Moon", "masculine-feminine energy balance"],
+  const allPairs: [string, string, string, boolean][] = [
+    ["Sun", "Sun", "ego & identity", false],
+    ["Moon", "Moon", "emotional connection", false],
+    ["Venus", "Mars", "romantic & physical chemistry", true],  // romantic only
+    ["Jupiter", "Moon", "emotional growth & wisdom", false],
+    ["Saturn", "Moon", "emotional responsibility & karmic bond", false],
+    ["Venus", "Jupiter", "love, generosity & shared values", false],
+    ["Sun", "Moon", "masculine-feminine energy balance", false],
   ];
+
+  // Filter out romantic-only pairs for non-romantic relationships
+  const isRomantic = relationship === "romantic";
+  const keyPairs = allPairs
+    .filter(([,,,romanticOnly]) => !romanticOnly || isRomantic)
+    .map(([a, b, c]) => [a, b, c] as [string, string, string]);
 
   for (const [p1Name, p2Name, theme] of keyPairs) {
     const p1 = chart1.planets.find(p => p.name === p1Name);
@@ -361,19 +367,23 @@ export function calculateCompatibility(
   const moonP1 = chart1.planets.find(p => p.name === "Moon");
   const moonP2 = chart2.planets.find(p => p.name === "Moon");
 
-  const koots: KootScore[] = [
+  const isRomantic = relationship === "romantic";
+
+  // Yoni (physical/sexual) and Nadi (progeny/genetic) are only relevant for romantic relationships
+  const allKoots: KootScore[] = [
     scoreVarna(nak1, nak2),
     scoreVashya(rashi1, rashi2),
     scoreTara(nak1, nak2),
-    scoreYoni(nak1, nak2),
+    ...(isRomantic ? [scoreYoni(nak1, nak2)] : []),
     scoreGrahaMaitri(rashi1, rashi2),
     scoreGana(nak1, nak2),
     scoreBhakoot(rashi1, rashi2),
-    scoreNadi(nak1, nak2),
+    ...(isRomantic ? [scoreNadi(nak1, nak2)] : []),
   ];
 
+  const koots = allKoots;
   const totalScore = koots.reduce((s, k) => s + k.score, 0);
-  const maxScore = 36;
+  const maxScore = isRomantic ? 36 : 24; // 36 - Yoni(4) - Nadi(8) = 24
   const percentage = Math.round((totalScore / maxScore) * 100);
 
   let verdict = "";
@@ -384,7 +394,7 @@ export function calculateCompatibility(
   else if (totalScore >= 12) { verdict = "Below Average — Requires Effort"; verdictColor = "text-orange-400"; }
   else { verdict = "Challenging — Significant Differences"; verdictColor = "text-red-400"; }
 
-  const synastry = computeSynastry(chart1, chart2, name1, name2);
+  const synastry = computeSynastry(chart1, chart2, name1, name2, relationship);
 
   const harmonious = synastry.filter(a => a.nature === "harmonious").length;
   const challenging = synastry.filter(a => a.nature === "challenging").length;
@@ -398,7 +408,7 @@ export function calculateCompatibility(
     summary += `This match has significant areas of difference that require conscious effort and mutual understanding. `;
   }
 
-  if (relationship === "romantic") {
+  if (isRomantic) {
     const yoniScore = koots.find(k => k.name === "Yoni")?.score ?? 0;
     const nadiScore = koots.find(k => k.name === "Nadi")?.score ?? 0;
     if (yoniScore >= 3 && nadiScore >= 8) summary += "Physical and health compatibility are strong — excellent for long-term partnership. ";
