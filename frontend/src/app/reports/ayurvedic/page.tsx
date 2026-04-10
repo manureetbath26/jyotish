@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -28,6 +28,14 @@ async function searchPlaces(query: string): Promise<string[]> {
 type Step = "birth" | "preview" | "payment" | "report";
 
 export default function AyurvedicReportPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-500"><div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>}>
+      <AyurvedicReportContent />
+    </Suspense>
+  );
+}
+
+function AyurvedicReportContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const reportId = searchParams.get("id");
