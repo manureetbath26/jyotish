@@ -13,6 +13,7 @@ export interface LifeEventsReport {
   eventCategories: EventCategory[];
   dashaPredictions: DashaPrediction[];
   currentPeriodAnalysis: CurrentPeriodDetail;
+  pastHighlights: LifeHighlight[];
   upcomingHighlights: LifeHighlight[];
   yogaInfluences: YogaInfluence[];
 }
@@ -112,6 +113,7 @@ export interface LifeHighlight {
   category: string;
   type: "positive" | "negative" | "neutral";
   window: string;
+  startDateRaw: string;      // ISO date for sorting (YYYY-MM-DD)
   dashaContext: string;
   likelihood: "very_likely" | "likely" | "possible";
   reasoning: string;
@@ -795,6 +797,7 @@ function buildUpcomingHighlights(
           category: "marriage",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: ad.nature === "very_favorable" || ad.nature === "favorable" ? "very_likely" : "likely",
           reasoning: `${dp.planet} (lord of houses ${mdLordships.join(",")}) with ${ad.planet} (lord of houses ${adLordships.join(",")}) activates the 7th house of partnerships. This combination creates a window where committed relationships or marriage are strongly indicated.`,
@@ -810,6 +813,7 @@ function buildUpcomingHighlights(
           category: "children",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: ad.nature === "very_favorable" ? "very_likely" : "likely",
           reasoning: `The 5th house of children is activated during ${dp.planet}-${ad.planet}. ${ad.planet === "Jupiter" ? "Jupiter as the natural significator of children strengthens this indicator." : `The lordship connections to the 5th house create a supportive window.`}`,
@@ -824,6 +828,7 @@ function buildUpcomingHighlights(
           category: "career_growth",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: ad.nature === "very_favorable" ? "very_likely" : "likely",
           reasoning: `The 10th house (career) and 11th house (gains) are both activated during this period. This creates favorable conditions for promotions, recognition, and professional milestones.`,
@@ -838,6 +843,7 @@ function buildUpcomingHighlights(
           category: "wealth",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: "likely",
           reasoning: `The 2nd lord (wealth) and 11th lord (gains) are activated together, creating a strong indicator for financial growth during this window.`,
@@ -852,6 +858,7 @@ function buildUpcomingHighlights(
           category: "property",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: "possible",
           reasoning: `The 4th house of property and fixed assets is activated. ${ad.planet === "Mars" ? "Mars as the natural significator of property strengthens this." : "Combined with gains (11th) connections, this is a window for property matters."}`,
@@ -866,6 +873,7 @@ function buildUpcomingHighlights(
           category: "health_issues",
           type: "negative",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: "possible",
           reasoning: `The 6th/8th house lords are active during a ${ad.nature} sub-period. This is simply a call for mindfulness about health \u2014 regular check-ups and self-care during this window can be beneficial. This is not a prediction of illness, but an indicator for preventive awareness.`,
@@ -880,6 +888,7 @@ function buildUpcomingHighlights(
           category: "foreign_travel",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: "likely",
           reasoning: `Rahu's involvement with the 9th/12th house lords creates strong indicators for foreign connections, travel, or opportunities from abroad during this window.`,
@@ -894,6 +903,7 @@ function buildUpcomingHighlights(
           category: "spiritual_growth",
           type: "positive",
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
+          startDateRaw: ad.startDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood: "possible",
           reasoning: `Ketu's moksha-giving nature combined with 9th/12th house activation creates a window for deeper spiritual understanding and inner growth.`,
@@ -915,17 +925,37 @@ function buildUpcomingHighlights(
 
   const deduped = Array.from(seen.values());
 
-  // Sort by date (future first), then likelihood
+  // Sort chronologically by startDateRaw, then by likelihood
   deduped.sort((a, b) => {
-    const aDate = a.window.split(" \u2013 ")[0];
-    const bDate = b.window.split(" \u2013 ")[0];
-    if (aDate !== bDate) return aDate.localeCompare(bDate);
+    const cmp = a.startDateRaw.localeCompare(b.startDateRaw);
+    if (cmp !== 0) return cmp;
     const order = { very_likely: 0, likely: 1, possible: 2 };
     return order[a.likelihood] - order[b.likelihood];
   });
 
-  // Return top 15
-  return deduped.slice(0, 15);
+  return deduped;
+}
+
+function splitHighlights(
+  allHighlights: LifeHighlight[]
+): { past: LifeHighlight[]; upcoming: LifeHighlight[] } {
+  const now = new Date().toISOString().slice(0, 10);
+  const past: LifeHighlight[] = [];
+  const upcoming: LifeHighlight[] = [];
+
+  for (const h of allHighlights) {
+    // If the period ended before now, it's past
+    // Use startDateRaw as the reference — if it's before now, it's past
+    if (h.startDateRaw < now) {
+      past.push(h);
+    } else {
+      upcoming.push(h);
+    }
+  }
+
+  // Past: most recent first (reverse chrono), limit to 10
+  past.reverse();
+  return { past: past.slice(0, 10), upcoming: upcoming.slice(0, 15) };
 }
 
 // ─── Main Export ────────────────────────────────────────────────────────────
@@ -1172,8 +1202,9 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     remedialSuggestions: [...new Set(remedialSuggestions)].slice(0, 4),
   };
 
-  // ── Upcoming Highlights
-  const upcomingHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna);
+  // ── Life Highlights (past + upcoming, sorted chronologically)
+  const allHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna);
+  const { past: pastHighlights, upcoming: upcomingHighlights } = splitHighlights(allHighlights);
 
   // ── Yoga Influences
   const yogaInfluences = detectYogas(chart, lordshipsMap);
@@ -1185,6 +1216,7 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     eventCategories,
     dashaPredictions,
     currentPeriodAnalysis,
+    pastHighlights,
     upcomingHighlights,
     yogaInfluences,
   };

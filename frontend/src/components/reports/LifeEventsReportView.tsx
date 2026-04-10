@@ -207,8 +207,28 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
     y += 2;
   }
 
+  // === PAST HIGHLIGHTS ===
+  if (report.pastHighlights && report.pastHighlights.length > 0) {
+    sectionTitle("Past Life Events - Looking Back");
+    for (const h of report.pastHighlights) {
+      checkPage(14);
+      const evColor = h.type === "positive" ? colors.green : h.type === "negative" ? colors.red : colors.amber;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...evColor);
+      doc.text(h.event, margin, y);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...colors.gray);
+      doc.text(`${h.window} | ${h.dashaContext} | [Past]`, margin, y + 4);
+      y += 8.5;
+      bodyText(h.reasoning);
+      y += 2;
+    }
+  }
+
   // === UPCOMING HIGHLIGHTS ===
-  sectionTitle("Key Life Event Predictions");
+  sectionTitle("Upcoming Life Event Predictions");
   for (const h of report.upcomingHighlights) {
     checkPage(14);
     const evColor = h.type === "positive" ? colors.green : h.type === "negative" ? colors.red : colors.amber;
@@ -426,8 +446,44 @@ export function LifeEventsReportView({ report, chart, name }: Props) {
         </div>
       </Section>
 
-      {/* 3. Upcoming Life Highlights */}
-      <Section title="Key Life Event Predictions" icon={"\u{2B50}"}>
+      {/* 3a. Past Life Events */}
+      {report.pastHighlights && report.pastHighlights.length > 0 && (
+        <Section title="Past Life Events \u2014 Looking Back" icon={"\u{1F550}"}>
+          <p className="text-xs text-slate-500 mb-3">
+            These are significant events your chart indicated for past periods. Reflect on how these
+            planetary influences may have already manifested in your life \u2014 this can help you understand
+            how dasha patterns work for you personally.
+          </p>
+          <div className="space-y-3">
+            {report.pastHighlights.map((h: LifeHighlight, i: number) => (
+              <div
+                key={i}
+                className={`rounded-lg p-4 border opacity-80 ${
+                  h.type === "positive"
+                    ? "bg-green-500/5 border-green-500/10"
+                    : h.type === "negative"
+                    ? "bg-red-500/5 border-red-500/10"
+                    : "bg-amber-500/5 border-amber-500/10"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-200">{h.event}</span>
+                  <span className="text-xs text-slate-600 bg-slate-800/50 px-2 py-0.5 rounded-full">Past</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
+                  <span>{h.window}</span>
+                  <span className="text-slate-700">|</span>
+                  <span>{h.dashaContext}</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">{h.reasoning}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* 3b. Upcoming Life Highlights */}
+      <Section title="Upcoming Life Event Predictions" icon={"\u{2B50}"}>
         <p className="text-xs text-slate-500 mb-3">
           The most significant events indicated by your chart, sorted by timeline. Remember, these are
           astrological indicators \u2014 your choices and actions always play the central role.
