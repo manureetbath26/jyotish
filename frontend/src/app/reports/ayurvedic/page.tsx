@@ -64,6 +64,11 @@ function AyurvedicReportContent() {
   const [payLoading, setPayLoading] = useState(false);
   const [payMsg, setPayMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Coupon
+  const [coupon, setCoupon] = useState("");
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [couponMsg, setCouponMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   // Load existing report if ?id= provided
   useEffect(() => {
     if (!reportId) return;
@@ -123,6 +128,59 @@ function AyurvedicReportContent() {
       setError(err instanceof Error ? err.message : "Chart calculation failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!coupon.trim()) return;
+    setCouponMsg(null);
+    try {
+      const res = await fetch("/api/reports/coupon/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coupon: coupon.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setCouponApplied(true);
+        setCouponMsg({ type: "success", text: `Coupon applied! ${data.discount === 100 ? "Report is free!" : `${data.discount}% off`}` });
+      } else {
+        setCouponMsg({ type: "error", text: data.error || "Invalid coupon code" });
+      }
+    } catch {
+      setCouponMsg({ type: "error", text: "Failed to validate coupon" });
+    }
+  };
+
+  const handleFreePurchase = async () => {
+    if (!couponApplied) return;
+    const purchaseEmail = email || session?.user?.email || "free@coupon.user";
+    setPayLoading(true);
+    setPayMsg(null);
+    try {
+      const res = await fetch("/api/reports/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: purchaseEmail,
+          couponCode: coupon.trim(),
+          reportType: "ayurvedic_wellness",
+          birthName: name || null,
+          birthData: { date, time, place },
+          chartData: chart,
+          reportData: report,
+        }),
+      });
+      if (res.ok) {
+        setStep("report");
+      } else {
+        const data = await res.json();
+        setPayMsg({ type: "error", text: data.error || "Purchase failed" });
+      }
+    } catch {
+      setPayMsg({ type: "error", text: "Something went wrong." });
+    } finally {
+      setPayLoading(false);
     }
   };
 
@@ -392,6 +450,34 @@ function AyurvedicReportContent() {
             </div>
           </div>
 
+          {/* Coupon */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Have a coupon code?</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={coupon}
+                onChange={(e) => { setCoupon(e.target.value); setCouponApplied(false); setCouponMsg(null); }}
+                placeholder="Enter coupon code"
+                disabled={couponApplied}
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={handleApplyCoupon}
+                disabled={couponApplied || !coupon.trim()}
+                className="bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 text-sm px-4 py-2 rounded-lg transition-colors"
+              >
+                {couponApplied ? "\u2713 Applied" : "Apply"}
+              </button>
+            </div>
+            {couponMsg && (
+              <p className={`text-xs ${couponMsg.type === "success" ? "text-green-400" : "text-red-400"}`}>
+                {couponMsg.text}
+              </p>
+            )}
+          </div>
+
           <div className="flex gap-3">
             <button
               onClick={() => setStep("birth")}
@@ -399,12 +485,22 @@ function AyurvedicReportContent() {
             >
               {"\u2190"} Edit Details
             </button>
-            <button
-              onClick={() => setStep("payment")}
-              className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
-            >
-              Purchase Report {"\u2014"} {"\u20b9"}{REPORT_PRICE}
-            </button>
+            {couponApplied ? (
+              <button
+                onClick={handleFreePurchase}
+                disabled={payLoading}
+                className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+              >
+                {payLoading ? "Processing..." : "Get Free Report \u2192"}
+              </button>
+            ) : (
+              <button
+                onClick={() => setStep("payment")}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
+              >
+                Purchase Report {"\u2014"} {"\u20b9"}{REPORT_PRICE}
+              </button>
+            )}
           </div>
         </div>
       )}
