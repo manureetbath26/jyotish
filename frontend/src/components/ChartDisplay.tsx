@@ -11,6 +11,7 @@ import { YogaTab } from "./YogaTab";
 import { TransitCalculator } from "./TransitCalculator";
 import { ChartInterpretation } from "./ChartInterpretation";
 import { PanchangTab } from "./PanchangTab";
+import { DashaInterpretation } from "./DashaInterpretation";
 import { PremiumLock } from "./PremiumLock";
 
 interface Props {
@@ -170,6 +171,8 @@ export function ChartDisplay({ chart, onSave }: Props) {
 
         {tab === "dasha" && (
           <PremiumLock>
+            <DashaInterpretation chart={chart} />
+            <div className="mt-6" />
             <DashaDisplay
               currentDasha={chart.current_dasha}
               currentAntardasha={chart.current_antardasha}
