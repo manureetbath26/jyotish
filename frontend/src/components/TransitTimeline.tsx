@@ -7,7 +7,7 @@ interface TransitDetail {
   influence: "favorable" | "unfavorable";
   transit_rashi: string;
   transit_degree: number;
-  natal_house: number;
+  transit_house: number;
   reason: string;
 }
 
@@ -216,7 +216,7 @@ export function TransitTimeline({ lifeArea, periods, summary }: TransitTimelineP
                                   </span>
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                  {td.reason} — House {td.natal_house}
+                                  {td.reason} — House {td.transit_house}
                                 </p>
                               </div>
                             </div>

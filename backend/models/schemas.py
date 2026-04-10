@@ -129,7 +129,7 @@ class TransitDetail(BaseModel):
     influence: str  # "favorable" | "unfavorable"
     transit_rashi: str
     transit_degree: float
-    natal_house: int
+    transit_house: int
     reason: str  # e.g. "conjunct natal Venus" or "transiting house 7"
 
 

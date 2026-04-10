@@ -123,7 +123,7 @@ export interface TransitDetail {
   influence: "favorable" | "unfavorable";
   transit_rashi: string;
   transit_degree: number;
-  natal_house: number;
+  transit_house: number;
   reason: string;
 }
 
