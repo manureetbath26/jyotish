@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* ===================================================================
+   THEME SYSTEM
+   Dark = default (current look).  Light = saffron cream.
+   We override Tailwind v4's internal color variables so that every
+   existing bg-slate-*, text-slate-*, border-slate-*, text-amber-*
+   etc. automatically picks up the right palette — zero component changes.
+   =================================================================== */
+
 :root {
   --background: #020617;
   --foreground: #f1f5f9;
@@ -18,11 +26,76 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+/* ---------- scrollbar (dark) ---------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0f172a; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* =======================================================
+   LIGHT THEME  —  Saffron Cream
+   Remap the Tailwind palette so dark-first classes
+   render warm cream / saffron tones instead.
+   ======================================================= */
+html[data-theme="light"] {
+  --background: #FFF7EE;
+  --foreground: #2D1B0E;
+
+  /* --- Slate scale (inverted: 950 = lightest, 50 = darkest) --- */
+  --color-slate-950: #FFF7EE;  /* page bg              */
+  --color-slate-900: #FFF3E6;  /* card bg              */
+  --color-slate-800: #F0DCC5;  /* borders, elevated    */
+  --color-slate-700: #DBBF9C;  /* input borders        */
+  --color-slate-600: #B89468;  /* muted UI             */
+  --color-slate-500: #96744A;  /* secondary text       */
+  --color-slate-400: #7A5A32;  /* body text            */
+  --color-slate-300: #5C4020;  /* emphasized text      */
+  --color-slate-200: #3D2A14;  /* strong text          */
+  --color-slate-100: #2D1B0E;  /* headings / primary   */
+  --color-slate-50:  #1A0F06;  /* darkest accent       */
+
+  /* --- Amber / accent (deeper saffron) --- */
+  --color-amber-300: #E8A435;
+  --color-amber-400: #C47818;
+  --color-amber-500: #A86010;
+  --color-amber-600: #8D4E08;
+
+  /* --- Green (favorable) — warmer tint --- */
+  --color-green-200: #0B5B1F;
+  --color-green-300: #1A7A33;
+  --color-green-400: #28863D;
+  --color-green-500: #2D7A38;
+  --color-green-600: #1F6128;
+  --color-green-700: #185220;
+  --color-green-800: #CCEBD6;
+  --color-green-900: #E8F5EC;
+  --color-green-950: #F0FAF3;
+
+  /* --- Red (challenging) — warmer tint --- */
+  --color-red-200: #7F1A1A;
+  --color-red-300: #A03030;
+  --color-red-400: #C04040;
+  --color-red-500: #B83838;
+  --color-red-700: #E8B4B4;
+  --color-red-800: #F0D0D0;
+  --color-red-900: #FBE8E8;
+  --color-red-950: #FDF2F2;
+
+  /* --- White used in overlays / badges  --- */
+  --color-white: #FFFFFF;
+  --color-black: #1A0F06;
+}
+
+/* Light scrollbar */
+html[data-theme="light"] ::-webkit-scrollbar-track { background: #FFF3E6; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #DBBF9C; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #B89468; }
+
+/* Light mode: soften backdrop-blur navbar */
+html[data-theme="light"] nav.backdrop-blur {
+  background: rgba(255, 243, 230, 0.85) !important;
+  border-color: var(--color-slate-800) !important;
+}
+
+/* Light mode: QR code container stays white */
+html[data-theme="light"] .bg-white { background-color: #FFFFFF !important; }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { Navbar } from "@/components/Navbar";
 import { PremiumProvider } from "@/components/PremiumLock";
 
@@ -66,22 +67,24 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0f172a" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="min-h-screen bg-slate-950 text-slate-100">
-        <SessionProvider>
-          <PremiumProvider>
-            <Navbar />
-            <main className="max-w-7xl mx-auto px-4 py-8">
-              {children}
-            </main>
-          </PremiumProvider>
-        </SessionProvider>
+      <body className="min-h-screen bg-slate-950 text-slate-100 transition-colors duration-300">
+        <ThemeProvider>
+          <SessionProvider>
+            <PremiumProvider>
+              <Navbar />
+              <main className="max-w-7xl mx-auto px-4 py-8">
+                {children}
+              </main>
+            </PremiumProvider>
+          </SessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

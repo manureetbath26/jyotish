@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Navbar() {
   const { data: session } = useSession();
@@ -36,6 +37,8 @@ export function Navbar() {
           </Link>
 
           <div className="flex items-center gap-3 text-sm">
+            <ThemeToggle />
+
             <Link href="/" className="text-slate-300 hover:text-white transition-colors">
               New Chart
             </Link>
