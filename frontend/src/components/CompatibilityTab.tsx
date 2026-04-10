@@ -5,8 +5,8 @@ import { ChartResponse, BirthDataInput, calculateChart } from "@/lib/api";
 import { calculateCompatibility, type CompatibilityResult } from "@/lib/compatibilityEngine";
 
 interface Props {
-  /** The primary chart (the user's own chart currently displayed) */
-  chart: ChartResponse;
+  /** The primary chart (the user's own chart currently displayed). Optional for standalone page. */
+  chart?: ChartResponse;
 }
 
 interface SavedChart {
@@ -51,9 +51,21 @@ function ScoreBar({ score, max, label }: { score: number; max: number; label: st
   );
 }
 
-export function CompatibilityTab({ chart }: Props) {
+export function CompatibilityTab({ chart: chartProp }: Props) {
   const [savedCharts, setSavedCharts] = useState<SavedChart[]>([]);
   const [loadingCharts, setLoadingCharts] = useState(false);
+
+  // "Your chart" selection — if chartProp not provided, user selects or enters own chart
+  const [ownMode, setOwnMode] = useState<InputMode>(chartProp ? "saved" : "saved");
+  const [ownSavedChartId, setOwnSavedChartId] = useState("");
+  const [ownName, setOwnName] = useState("");
+  const [ownDate, setOwnDate] = useState("");
+  const [ownTime, setOwnTime] = useState("");
+  const [ownPlace, setOwnPlace] = useState("");
+  const [ownChart, setOwnChart] = useState<ChartResponse | null>(chartProp ?? null);
+
+  // Resolved primary chart (from prop or user selection)
+  const chart = chartProp ?? ownChart;
 
   // Person entries (can add more than 1)
   const [entries, setEntries] = useState<{
@@ -74,9 +86,19 @@ export function CompatibilityTab({ chart }: Props) {
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Place suggestions per entry
+  // Place suggestions per entry (entryId = -1 means own chart)
   const [activeSuggestions, setActiveSuggestions] = useState<{ entryId: number; suggestions: string[] } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleOwnPlaceInput = (value: string) => {
+    setOwnPlace(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchPlaces(value);
+      if (results.length > 0) setActiveSuggestions({ entryId: -1, suggestions: results });
+      else setActiveSuggestions(null);
+    }, 350);
+  };
 
   // Fetch saved charts
   useEffect(() => {
@@ -120,6 +142,25 @@ export function CompatibilityTab({ chart }: Props) {
     setCalculating(true);
 
     try {
+      // Resolve own chart if not provided via prop
+      let primaryChart = chart;
+      let primaryName = "You";
+      if (!chartProp) {
+        if (ownMode === "saved") {
+          const saved = savedCharts.find(c => c.id === ownSavedChartId);
+          if (!saved) throw new Error("Please select your own chart first.");
+          primaryChart = saved.chartData as ChartResponse;
+          primaryName = saved.name || "You";
+          setOwnChart(primaryChart);
+        } else {
+          if (!ownDate || !ownTime || !ownPlace) throw new Error("Please fill in your own birth details.");
+          primaryChart = await calculateChart({ date: ownDate, time: ownTime, place: ownPlace });
+          primaryName = ownName || "You";
+          setOwnChart(primaryChart);
+        }
+      }
+      if (!primaryChart) throw new Error("No primary chart available.");
+
       const resolvedEntries: { name: string; chart: ChartResponse; relationship: string }[] = [];
 
       for (const entry of entries) {
@@ -149,10 +190,9 @@ export function CompatibilityTab({ chart }: Props) {
       }
 
       // Compare each person against the primary chart
-      const ownName = `${chart.place.split(",")[0]} (${chart.date})`;
       const allResults: CompatibilityResult[] = [];
       for (const re of resolvedEntries) {
-        const result = calculateCompatibility(chart, re.chart, "You", re.name, re.relationship);
+        const result = calculateCompatibility(primaryChart, re.chart, primaryName, re.name, re.relationship);
         allResults.push(result);
       }
 
@@ -170,10 +210,126 @@ export function CompatibilityTab({ chart }: Props) {
       <div>
         <h3 className="text-lg font-semibold text-amber-400">Compatibility Analysis</h3>
         <p className="text-xs text-slate-500 mt-1">
-          Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using the
-          traditional <strong className="text-slate-400">Ashtakoot Guna Milan</strong> system (36 points) and planetary synastry.
+          {chart
+            ? <>Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using the traditional <strong className="text-slate-400">Ashtakoot Guna Milan</strong> system (36 points) and planetary synastry.</>
+            : <>Select or enter your chart, then add people to compare using the traditional <strong className="text-slate-400">Ashtakoot Guna Milan</strong> system (36 points) and planetary synastry.</>
+          }
         </p>
       </div>
+
+      {/* Your Chart section (only shown when no chart prop) */}
+      {!chartProp && (
+        <div className="border border-amber-500/30 rounded-xl p-4 space-y-3 bg-amber-500/5">
+          <p className="text-sm font-semibold text-amber-400">Your Chart</p>
+
+          {/* Input mode toggle */}
+          <div className="flex rounded-lg overflow-hidden border border-slate-700 w-fit">
+            {(["saved", "manual"] as InputMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setOwnMode(m)}
+                className={`px-3 py-1 text-xs transition-colors ${
+                  ownMode === m
+                    ? "bg-amber-500 text-black font-medium"
+                    : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {m === "saved" ? "From My Charts" : "Enter Details"}
+              </button>
+            ))}
+          </div>
+
+          {ownMode === "saved" ? (
+            <div>
+              <select
+                value={ownSavedChartId}
+                onChange={e => {
+                  setOwnSavedChartId(e.target.value);
+                  const sc = savedCharts.find(c => c.id === e.target.value);
+                  if (sc) { setOwnChart(sc.chartData as ChartResponse); setOwnName(sc.name); }
+                }}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="">— Select your chart —</option>
+                {savedCharts.map(sc => (
+                  <option key={sc.id} value={sc.id}>
+                    {sc.name} ({(sc.chartData as ChartResponse).lagna} Lagna)
+                  </option>
+                ))}
+              </select>
+              {loadingCharts && <p className="text-xs text-slate-500 mt-1">Loading saved charts...</p>}
+              {!loadingCharts && savedCharts.length === 0 && (
+                <p className="text-xs text-slate-500 mt-1">No saved charts. Switch to &quot;Enter Details&quot; to enter your birth info.</p>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-500 block mb-1">Your Name</label>
+                <input
+                  type="text"
+                  value={ownName}
+                  onChange={e => setOwnName(e.target.value)}
+                  placeholder="e.g. Rahul"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 block mb-1">Date of Birth</label>
+                <input
+                  type="date"
+                  value={ownDate}
+                  onChange={e => setOwnDate(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 block mb-1">Time of Birth</label>
+                <input
+                  type="time"
+                  value={ownTime}
+                  onChange={e => setOwnTime(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+              <div className="relative">
+                <label className="text-xs text-slate-500 block mb-1">Place of Birth</label>
+                <input
+                  type="text"
+                  value={ownPlace}
+                  onChange={e => handleOwnPlaceInput(e.target.value)}
+                  onFocus={() => { if (activeSuggestions?.entryId !== -1) setActiveSuggestions(null); }}
+                  placeholder="e.g. Mumbai, India"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+                {activeSuggestions?.entryId === -1 && activeSuggestions.suggestions.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {activeSuggestions.suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setOwnPlace(s);
+                          setActiveSuggestions(null);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Show resolved own chart info */}
+          {ownChart && (
+            <div className="text-xs text-slate-400 bg-slate-800/50 rounded-lg px-3 py-2">
+              ✓ {ownChart.lagna} Lagna · {ownChart.place.split(",")[0]} · {ownChart.date}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Entry forms */}
       <div className="space-y-4">

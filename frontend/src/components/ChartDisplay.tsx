@@ -14,14 +14,13 @@ import { ChartInterpretation } from "./ChartInterpretation";
 import { PanchangTab } from "./PanchangTab";
 import { DashaInterpretation } from "./DashaInterpretation";
 import { PremiumLock } from "./PremiumLock";
-import { CompatibilityTab } from "./CompatibilityTab";
 
 interface Props {
   chart: ChartResponse;
   onSave?: () => void;
 }
 
-type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "karakas" | "transits" | "compatibility";
+type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "karakas" | "transits";
 type ChartStyle = "north" | "south";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -34,7 +33,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "yogas",   label: "Yogas" },
   { id: "karakas", label: "Karakas" },
   { id: "transits",  label: "Transits 🌙" },
-  { id: "compatibility", label: "Compatibility 💕" },
 ];
 
 export function ChartDisplay({ chart, onSave }: Props) {
@@ -204,12 +202,6 @@ export function ChartDisplay({ chart, onSave }: Props) {
 
         {tab === "transits" && (
           <TransitCalculator chart={chart} />
-        )}
-
-        {tab === "compatibility" && (
-          <PremiumLock>
-            <CompatibilityTab chart={chart} />
-          </PremiumLock>
         )}
       </div>
     </div>
