@@ -9,6 +9,7 @@ import { DashaDisplay } from "./DashaDisplay";
 import { NavamsaTab } from "./NavamsaTab";
 import { YogaTab } from "./YogaTab";
 import { TransitCalculator } from "./TransitCalculator";
+import { KarakaTab } from "./KarakaTab";
 import { ChartInterpretation } from "./ChartInterpretation";
 import { PanchangTab } from "./PanchangTab";
 import { DashaInterpretation } from "./DashaInterpretation";
@@ -19,7 +20,7 @@ interface Props {
   onSave?: () => void;
 }
 
-type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "transits";
+type TabId = "panchang" | "chart" | "planets" | "houses" | "dasha" | "navamsa" | "yogas" | "karakas" | "transits";
 type ChartStyle = "north" | "south";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -30,6 +31,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "dasha",   label: "Dasha" },
   { id: "navamsa", label: "Navamsa (D-9)" },
   { id: "yogas",   label: "Yogas" },
+  { id: "karakas", label: "Karakas" },
   { id: "transits",  label: "Transits 🌙" },
 ];
 
@@ -192,6 +194,10 @@ export function ChartDisplay({ chart, onSave }: Props) {
 
         {tab === "yogas" && (
           <YogaTab yogas={chart.yogas ?? []} />
+        )}
+
+        {tab === "karakas" && (
+          <KarakaTab planets={chart.planets} lagna={chart.lagna} />
         )}
 
         {tab === "transits" && (
