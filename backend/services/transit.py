@@ -314,20 +314,50 @@ DASHA_EFFECTIVENESS = {
     "Ketu": []   # Generally unfavorable
 }
 
+# ---------------------------------------------------------------------------
+# Planet weight system (slower/more impactful = higher weight)
+# ---------------------------------------------------------------------------
+PLANET_WEIGHTS: Dict[str, float] = {
+    "Saturn": 5,
+    "Jupiter": 4,
+    "Rahu": 4,
+    "Mars": 3,
+    "Sun": 2,
+    "Venus": 2,
+    "Mercury": 2,
+    "Moon": 1,
+}
 
-def compute_rating(period_type: str, strength: str) -> Tuple[int, str]:
+# Aspect type multipliers (how strongly an aspect triggers effects)
+ASPECT_MULTIPLIERS: Dict[str, float] = {
+    "conjunction": 1.0,
+    "opposition": 0.8,
+    "trine": 0.6,
+    "square": 0.5,
+    "house_transit": 0.3,
+}
+
+# Dasha match multiplier applied to total period score
+DASHA_BOOST_MULTIPLIER: float = 1.3
+
+
+def compute_rating(period_type: str, avg_score: float) -> Tuple[int, str]:
     """
-    Map period type + strength to a 1-5 rating.
+    Map period type + average weighted score to a 1-5 rating.
+
+    Args:
+        period_type: "favorable", "unfavorable", or "neutral"
+        avg_score: average daily weighted score across the period
 
     Returns:
         (rating, label) e.g. (5, "Very Good")
     """
     if period_type == "favorable":
-        if strength == "strong":
+        if avg_score >= 8:
             return (5, "Very Good")
         return (4, "Good")
     if period_type == "unfavorable":
-        if strength == "strong":
+        if avg_score >= 8:
             return (1, "Very Challenging")
         return (2, "Challenging")
     return (3, "Neutral")
@@ -598,38 +628,40 @@ def is_aspect(
     return abs(distance - target_angle) <= orb
 
 
-def assess_period_strength(
-    planet_name: str,
-    life_area: str,
-    current_dasha: Optional[str] = None,
-    is_favorable_transit: bool = True,
-    days_until_change: int = 1
-) -> str:
+def score_to_strength(avg_score: float) -> str:
     """
-    Assess the strength of a favorable/unfavorable period.
+    Convert an average daily weighted score to a strength label.
 
     Returns: "strong" | "moderate" | "weak"
     """
-    # Dasha effectiveness boost
-    dasha_boost = planet_name in DASHA_EFFECTIVENESS.get(current_dasha or "", [])
-
-    # Recency factor (more imminent = stronger)
-    recency_bonus = days_until_change <= 7
-
-    if is_favorable_transit:
-        if dasha_boost and recency_bonus:
-            return "strong"
-        elif dasha_boost or recency_bonus:
-            return "moderate"
-        else:
-            return "weak"
+    if avg_score >= 8:
+        return "strong"
+    elif avg_score >= 4:
+        return "moderate"
     else:
-        if dasha_boost and recency_bonus:
-            return "strong"
-        elif dasha_boost or recency_bonus:
-            return "moderate"
-        else:
-            return "weak"
+        return "weak"
+
+
+def find_best_aspect(
+    transit_lon: float,
+    natal_lon: float,
+    orb: float = 8.0,
+) -> Optional[Tuple[str, float]]:
+    """
+    Check transit longitude against a natal longitude for conjunction and
+    major Vedic aspects. Returns the strongest matching aspect.
+
+    Returns:
+        (aspect_name, multiplier) or None if no aspect is within orb.
+    """
+    # Check conjunction first (highest multiplier)
+    if is_conjunction(transit_lon, natal_lon, orb):
+        return ("conjunction", ASPECT_MULTIPLIERS["conjunction"])
+    # Check remaining aspects in order of strength
+    for aspect_name in ("opposition", "trine", "square"):
+        if is_aspect(transit_lon, natal_lon, aspect_name, orb):
+            return (aspect_name, ASPECT_MULTIPLIERS[aspect_name])
+    return None
 
 
 def calculate_transit_periods(
@@ -672,6 +704,9 @@ def calculate_transit_periods(
     previous_assessment: Dict[str, Dict] = {}
     # Track period start per life area independently
     period_starts: Dict[str, datetime] = {area: start_date for area in LIFE_AREA_RULES}
+    # Accumulate daily scores per period for averaging
+    period_score_sums: Dict[str, float] = {area: 0.0 for area in LIFE_AREA_RULES}
+    period_day_counts: Dict[str, int] = {area: 0 for area in LIFE_AREA_RULES}
 
     while current_date <= end_date:
         current_assessment: Dict[str, Dict] = {}
@@ -688,20 +723,15 @@ def calculate_transit_periods(
 
         # Check each life area
         for life_area, rules in LIFE_AREA_RULES.items():
-            favorable_count = 0
-            unfavorable_count = 0
+            favorable_score = 0.0
+            unfavorable_score = 0.0
             active_planets = []
             transit_details_day = []
 
             for planet_name, transit_lon in transit_positions.items():
-                if planet_name not in natal_positions:
-                    continue
+                planet_weight = PLANET_WEIGHTS.get(planet_name, 1)
 
-                natal_lon = natal_positions[planet_name]["longitude"]
-
-                conjoining = is_conjunction(transit_lon, natal_lon)
-
-                # Determine transit house from natal lagna (where the planet is NOW)
+                # Determine transit house from natal lagna
                 transit_rashi_num = int(transit_lon / 30)
                 transit_rashi = RASHI_NAMES[transit_rashi_num % 12]
                 transit_house = ((transit_rashi_num - natal_lagna_rashi_num) % 12) + 1
@@ -709,68 +739,109 @@ def calculate_transit_periods(
                 in_favorable_house = transit_house in rules["houses"]
                 in_unfavorable_house = transit_house in rules.get("houses_unfav", [])
 
-                if (conjoining or in_favorable_house) and planet_name in rules["favorable_planets"]:
-                    favorable_count += 1
-                    active_planets.append((planet_name, "favorable"))
-                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {transit_house}"
-                    transit_details_day.append({
-                        "planet": planet_name,
-                        "influence": "favorable",
-                        "transit_rashi": transit_rashi,
-                        "transit_degree": round(transit_lon % 30, 1),
-                        "transit_house": transit_house,
-                        "reason": reason,
-                    })
+                # --- Cross-planet aspect check ---
+                # Check this transit planet against ALL natal planets
+                best_aspect_name = None
+                best_aspect_mult = 0.0
+                best_natal_target = None
 
-                if (conjoining or in_unfavorable_house) and planet_name in rules["unfavorable_planets"]:
-                    unfavorable_count += 1
-                    active_planets.append((planet_name, "unfavorable"))
-                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {transit_house}"
-                    transit_details_day.append({
-                        "planet": planet_name,
-                        "influence": "unfavorable",
-                        "transit_rashi": transit_rashi,
-                        "transit_degree": round(transit_lon % 30, 1),
-                        "transit_house": transit_house,
-                        "reason": reason,
-                    })
+                for natal_name, natal_info in natal_positions.items():
+                    natal_lon = natal_info["longitude"]
+                    result = find_best_aspect(transit_lon, natal_lon)
+                    if result and result[1] > best_aspect_mult:
+                        best_aspect_name, best_aspect_mult = result
+                        best_natal_target = natal_name
 
-            if favorable_count > unfavorable_count:
+                # Determine trigger multiplier: aspect > house transit
+                has_aspect = best_aspect_name is not None
+                trigger_mult = best_aspect_mult if has_aspect else 0.0
+
+                # If no aspect but in a relevant house, use house_transit multiplier
+                if not has_aspect and (in_favorable_house or in_unfavorable_house):
+                    trigger_mult = ASPECT_MULTIPLIERS["house_transit"]
+
+                # Build reason string
+                if has_aspect:
+                    reason = f"transit {planet_name} {best_aspect_name} natal {best_natal_target}"
+                elif in_favorable_house or in_unfavorable_house:
+                    reason = f"transiting house {transit_house}"
+                else:
+                    reason = ""
+
+                # Calculate planet score
+                planet_score = planet_weight * trigger_mult
+
+                # Classify as favorable or unfavorable based on life area rules
+                if planet_score > 0:
+                    if (has_aspect or in_favorable_house) and planet_name in rules["favorable_planets"]:
+                        favorable_score += planet_score
+                        active_planets.append((planet_name, "favorable"))
+                        transit_details_day.append({
+                            "planet": planet_name,
+                            "influence": "favorable",
+                            "transit_rashi": transit_rashi,
+                            "transit_degree": round(transit_lon % 30, 1),
+                            "transit_house": transit_house,
+                            "reason": reason,
+                        })
+
+                    if (has_aspect or in_unfavorable_house) and planet_name in rules["unfavorable_planets"]:
+                        unfavorable_score += planet_score
+                        active_planets.append((planet_name, "unfavorable"))
+                        transit_details_day.append({
+                            "planet": planet_name,
+                            "influence": "unfavorable",
+                            "transit_rashi": transit_rashi,
+                            "transit_degree": round(transit_lon % 30, 1),
+                            "transit_house": transit_house,
+                            "reason": reason,
+                        })
+
+            if favorable_score > unfavorable_score:
                 status = "favorable"
-            elif unfavorable_count > favorable_count:
+                day_score = favorable_score
+            elif unfavorable_score > favorable_score:
                 status = "unfavorable"
+                day_score = unfavorable_score
             else:
                 status = "neutral"
+                day_score = 0.0
+
+            # Apply dasha boost
+            if current_dasha:
+                dasha_planets = [p[0] for p in active_planets]
+                if current_dasha in dasha_planets:
+                    day_score *= DASHA_BOOST_MULTIPLIER
 
             current_assessment[life_area] = {
                 "status": status,
                 "planets": active_planets,
                 "transit_details": transit_details_day,
+                "day_score": day_score,
             }
 
-        # Detect status changes per life area and record completed periods
+        # Accumulate scores and detect status changes per life area
         for life_area, assessment in current_assessment.items():
             prev = previous_assessment.get(life_area)
             if prev is None:
                 period_starts[life_area] = current_date
+                period_score_sums[life_area] = assessment["day_score"]
+                period_day_counts[life_area] = 1
             elif prev["status"] != assessment["status"]:
                 # Close out the previous period
                 prev_status = prev["status"]
                 period_end = current_date - timedelta(days=1)
                 dur = max(1, (period_end - period_starts[life_area]).days + 1)
+                avg_score = period_score_sums[life_area] / max(1, period_day_counts[life_area])
 
                 if prev_status in ("favorable", "unfavorable"):
                     planets_list = prev.get("planets", [])
-                    primary_planet = planets_list[0][0] if planets_list else "Moon"
-                    active_planet_names = [p[0] for p in planets_list]
-                    strength = assess_period_strength(
-                        primary_planet, life_area, current_dasha,
-                        prev_status == "favorable"
-                    )
+                    active_planet_names = list(dict.fromkeys(p[0] for p in planets_list))
+                    strength = score_to_strength(avg_score)
                     interp = build_period_interpretation(
                         life_area, prev_status, active_planet_names, strength, dur
                     )
-                    rating, rating_label = compute_rating(prev_status, strength)
+                    rating, rating_label = compute_rating(prev_status, avg_score)
                     timeline[life_area].append({
                         "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                         "end_date": period_end.strftime("%Y-%m-%d"),
@@ -785,7 +856,7 @@ def calculate_transit_periods(
                         "transit_details": prev.get("transit_details", []),
                     })
                 else:
-                    # Neutral period — no strong planetary influence
+                    # Neutral period
                     timeline[life_area].append({
                         "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                         "end_date": period_end.strftime("%Y-%m-%d"),
@@ -799,7 +870,14 @@ def calculate_transit_periods(
                         "rating_label": "Neutral",
                         "transit_details": [],
                     })
+                # Reset for new period
                 period_starts[life_area] = current_date
+                period_score_sums[life_area] = assessment["day_score"]
+                period_day_counts[life_area] = 1
+            else:
+                # Same status continues — accumulate score
+                period_score_sums[life_area] += assessment["day_score"]
+                period_day_counts[life_area] += 1
 
         previous_assessment = current_assessment
         current_date += timedelta(days=check_interval_days)
@@ -808,19 +886,16 @@ def calculate_transit_periods(
     for life_area, assessment in current_assessment.items():
         status = assessment["status"]
         dur = max(1, (end_date - period_starts[life_area]).days + 1)
+        avg_score = period_score_sums[life_area] / max(1, period_day_counts[life_area])
 
         if status in ("favorable", "unfavorable"):
             planets_list = assessment.get("planets", [])
-            primary_planet = planets_list[0][0] if planets_list else "Moon"
-            active_planet_names = [p[0] for p in planets_list]
-            strength = assess_period_strength(
-                primary_planet, life_area, current_dasha,
-                status == "favorable"
-            )
+            active_planet_names = list(dict.fromkeys(p[0] for p in planets_list))
+            strength = score_to_strength(avg_score)
             interp = build_period_interpretation(
                 life_area, status, active_planet_names, strength, dur
             )
-            rating, rating_label = compute_rating(status, strength)
+            rating, rating_label = compute_rating(status, avg_score)
             timeline[life_area].append({
                 "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                 "end_date": end_date.strftime("%Y-%m-%d"),
