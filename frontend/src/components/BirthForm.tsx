@@ -24,6 +24,7 @@ async function searchPlaces(query: string): Promise<string[]> {
 }
 
 export function BirthForm({ onSubmit, loading }: Props) {
+  const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [place, setPlace] = useState("");
@@ -51,13 +52,25 @@ export function BirthForm({ onSubmit, loading }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !time || !place) return;
-    onSubmit({ date, time, place, ayanamsha });
+    onSubmit({ name: name.trim() || undefined, date, time, place, ayanamsha });
     setShowSuggestions(false);
   };
 
   return (
     <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
       <h2 className="text-lg font-semibold text-amber-400">Birth Details</h2>
+
+      {/* Name */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. Rahul Sharma"
+          className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+        />
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Date */}

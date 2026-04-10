@@ -53,6 +53,7 @@ const FAQ_ITEMS = [
 export default function HomePage() {
   const { data: session } = useSession();
   const [chart, setChart] = useState<ChartResponse | null>(null);
+  const [chartName, setChartName] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -62,6 +63,7 @@ export default function HomePage() {
     setError(null);
     setSaved(false);
     setChart(null);
+    setChartName(data.name || "");
     try {
       const result = await calculateChart(data);
       setChart(result);
@@ -75,7 +77,7 @@ export default function HomePage() {
   const handleSave = async () => {
     if (!chart || !session) return;
     try {
-      const name = `${chart.place} — ${chart.date}`;
+      const name = chartName || `${chart.place.split(",")[0]} — ${chart.date}`;
       await saveChart(name, chart, "");
       setSaved(true);
     } catch (e) {
