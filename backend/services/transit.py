@@ -756,12 +756,13 @@ def calculate_transit_periods(
             elif prev["status"] != assessment["status"]:
                 # Close out the previous period
                 prev_status = prev["status"]
+                period_end = current_date - timedelta(days=1)
+                dur = max(1, (period_end - period_starts[life_area]).days + 1)
+
                 if prev_status in ("favorable", "unfavorable"):
-                    period_end = current_date - timedelta(days=1)
                     planets_list = prev.get("planets", [])
                     primary_planet = planets_list[0][0] if planets_list else "Moon"
                     active_planet_names = [p[0] for p in planets_list]
-                    dur = max(1, (period_end - period_starts[life_area]).days + 1)
                     strength = assess_period_strength(
                         primary_planet, life_area, current_dasha,
                         prev_status == "favorable"
@@ -783,6 +784,21 @@ def calculate_transit_periods(
                         "rating_label": rating_label,
                         "transit_details": prev.get("transit_details", []),
                     })
+                else:
+                    # Neutral period — no strong planetary influence
+                    timeline[life_area].append({
+                        "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
+                        "end_date": period_end.strftime("%Y-%m-%d"),
+                        "type": "neutral",
+                        "duration_days": dur,
+                        "strength": "moderate",
+                        "active_planets": [],
+                        "description": "A balanced period with no dominant planetary influence. Day-to-day results depend on your own efforts and choices.",
+                        "guidance": "Use this stable window to consolidate gains, plan ahead, and maintain steady progress. Neutral periods are ideal for routine work and self-improvement.",
+                        "rating": 3,
+                        "rating_label": "Neutral",
+                        "transit_details": [],
+                    })
                 period_starts[life_area] = current_date
 
         previous_assessment = current_assessment
@@ -790,23 +806,25 @@ def calculate_transit_periods(
 
     # Record the final open period for each life area
     for life_area, assessment in current_assessment.items():
-        if assessment["status"] in ("favorable", "unfavorable"):
+        status = assessment["status"]
+        dur = max(1, (end_date - period_starts[life_area]).days + 1)
+
+        if status in ("favorable", "unfavorable"):
             planets_list = assessment.get("planets", [])
             primary_planet = planets_list[0][0] if planets_list else "Moon"
             active_planet_names = [p[0] for p in planets_list]
-            dur = max(1, (end_date - period_starts[life_area]).days + 1)
             strength = assess_period_strength(
                 primary_planet, life_area, current_dasha,
-                assessment["status"] == "favorable"
+                status == "favorable"
             )
             interp = build_period_interpretation(
-                life_area, assessment["status"], active_planet_names, strength, dur
+                life_area, status, active_planet_names, strength, dur
             )
-            rating, rating_label = compute_rating(assessment["status"], strength)
+            rating, rating_label = compute_rating(status, strength)
             timeline[life_area].append({
                 "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
                 "end_date": end_date.strftime("%Y-%m-%d"),
-                "type": assessment["status"],
+                "type": status,
                 "duration_days": dur,
                 "strength": strength,
                 "active_planets": active_planet_names,
@@ -815,6 +833,20 @@ def calculate_transit_periods(
                 "rating": rating,
                 "rating_label": rating_label,
                 "transit_details": assessment.get("transit_details", []),
+            })
+        else:
+            timeline[life_area].append({
+                "start_date": period_starts[life_area].strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+                "type": "neutral",
+                "duration_days": dur,
+                "strength": "moderate",
+                "active_planets": [],
+                "description": "A balanced period with no dominant planetary influence. Day-to-day results depend on your own efforts and choices.",
+                "guidance": "Use this stable window to consolidate gains, plan ahead, and maintain steady progress. Neutral periods are ideal for routine work and self-improvement.",
+                "rating": 3,
+                "rating_label": "Neutral",
+                "transit_details": [],
             })
 
     return timeline

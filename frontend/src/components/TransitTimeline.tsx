@@ -37,6 +37,7 @@ const LIFE_AREA_LABELS: Record<string, string> = {
   career: "💼 Career",
   finances: "💰 Finances",
   family: "👨‍👩‍👧‍👦 Family",
+  self_confidence: "🦁 Self / Confidence",
 };
 
 /** 5-point rating config: colors, labels, badge styles */
@@ -247,7 +248,7 @@ export function TransitTimeline({ lifeArea, periods, summary }: TransitTimelineP
                           : "bg-slate-800 border border-slate-700"
                       }`}>
                         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
-                          {period.type === "favorable" ? "✦ How to make the most of it" : "✦ How to navigate this period"}
+                          {period.type === "favorable" ? "✦ How to make the most of it" : period.type === "neutral" ? "✦ How to use this window" : "✦ How to navigate this period"}
                         </p>
                         <p className="text-sm text-slate-300 leading-relaxed">
                           {period.guidance}
