@@ -198,8 +198,6 @@ async function downloadPdf(transitData: TransitData, selectedAreas: string[]) {
     }
 
     for (const p of periods) {
-      checkPage(28);
-
       const isFav = p.type === "favorable";
       const isUnfav = p.type === "unfavorable";
       const bgColor = isFav ? colors.greenBg : isUnfav ? colors.redBg : colors.neutralBg;
@@ -211,11 +209,16 @@ async function downloadPdf(transitData: TransitData, selectedAreas: string[]) {
         : `${p.duration_days} day(s)`;
       const dateFmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
-      // Card background
+      // Estimate card height: header(22) + description + transit details + guidance
+      const descLines = p.description ? doc.splitTextToSize(p.description.replace(/\n•/g, "\n  •"), contentW - 12) : [];
+      const guidanceLines = p.guidance ? doc.splitTextToSize(p.guidance, contentW - 12) : [];
+      const transitDetailCount = p.transit_details?.length || 0;
+      const estHeight = 26 + descLines.length * 3.2 + transitDetailCount * 10 + guidanceLines.length * 3.2 + 10;
+      checkPage(Math.min(estHeight, 80));
+
+      // --- Card header ---
       doc.setFillColor(...bgColor);
       doc.roundedRect(margin, y - 2, contentW, 22, 2, 2, "F");
-
-      // Left accent bar
       doc.setFillColor(...accentColor);
       doc.rect(margin, y - 2, 2, 22, "F");
 
@@ -239,26 +242,87 @@ async function downloadPdf(transitData: TransitData, selectedAreas: string[]) {
       doc.setTextColor(...colors.text);
       doc.text(`${dateFmt(p.start_date)}  —  ${dateFmt(p.end_date)}`, margin + 5, y + 11);
 
-      // Planets
+      // Top planets
       if (p.active_planets?.length) {
         doc.setFontSize(7.5);
-        doc.setFont("helvetica", "normal");
+        doc.setFont("helvetica", "bold");
         doc.setTextColor(...accentColor);
-        doc.text(`Planets: ${p.active_planets.join(", ")}`, margin + 5, y + 16);
+        doc.text(`Key Planets: ${p.active_planets.join(", ")}`, margin + 5, y + 16);
       }
 
       y += 26;
 
-      // Guidance (wrapped text below card)
-      if (p.guidance) {
-        checkPage(12);
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(...colors.lightGray);
-        const guidanceLines = doc.splitTextToSize(p.guidance, contentW - 10);
-        doc.text(guidanceLines, margin + 5, y);
-        y += guidanceLines.length * 3.2 + 4;
+      // --- Per-planet transit details (the rich insight) ---
+      if (p.transit_details?.length) {
+        for (const td of p.transit_details) {
+          checkPage(12);
+          const tdColor = td.influence === "favorable" ? colors.green : colors.red;
+          const tdBg = td.influence === "favorable" ? colors.greenBg : colors.redBg;
+
+          // Small planet detail row
+          doc.setFillColor(...tdBg);
+          doc.roundedRect(margin + 3, y - 1.5, contentW - 6, 8, 1.5, 1.5, "F");
+
+          // Dot indicator
+          doc.setFillColor(...tdColor);
+          doc.circle(margin + 7, y + 2.5, 1.2, "F");
+
+          // Planet name + position
+          doc.setFontSize(7.5);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(...colors.text);
+          doc.text(td.planet, margin + 11, y + 3.5);
+
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(...colors.lightGray);
+          doc.text(
+            `in ${td.transit_rashi} (${td.transit_degree}\u00B0) — House ${td.transit_house}`,
+            margin + 11 + doc.getTextWidth(td.planet) + 2,
+            y + 3.5
+          );
+
+          // Reason text (right-aligned)
+          const reasonShort = td.reason.length > 50 ? td.reason.slice(0, 48) + "..." : td.reason;
+          doc.setFontSize(6.5);
+          doc.setTextColor(...tdColor);
+          doc.text(reasonShort, pageW - margin - 5, y + 3.5, { align: "right" });
+
+          y += 10;
+        }
       }
+
+      // --- Description (Vedic interpretation) ---
+      if (descLines.length > 0) {
+        checkPage(descLines.length * 3.2 + 4);
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...colors.text);
+        doc.text(descLines, margin + 5, y + 1);
+        y += descLines.length * 3.2 + 3;
+      }
+
+      // --- Guidance box ---
+      if (guidanceLines.length > 0) {
+        const boxH = guidanceLines.length * 3.2 + 5;
+        checkPage(boxH + 2);
+        doc.setFillColor(...(isFav ? [235, 250, 240] as [number, number, number] : isUnfav ? [252, 238, 238] as [number, number, number] : [242, 244, 248] as [number, number, number]));
+        doc.roundedRect(margin + 3, y - 1, contentW - 6, boxH, 1.5, 1.5, "F");
+
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...accentColor);
+        doc.text(
+          isFav ? "HOW TO MAKE THE MOST OF IT" : isUnfav ? "HOW TO NAVIGATE THIS PERIOD" : "HOW TO USE THIS WINDOW",
+          margin + 6, y + 2
+        );
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...colors.text);
+        doc.text(guidanceLines, margin + 6, y + 5.5);
+        y += boxH + 3;
+      }
+
+      y += 4;
     }
 
     y += 5;

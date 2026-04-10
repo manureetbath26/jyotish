@@ -804,10 +804,11 @@ def calculate_transit_periods(
                     unfavorable_score += score
                     influence = "unfavorable"
 
-                active_planets.append((planet_name, influence))
+                active_planets.append((planet_name, influence, score))
                 transit_details_day.append({
                     "planet": planet_name,
                     "influence": influence,
+                    "score": round(score, 2),
                     "transit_rashi": transit_rashi,
                     "transit_degree": round(transit_lon % 30, 1),
                     "transit_house": transit_house,
@@ -835,10 +836,17 @@ def calculate_transit_periods(
                 if current_dasha in dasha_planets:
                     day_score *= DASHA_BOOST_MULTIPLIER
 
+            # Keep only top 3 most influential planets (by score)
+            active_planets.sort(key=lambda x: x[2], reverse=True)
+            top_planets = active_planets[:3]
+            top_planet_names = {p[0] for p in top_planets}
+            top_details = [d for d in transit_details_day if d["planet"] in top_planet_names]
+            top_details.sort(key=lambda d: d["score"], reverse=True)
+
             current_assessment[life_area] = {
                 "status": status,
-                "planets": active_planets,
-                "transit_details": transit_details_day,
+                "planets": top_planets,
+                "transit_details": top_details,
                 "day_score": day_score,
             }
 
