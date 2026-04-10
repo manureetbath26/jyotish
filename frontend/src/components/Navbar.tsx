@@ -43,6 +43,10 @@ export function Navbar() {
               New Chart
             </Link>
 
+            <Link href="/reports" className="text-slate-300 hover:text-white transition-colors">
+              Reports
+            </Link>
+
             {session ? (
               <>
                 <Link href="/compatibility" className="text-slate-300 hover:text-white transition-colors">

@@ -1,0 +1,494 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+import { calculateChart, ChartResponse, BirthDataInput } from "@/lib/api";
+import { generateAyurvedicReport, AyurvedicReport } from "@/lib/ayurvedicReport";
+import { AyurvedicReportView } from "@/components/reports/AyurvedicReportView";
+
+const UPI_ID = "9872653657@ybl";
+const REPORT_PRICE = 200;
+
+function buildUpiLink(amount: number, note: string) {
+  return `upi://pay?pa=${UPI_ID}&pn=Jyotish&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+}
+
+// Simple place autocomplete
+async function searchPlaces(query: string): Promise<string[]> {
+  if (query.length < 3) return [];
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=0`;
+  const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.map((item: { display_name: string }) => item.display_name);
+}
+
+type Step = "birth" | "preview" | "payment" | "report";
+
+export default function AyurvedicReportPage() {
+  const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const reportId = searchParams.get("id");
+
+  const [step, setStep] = useState<Step>("birth");
+
+  // Birth form
+  const [name, setName] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [place, setPlace] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedRef = useRef(false);
+
+  // Chart & report
+  const [chart, setChart] = useState<ChartResponse | null>(null);
+  const [report, setReport] = useState<AyurvedicReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Payment
+  const [email, setEmail] = useState(session?.user?.email || "");
+  const [upiRef, setUpiRef] = useState("");
+  const [payLoading, setPayLoading] = useState(false);
+  const [payMsg, setPayMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Load existing report if ?id= provided
+  useEffect(() => {
+    if (!reportId) return;
+    setLoading(true);
+    fetch(`/api/reports/purchase/${reportId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.chartData && data.status === "verified") {
+          const chartData = data.chartData as ChartResponse;
+          setChart(chartData);
+          const rpt = data.reportData
+            ? (data.reportData as AyurvedicReport)
+            : generateAyurvedicReport(chartData);
+          setReport(rpt);
+          setName(data.birthName || "");
+          setStep("report");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [reportId]);
+
+  // Pre-fill email
+  useEffect(() => {
+    if (session?.user?.email) setEmail(session.user.email);
+  }, [session]);
+
+  // Place autocomplete
+  useEffect(() => {
+    if (selectedRef.current) {
+      selectedRef.current = false;
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchPlaces(place);
+      setSuggestions(results);
+      setShowSuggestions(results.length > 0);
+    }, 350);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [place]);
+
+  const handleCalculate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!date || !time || !place) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await calculateChart({ date, time, place });
+      setChart(result);
+      const rpt = generateAyurvedicReport(result);
+      setReport(rpt);
+      setStep("preview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Chart calculation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !upiRef) return;
+    setPayLoading(true);
+    setPayMsg(null);
+    try {
+      const res = await fetch("/api/reports/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          upiTransactionId: upiRef,
+          reportType: "ayurvedic_wellness",
+          birthName: name || null,
+          birthData: { date, time, place },
+          chartData: chart,
+          reportData: report,
+        }),
+      });
+      if (res.ok) {
+        setPayMsg({ type: "success", text: "Payment recorded! Loading your report..." });
+        setTimeout(() => setStep("report"), 1000);
+      } else {
+        const data = await res.json();
+        setPayMsg({ type: "error", text: data.error || "Purchase failed" });
+      }
+    } catch {
+      setPayMsg({ type: "error", text: "Something went wrong. Please try again." });
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  const upiLink = buildUpiLink(REPORT_PRICE, "Jyotish Ayurvedic Report");
+
+  if (loading && !chart) {
+    return (
+      <div className="max-w-4xl mx-auto flex items-center justify-center h-48 text-slate-500">
+        <div className="text-center space-y-3">
+          <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      {/* Header */}
+      <header className="text-center py-4">
+        <h1 className="text-2xl font-bold text-amber-400 flex items-center justify-center gap-2">
+          <span className="text-3xl">{"\u{1F33F}"}</span>
+          Ayurvedic Wellness Report
+        </h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Personalized health & wellness analysis based on your Vedic birth chart
+        </p>
+      </header>
+
+      {/* Progress steps */}
+      <div className="flex items-center justify-center gap-1 text-xs">
+        {(["birth", "preview", "payment", "report"] as Step[]).map((s, i) => {
+          const labels = ["Birth Details", "Preview", "Payment", "Full Report"];
+          const isCurrent = s === step;
+          const isPast =
+            ["birth", "preview", "payment", "report"].indexOf(step) >
+            ["birth", "preview", "payment", "report"].indexOf(s);
+          return (
+            <div key={s} className="flex items-center gap-1">
+              {i > 0 && <span className="text-slate-700 mx-1">{"\u2014"}</span>}
+              <span
+                className={`px-2.5 py-1 rounded-full ${
+                  isCurrent
+                    ? "bg-amber-500 text-black font-semibold"
+                    : isPast
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-slate-800 text-slate-500"
+                }`}
+              >
+                {labels[i]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Step 1: Birth Details */}
+      {step === "birth" && (
+        <form
+          onSubmit={handleCalculate}
+          className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5"
+        >
+          <h2 className="text-lg font-semibold text-amber-400">Enter Birth Details</h2>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+              Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Rahul Sharma"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                Date of Birth
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                Time of Birth
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                required
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 relative">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+              Place of Birth
+            </label>
+            <input
+              type="text"
+              value={place}
+              onChange={(e) => {
+                setPlace(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              placeholder="e.g. Mumbai, India"
+              required
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <ul className="absolute top-full mt-1 left-0 right-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                {suggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    onMouseDown={() => {
+                      selectedRef.current = true;
+                      setPlace(s);
+                      setShowSuggestions(false);
+                      setSuggestions([]);
+                    }}
+                    className="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer truncate"
+                  >
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
+          >
+            {loading ? "Calculating Chart..." : "Calculate & Preview Report"}
+          </button>
+        </form>
+      )}
+
+      {/* Step 2: Preview */}
+      {step === "preview" && report && chart && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-amber-400">Report Preview</h2>
+            <p className="text-xs text-slate-500">
+              {name ? `${name} \u00b7 ` : ""}
+              {chart.lagna} Lagna \u00b7 {chart.place.split(",")[0]} \u00b7 {chart.date}
+            </p>
+
+            {/* Dosha preview */}
+            <div className="bg-slate-800/50 rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-200">
+                Your Dosha Constitution (Prakriti)
+              </h3>
+              <div className="flex gap-3">
+                {[
+                  { dosha: "Vata", percentage: report.doshaConstitution.vata },
+                  { dosha: "Pitta", percentage: report.doshaConstitution.pitta },
+                  { dosha: "Kapha", percentage: report.doshaConstitution.kapha },
+                ].map((d) => (
+                  <div key={d.dosha} className="flex-1 text-center">
+                    <div className="text-2xl font-bold text-amber-400">{d.percentage}%</div>
+                    <div className="text-xs text-slate-400">{d.dosha}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400">
+                Primary: <span className="text-slate-200 font-medium">{report.doshaConstitution.primaryDosha}</span>
+                {report.doshaConstitution.secondaryDosha && (
+                  <>
+                    {" \u00b7 "}Secondary: <span className="text-slate-200 font-medium">{report.doshaConstitution.secondaryDosha}</span>
+                  </>
+                )}
+              </p>
+            </div>
+
+            {/* Teaser bullets */}
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">
+                Full report includes:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  "Body Type & Metabolism Profile",
+                  "Health Planet Analysis (6 planets)",
+                  "Vulnerable Body Areas",
+                  "Personalized Diet Guide",
+                  "Yoga & Pranayama Plan",
+                  "Health Period Timeline",
+                  "Lifestyle Recommendations",
+                  "Gemstone & Mantra Remedies",
+                ].map((f) => (
+                  <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
+                    <span className="text-amber-500">{"\u2713"}</span>
+                    {f}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Blurred teaser */}
+            <div className="relative overflow-hidden rounded-xl">
+              <div className="blur-sm pointer-events-none select-none opacity-40 space-y-2 p-4 bg-slate-800/30">
+                <p className="text-sm text-slate-300 font-medium">Body Type Profile</p>
+                <p className="text-xs text-slate-400">
+                  Based on your {report.doshaConstitution.primaryDosha} constitution with {report.doshaConstitution.secondaryDosha} secondary influence,
+                  your body type suggests a particular metabolism pattern, body frame, and digestive capacity...
+                </p>
+                <p className="text-sm text-slate-300 font-medium mt-3">Health Planet Analysis</p>
+                <p className="text-xs text-slate-400">
+                  Your Moon in {chart.planets.find((p) => p.name === "Moon")?.rashi} indicates...
+                </p>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 rounded-xl">
+                <p className="text-sm text-amber-400 font-semibold">{"\uD83D\uDD12"} Purchase to unlock full report</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setStep("birth")}
+              className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 px-4 py-2 rounded-lg transition-colors"
+            >
+              {"\u2190"} Edit Details
+            </button>
+            <button
+              onClick={() => setStep("payment")}
+              className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
+            >
+              Purchase Report {"\u2014"} {"\u20b9"}{REPORT_PRICE}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Payment */}
+      {step === "payment" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+          <h2 className="text-lg font-semibold text-amber-400">Payment</h2>
+          <p className="text-sm text-slate-400">
+            Pay {"\u20b9"}{REPORT_PRICE} via UPI to receive your complete Ayurvedic Wellness Report.
+          </p>
+
+          {/* QR Code */}
+          <div className="flex flex-col items-center gap-3 py-4">
+            <div className="bg-white p-3 rounded-xl">
+              <QRCodeSVG value={upiLink} size={180} />
+            </div>
+            <p className="text-xs text-slate-500">Scan with any UPI app</p>
+            <p className="text-xs text-slate-600">
+              UPI ID: <span className="text-slate-400 font-mono">{UPI_ID}</span>
+            </p>
+          </div>
+
+          <form onSubmit={handlePurchase} className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                required
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <p className="text-xs text-slate-600">Report will be linked to this email.</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                UPI Transaction / Reference ID
+              </label>
+              <input
+                type="text"
+                value={upiRef}
+                onChange={(e) => setUpiRef(e.target.value)}
+                placeholder="e.g. 426913879453"
+                required
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <p className="text-xs text-slate-600">
+                Enter the 12-digit transaction ID from your UPI payment receipt.
+              </p>
+            </div>
+
+            {payMsg && (
+              <div
+                className={`rounded-xl p-3 text-sm ${
+                  payMsg.type === "success"
+                    ? "bg-green-500/10 border border-green-500/30 text-green-400"
+                    : "bg-red-500/10 border border-red-500/30 text-red-400"
+                }`}
+              >
+                {payMsg.text}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStep("preview")}
+                className="text-sm text-slate-400 hover:text-slate-200 border border-slate-700 px-4 py-2 rounded-lg transition-colors"
+              >
+                {"\u2190"} Back
+              </button>
+              <button
+                type="submit"
+                disabled={payLoading}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
+              >
+                {payLoading ? "Processing..." : `Confirm Payment \u2014 \u20b9${REPORT_PRICE}`}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Step 4: Full Report */}
+      {step === "report" && report && chart && (
+        <AyurvedicReportView report={report} chart={chart} name={name} />
+      )}
+    </div>
+  );
+}

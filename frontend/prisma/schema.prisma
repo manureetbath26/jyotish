@@ -22,7 +22,8 @@ model User {
   sessions      Session[]
   charts        Chart[]
   subscriptions Subscription[]
-  payments      Payment[]
+  payments        Payment[]
+  reportPurchases ReportPurchase[]
 }
 
 model Account {
@@ -105,6 +106,24 @@ model Payment {
   createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ReportPurchase {
+  id               String   @id @default(cuid())
+  userId           String?
+  email            String
+  reportType       String   // e.g. "ayurvedic_wellness"
+  amount           Int      // in paise (20000 = INR 200)
+  upiTransactionId String?
+  status           String   @default("pending") // pending, verified, rejected
+  birthName        String?  // name entered with birth details
+  birthData        Json     // {date, time, place}
+  chartData        Json     // full ChartResponse snapshot
+  reportData       Json?    // cached generated report content
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model Coupon {
