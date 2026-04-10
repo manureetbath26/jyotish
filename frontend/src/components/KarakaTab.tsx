@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PlanetPosition } from "@/lib/api";
 import {
   CHARA_KARAKA_ROLES,
-  CHARA_KARAKA_IN_HOUSE,
+  CHARA_KARAKA_BY_PLANET,
   NAISARGIKA_KARAKAS,
   NAISARGIKA_KARAKA_IN_HOUSE,
   KARAKA_PLANET_COLORS,
@@ -161,7 +161,8 @@ export function KarakaTab({ planets, lagna }: Props) {
           if (!ck) return null;
           const color = KARAKA_PLANET_COLORS[ck.planet] || "text-slate-200";
           const dignity = ck.dignity ? DIGNITY_BADGE[ck.dignity] : null;
-          const houseInterp = CHARA_KARAKA_IN_HOUSE[ck.id]?.[ck.house];
+          const planetRoleInterp = CHARA_KARAKA_BY_PLANET[ck.id]?.[ck.planet];
+          const natalP = planets.find(p => p.name === ck.planet);
 
           return (
             <div className="border border-slate-700 rounded-xl overflow-hidden mt-2">
@@ -170,7 +171,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                 <span className="text-xl">{ck.icon}</span>
                 <div>
                   <p className="text-sm font-semibold text-slate-100">
-                    {ck.name}{" "}
+                    {ck.planet} as {ck.name}{" "}
                     <span className="text-xs text-slate-500">({ck.shortName})</span>
                   </p>
                   <p className="text-xs text-slate-400">
@@ -184,10 +185,55 @@ export function KarakaTab({ planets, lagna }: Props) {
               </div>
 
               <div className="px-4 py-4 space-y-4">
-                {/* Meaning */}
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Significance</p>
-                  <p className="text-sm text-slate-300 leading-relaxed">{ck.governs}</p>
+                {/* Primary: Planet-specific role interpretation */}
+                {planetRoleInterp && (
+                  <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-amber-400 mb-1.5">
+                      What {ck.planet} as Your {ck.name} Means
+                    </p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{planetRoleInterp}</p>
+                  </div>
+                )}
+
+                {/* House placement context — how the above manifests */}
+                <div className="bg-slate-800/30 border border-slate-700/40 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-amber-400 mb-1.5">
+                    Placed in House {ck.house} ({ck.rashi})
+                  </p>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {ck.planet}&apos;s {ck.meaning.toLowerCase()} role expresses through House {ck.house} — the domain of{" "}
+                    {ck.house === 1 ? "self-identity, body, and personality" :
+                     ck.house === 2 ? "wealth, family values, and speech" :
+                     ck.house === 3 ? "courage, siblings, and communication" :
+                     ck.house === 4 ? "home, mother, education, and emotional peace" :
+                     ck.house === 5 ? "creativity, children, romance, and intelligence" :
+                     ck.house === 6 ? "obstacles, enemies, disease, and service" :
+                     ck.house === 7 ? "marriage, partnerships, and public dealings" :
+                     ck.house === 8 ? "transformation, hidden matters, and longevity" :
+                     ck.house === 9 ? "dharma, fortune, higher learning, and the guru" :
+                     ck.house === 10 ? "career, public status, and authority" :
+                     ck.house === 11 ? "gains, income, ambitions, and social networks" :
+                     "spiritual liberation, foreign lands, and expenses"}.{" "}
+                    This means {ck.planet}&apos;s natural qualities of{" "}
+                    {ck.planet === "Sun" ? "authority, leadership, and vitality" :
+                     ck.planet === "Moon" ? "emotion, intuition, and nurturing" :
+                     ck.planet === "Mars" ? "courage, energy, and competitive drive" :
+                     ck.planet === "Mercury" ? "intellect, communication, and analytical skill" :
+                     ck.planet === "Jupiter" ? "wisdom, ethics, and expansion" :
+                     ck.planet === "Venus" ? "love, beauty, and artistic refinement" :
+                     ck.planet === "Saturn" ? "discipline, endurance, and karmic responsibility" :
+                     "ambition, unconventionality, and foreign influence"}{" "}
+                    directly shape how the {ck.meaning.toLowerCase()} themes play out in your life through {ck.house === 4 ? "domestic" : ck.house === 10 ? "professional" : ck.house === 7 ? "partnership" : ck.house === 1 ? "personal" : ck.house === 9 ? "dharmic" : ck.house === 12 ? "spiritual" : `house ${ck.house}`} matters.
+                  </p>
+
+                  {/* Lordship connection */}
+                  {natalP && natalP.lord_of_houses.length > 0 && (
+                    <p className="text-xs text-slate-400 mt-2 leading-relaxed border-t border-slate-700/40 pt-2">
+                      {ck.planet} also rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
+                      <span className="font-semibold text-amber-400">{natalP.lord_of_houses.join(" & ")}</span>{" "}
+                      — linking its {ck.meaning.toLowerCase()} role to those house themes as well.
+                    </p>
+                  )}
                 </div>
 
                 {/* Life themes */}
@@ -202,17 +248,36 @@ export function KarakaTab({ planets, lagna }: Props) {
                   ))}
                 </div>
 
-                {/* House placement interpretation */}
-                {houseInterp && (
-                  <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-amber-400 mb-1">
-                      {ck.planet} as {ck.shortName} in House {ck.house}
+                {/* Dignity / retrograde assessment */}
+                {dignity && (
+                  <div className={`border rounded-lg p-3 ${dignity.bg}`}>
+                    <p className={`text-xs font-semibold ${dignity.color} mb-1`}>
+                      {ck.planet} is {dignity.label}
                     </p>
-                    <p className="text-sm text-slate-300 leading-relaxed">{houseInterp}</p>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {ck.dignity === "exalted"
+                        ? `${ck.planet} as your ${ck.name} is exalted in ${ck.rashi} — its ${ck.meaning.toLowerCase()} significations operate at peak power. The qualities ${ck.planet} brings to this role manifest with exceptional strength and natural authority.`
+                        : ck.dignity === "debilitated"
+                        ? `${ck.planet} as your ${ck.name} is debilitated in ${ck.rashi} — its ${ck.meaning.toLowerCase()} significations face karmic challenges. The themes governed by this role require conscious effort and remedial measures to reach their potential.`
+                        : ck.dignity === "moolatrikona"
+                        ? `${ck.planet} as your ${ck.name} is in moolatrikona in ${ck.rashi} — very strongly placed. Its ${ck.meaning.toLowerCase()} significations express naturally and powerfully.`
+                        : `${ck.planet} as your ${ck.name} is in its own sign ${ck.rashi} — comfortable and steady. Its ${ck.meaning.toLowerCase()} significations manifest naturally without strain.`}
+                    </p>
                   </div>
                 )}
 
-                {/* Dignity-based outcome */}
+                {ck.is_retrograde && (
+                  <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-amber-400 mb-1">
+                      {ck.planet} Retrograde as {ck.shortName}
+                    </p>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {ck.planet}&apos;s retrograde motion turns the {ck.meaning.toLowerCase()} themes inward. The qualities {ck.planet} brings — {ck.planet === "Sun" ? "authority and leadership" : ck.planet === "Moon" ? "emotional depth" : ck.planet === "Mars" ? "courage and drive" : ck.planet === "Mercury" ? "intelligence and communication" : ck.planet === "Jupiter" ? "wisdom and faith" : ck.planet === "Venus" ? "love and beauty" : ck.planet === "Saturn" ? "discipline and karma" : "ambition and worldly desire"} — operate on a deeper, more introspective level. Past-life connections to this karaka role are active, and results may be delayed but carry profound inner significance.
+                    </p>
+                  </div>
+                )}
+
+                {/* Strong / Weak general outcomes */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="bg-green-950/30 border border-green-900/40 rounded-lg p-3">
                     <p className="text-xs font-semibold text-green-400 mb-1">When Strong</p>
@@ -223,24 +288,6 @@ export function KarakaTab({ planets, lagna }: Props) {
                     <p className="text-xs text-slate-300 leading-relaxed">{ck.weakPlacement}</p>
                   </div>
                 </div>
-
-                {/* Current dignity assessment */}
-                {dignity && (
-                  <div className={`border rounded-lg p-3 ${dignity.bg}`}>
-                    <p className={`text-xs font-semibold ${dignity.color} mb-1`}>
-                      In Your Chart: {ck.planet} is {dignity.label}
-                    </p>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      {ck.dignity === "exalted"
-                        ? `${ck.planet} as your ${ck.name} is exalted — this powerfully amplifies all the positive significations. The themes governed by ${ck.shortName} operate at their highest potential in your life.`
-                        : ck.dignity === "debilitated"
-                        ? `${ck.planet} as your ${ck.name} is debilitated — the themes of ${ck.shortName} require conscious effort and may involve karmic lessons. Remedial measures for ${ck.planet} are recommended.`
-                        : ck.dignity === "moolatrikona"
-                        ? `${ck.planet} as your ${ck.name} is in moolatrikona — a very strong placement that naturally supports the significations of ${ck.shortName}. Results come with ease and authority.`
-                        : `${ck.planet} as your ${ck.name} is in its own sign — a comfortable placement that gives natural, steady expression to ${ck.shortName} themes without strain.`}
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           );
