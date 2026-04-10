@@ -29,11 +29,16 @@ export async function GET() {
     return Response.json({ premium: false });
   }
 
+  const daysRemaining = Math.ceil(
+    (subscription.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  );
+
   return Response.json({
     premium: true,
     subscription: {
       plan: subscription.plan,
       endDate: subscription.endDate,
+      daysRemaining,
       couponCode: subscription.coupon?.code ?? undefined,
     },
   });

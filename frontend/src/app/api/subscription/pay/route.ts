@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
   const now = new Date();
   const endDate = new Date(now);
-  endDate.setDate(endDate.getDate() + 30);
+  endDate.setDate(endDate.getDate() + 365);
 
   const [payment, subscription] = await prisma.$transaction([
     prisma.payment.create({
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       data: {
         userId: session.user.id,
         status: "active",
-        plan: "monthly",
+        plan: "yearly",
         amount: 50000,
         startDate: now,
         endDate,
@@ -40,5 +40,5 @@ export async function POST(request: Request) {
     }),
   ]);
 
-  return Response.json({ payment, subscription, message: "Payment confirmed! Premium features unlocked for 30 days." });
+  return Response.json({ payment, subscription, message: "Payment confirmed! Premium features unlocked for 1 year." });
 }
