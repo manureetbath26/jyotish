@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+import { useTheme } from "next-themes";
 import { PlanetPosition, HouseInfo } from "@/lib/api";
 
 interface Props {
@@ -62,10 +63,46 @@ const RASHI_CELLS: Record<number, { col: number; row: number }> = {
    9: { col: 0, row: 3 }, 8: { col: 1, row: 3 }, 7: { col: 2, row: 3 }, 6: { col: 3, row: 3 },
 };
 
+// Theme-aware chart colors
+const CHART_COLORS = {
+  dark: {
+    bg: "#0f172a",
+    cellFill: "#0f172a",
+    lagnaCell: "#1a1505",
+    cellStroke: "#334155",
+    centerBox: "#0a0f1a",
+    centerStroke: "#1e293b",
+    lagnaAccent: "#fbbf24",
+    houseNum: "#475569",
+    rashiText: "#64748b",
+    lordText: "#334155",
+    degreeText: "#475569",
+    legendText: "#475569",
+    defaultPlanet: "#94a3b8",
+  },
+  light: {
+    bg: "#FFF7EE",
+    cellFill: "#FFF7EE",
+    lagnaCell: "#FFF0D6",
+    cellStroke: "#C4A882",
+    centerBox: "#FFF3E6",
+    centerStroke: "#DBBF9C",
+    lagnaAccent: "#A86010",
+    houseNum: "#B89468",
+    rashiText: "#96744A",
+    lordText: "#B89468",
+    degreeText: "#96744A",
+    legendText: "#96744A",
+    defaultPlanet: "#5C4020",
+  },
+};
+
 const SIZE = 400;
 const CELL = SIZE / 4;
 
 export function SouthIndianChart({ lagna, planets, houses }: Props) {
+  const { theme } = useTheme();
+  const c = theme === "light" ? CHART_COLORS.light : CHART_COLORS.dark;
   // Find lagna rashi number
   const lagnaRashiNum = RASHI_NAMES.indexOf(lagna) + 1;
 
@@ -88,13 +125,13 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
       style={{ fontFamily: "inherit" }}
     >
       {/* Background */}
-      <rect width={SIZE} height={SIZE} fill="#0f172a" rx="8" />
+      <rect width={SIZE} height={SIZE} fill={c.bg} rx="8" />
 
       {/* Center label */}
-      <text x={SIZE / 2} y={SIZE / 2 - 8} textAnchor="middle" fontSize="12" fill="#475569" fontWeight="600">
+      <text x={SIZE / 2} y={SIZE / 2 - 8} textAnchor="middle" fontSize="12" fill={c.rashiText} fontWeight="600">
         {lagna}
       </text>
-      <text x={SIZE / 2} y={SIZE / 2 + 8} textAnchor="middle" fontSize="10" fill="#334155">
+      <text x={SIZE / 2} y={SIZE / 2 + 8} textAnchor="middle" fontSize="10" fill={c.lordText}>
         Lagna
       </text>
 
@@ -118,8 +155,8 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
               y={y + 0.5}
               width={CELL - 1}
               height={CELL - 1}
-              fill={isLagna ? "#1a1505" : "#0f172a"}
-              stroke="#334155"
+              fill={isLagna ? c.lagnaCell : c.cellFill}
+              stroke={c.cellStroke}
               strokeWidth="1"
             />
 
@@ -128,7 +165,7 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
               <line
                 x1={x + 2} y1={y + 2}
                 x2={x + 14} y2={y + 2}
-                stroke="#fbbf24"
+                stroke={c.lagnaAccent}
                 strokeWidth="1.5"
               />
             )}
@@ -136,13 +173,13 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
               <line
                 x1={x + 2} y1={y + 2}
                 x2={x + 2} y2={y + 14}
-                stroke="#fbbf24"
+                stroke={c.lagnaAccent}
                 strokeWidth="1.5"
               />
             )}
 
             {/* House number */}
-            <text x={x + 6} y={y + 13} fontSize="9" fill="#475569">
+            <text x={x + 6} y={y + 13} fontSize="9" fill={c.houseNum}>
               {houseNum}
             </text>
 
@@ -152,7 +189,7 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
               y={y + 18}
               textAnchor="middle"
               fontSize="9"
-              fill={isLagna ? "#fbbf24" : "#64748b"}
+              fill={isLagna ? c.lagnaAccent : c.rashiText}
               fontWeight={isLagna ? "700" : "400"}
             >
               {RASHI_SHORT[rashiNum - 1]}
@@ -164,7 +201,7 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
               y={y + 28}
               textAnchor="middle"
               fontSize="8"
-              fill="#334155"
+              fill={c.lordText}
             >
               {houseInfo?.lord ? `(${PLANET_ABBR[houseInfo.lord] ?? houseInfo.lord.slice(0,2)})` : ""}
             </text>
@@ -172,7 +209,7 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
             {/* Planets */}
             {occupants.map((p, idx) => {
               const yPos = y + 40 + idx * 12;
-              const color = p.dignity ? DIGNITY_COLOR[p.dignity] : "#94a3b8";
+              const color = p.dignity ? DIGNITY_COLOR[p.dignity] : c.defaultPlanet;
               const deg = `${Math.floor(p.degree_in_rashi)}°`;
               return (
                 <g key={p.name}>
@@ -192,7 +229,7 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
                     y={yPos}
                     textAnchor="start"
                     fontSize="8"
-                    fill="#475569"
+                    fill={c.degreeText}
                   >
                     {deg}
                   </text>
@@ -209,18 +246,18 @@ export function SouthIndianChart({ lagna, planets, houses }: Props) {
         y={CELL}
         width={CELL * 2}
         height={CELL * 2}
-        fill="#0a0f1a"
-        stroke="#1e293b"
+        fill={c.centerBox}
+        stroke={c.centerStroke}
         strokeWidth="1"
       />
 
       {/* Legend */}
       <g transform={`translate(8,${SIZE - 42})`}>
-        <text x="0" y="-2" fontSize="8" fill="#475569">Dignity: </text>
-        {Object.entries(DIGNITY_COLOR).map(([d, c], i) => (
+        <text x="0" y="-2" fontSize="8" fill={c.legendText}>Dignity: </text>
+        {Object.entries(DIGNITY_COLOR).map(([d, clr], i) => (
           <g key={d} transform={`translate(${i * 90 + 40},0)`}>
-            <circle cx="4" cy="-4" r="3.5" fill={c} />
-            <text x="10" y="-1" fontSize="8" fill="#475569">
+            <circle cx="4" cy="-4" r="3.5" fill={clr} />
+            <text x="10" y="-1" fontSize="8" fill={c.legendText}>
               {d.charAt(0).toUpperCase() + d.slice(1)}
             </text>
           </g>

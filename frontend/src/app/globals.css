@@ -99,3 +99,10 @@ html[data-theme="light"] nav.backdrop-blur {
 
 /* Light mode: QR code container stays white */
 html[data-theme="light"] .bg-white { background-color: #FFFFFF !important; }
+
+/* Light mode: hover:text-white on cream bg is invisible — remap to dark brown */
+html[data-theme="light"] .hover\:text-white:hover { color: #2D1B0E !important; }
+html[data-theme="light"] .hover\:text-slate-200:hover { color: #2D1B0E !important; }
+
+/* Light mode: amber-400 links should darken on hover, not whiten */
+html[data-theme="light"] .hover\:text-amber-300:hover { color: #8D4E08 !important; }

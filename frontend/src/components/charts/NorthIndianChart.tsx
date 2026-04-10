@@ -18,6 +18,7 @@
  */
 
 import React from "react";
+import { useTheme } from "next-themes";
 import { PlanetPosition, HouseInfo } from "@/lib/api";
 
 interface Props {
@@ -37,6 +38,34 @@ const DIGNITY_COLOR: Record<string, string> = {
   moolatrikona: "#a78bfa",
   own:          "#34d399",
   debilitated:  "#f87171",
+};
+
+// Theme-aware chart colors
+const CHART_COLORS = {
+  dark: {
+    bg: "#0f172a",
+    stroke: "#475569",
+    houseNum: "#334155",
+    rashiText: "#475569",
+    lagnaAccent: "#fbbf24",
+    lagnaFill: "#fbbf2408",
+    lordText: "#1e3a5f",
+    centerText: "#334155",
+    centerSub: "#1e3a5f",
+    defaultPlanet: "#94a3b8",
+  },
+  light: {
+    bg: "#FFF7EE",
+    stroke: "#C4A882",
+    houseNum: "#DBBF9C",
+    rashiText: "#96744A",
+    lagnaAccent: "#A86010",
+    lagnaFill: "#A8601012",
+    lordText: "#B89468",
+    centerText: "#7A5A32",
+    centerSub: "#96744A",
+    defaultPlanet: "#5C4020",
+  },
 };
 
 const SIZE = 420;
@@ -119,6 +148,8 @@ function spread([cx, cy]: [number, number]) {
 }
 
 export function NorthIndianChart({ lagna, planets, houses }: Props) {
+  const { theme } = useTheme();
+  const c = theme === "light" ? CHART_COLORS.light : CHART_COLORS.dark;
   const { polygons, lines } = buildHousePolygons(SIZE, PAD);
 
   // Map house number → planets
@@ -136,7 +167,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
         style={{ fontFamily: "inherit" }}
       >
         {/* Background */}
-        <rect width={SIZE} height={SIZE} fill="#0f172a" rx="8" />
+        <rect width={SIZE} height={SIZE} fill={c.bg} rx="8" />
 
         {/* Outer square */}
         <rect
@@ -145,18 +176,18 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
           width={lines.outerSquare.w}
           height={lines.outerSquare.h}
           fill="none"
-          stroke="#475569"
+          stroke={c.stroke}
           strokeWidth="1.5"
         />
 
         {/* Diagonals (corner to corner) */}
         {lines.diagonals.map((d, i) => (
-          <line key={`diag-${i}`} x1={d.x1} y1={d.y1} x2={d.x2} y2={d.y2} stroke="#475569" strokeWidth="1" />
+          <line key={`diag-${i}`} x1={d.x1} y1={d.y1} x2={d.x2} y2={d.y2} stroke={c.stroke} strokeWidth="1" />
         ))}
 
         {/* Diamond (midpoint to midpoint) */}
         {lines.diamond.map((d, i) => (
-          <line key={`diam-${i}`} x1={d.x1} y1={d.y1} x2={d.x2} y2={d.y2} stroke="#475569" strokeWidth="1" />
+          <line key={`diam-${i}`} x1={d.x1} y1={d.y1} x2={d.x2} y2={d.y2} stroke={c.stroke} strokeWidth="1" />
         ))}
 
         {/* House fills (invisible by default, lagna gets highlight) */}
@@ -164,7 +195,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
           <polygon
             key={`fill-${house}`}
             points={points}
-            fill={house === 1 ? "#fbbf2408" : "transparent"}
+            fill={house === 1 ? c.lagnaFill : "transparent"}
             stroke="none"
           />
         ))}
@@ -190,7 +221,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
                 x={cx} y={cy + topOffset}
                 textAnchor="middle"
                 fontSize={houseNumSize}
-                fill="#334155"
+                fill={c.houseNum}
               >
                 {house}
               </text>
@@ -200,7 +231,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
                 x={cx} y={cy + topOffset + 11}
                 textAnchor="middle"
                 fontSize={rashiSize}
-                fill={isLagna ? "#fbbf24" : "#475569"}
+                fill={isLagna ? c.lagnaAccent : c.rashiText}
                 fontWeight={isLagna ? "700" : "400"}
               >
                 {houseInfo?.rashi.slice(0, 3) ?? ""}
@@ -211,7 +242,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
                 x={cx} y={cy + topOffset + 22}
                 textAnchor="middle"
                 fontSize="7"
-                fill="#1e3a5f"
+                fill={c.lordText}
               >
                 {houseInfo?.lord ? `(${PLANET_ABBR[houseInfo.lord] ?? houseInfo.lord.slice(0, 2)})` : ""}
               </text>
@@ -219,7 +250,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
               {/* Planets */}
               {occupants.map((p, idx) => {
                 const yPos = cy + topOffset + 34 + idx * 12;
-                const color = p.dignity ? DIGNITY_COLOR[p.dignity] : "#94a3b8";
+                const color = p.dignity ? DIGNITY_COLOR[p.dignity] : c.defaultPlanet;
                 return (
                   <text
                     key={p.name}
@@ -243,7 +274,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
           x={SIZE / 2} y={SIZE / 2 - 4}
           textAnchor="middle"
           fontSize="10"
-          fill="#334155"
+          fill={c.centerText}
           fontWeight="600"
         >
           {lagna}
@@ -252,7 +283,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
           x={SIZE / 2} y={SIZE / 2 + 8}
           textAnchor="middle"
           fontSize="8"
-          fill="#1e3a5f"
+          fill={c.centerSub}
         >
           Lagna
         </text>
