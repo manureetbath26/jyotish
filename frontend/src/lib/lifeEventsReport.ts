@@ -492,7 +492,8 @@ function buildDashaEventPredictions(
   dignity: string | null,
   chart: ChartResponse,
   allLordships: Record<string, number[]>,
-  lagna: string
+  lagna: string,
+  dashaStartDate?: string
 ): EventPrediction[] {
   const predictions: EventPrediction[] = [];
   const isYogakaraka = planet === getYogakaraka(lagna);
@@ -502,7 +503,14 @@ function buildDashaEventPredictions(
   // For Rahu/Ketu, use dispositor lordships
   const effectiveLordships = getEffectiveLordships(planet, lordships, chart, allLordships);
 
+  // Age-based filtering
+  const birthYr = getBirthYear(chart);
+  const dashaStartAge = dashaStartDate ? getAgeAtDate(birthYr, dashaStartDate) : 0;
+
   for (const cat of EVENT_CATEGORIES_DEF) {
+    // Skip children/progeny predictions after childbearing age
+    if (cat.id === "children" && dashaStartAge > MAX_CHILDBEARING_AGE) continue;
+
     // Check if this dasha lord is relevant to this category
     const lordsRelevantHouse = effectiveLordships.some((h) => cat.relevantHouses.includes(h));
     const sitsInRelevantHouse = cat.relevantHouses.includes(house);
@@ -758,6 +766,9 @@ function buildUpcomingHighlights(
   const highlights: LifeHighlight[] = [];
   const now = new Date();
   const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+  const birthYr = getBirthYear(chart);
+  const maxYear = birthYr + MAX_AGE;
+  const maxChildYear = birthYr + MAX_CHILDBEARING_AGE;
 
   for (const dp of dashaPredictions) {
     const dpEnd = new Date(dp.endDate);
@@ -766,6 +777,10 @@ function buildUpcomingHighlights(
     for (const ad of dp.antardashaHighlights) {
       const adEnd = new Date(ad.endDate);
       if (adEnd < fiveYearsAgo) continue;
+
+      const adStartYear = new Date(ad.startDate).getFullYear();
+      // Skip antardasha periods beyond age 100
+      if (adStartYear > maxYear) continue;
 
       const adLordships = lordshipsMap[ad.planet] || [];
       const adPlanet = getPlanet(chart, ad.planet);
@@ -786,8 +801,9 @@ function buildUpcomingHighlights(
         });
       }
 
-      // Children: 5th lord activation
-      if ((mdLordships.includes(5) || adLordships.includes(5)) &&
+      // Children: 5th lord activation (only before childbearing age)
+      if (adStartYear <= maxChildYear &&
+          (mdLordships.includes(5) || adLordships.includes(5)) &&
           (ad.planet === "Jupiter" || dp.planet === "Jupiter" || mdLordships.includes(2) || adLordships.includes(2))) {
         highlights.push({
           event: "Children / Progeny",
@@ -914,10 +930,27 @@ function buildUpcomingHighlights(
 
 // ─── Main Export ────────────────────────────────────────────────────────────
 
+// Age cutoff helpers
+const MAX_AGE = 100;
+const MAX_CHILDBEARING_AGE = 50;
+
+function getBirthYear(chart: ChartResponse): number {
+  // chart.date is typically "YYYY-MM-DD" or "DD-MM-YYYY" or similar
+  const parts = chart.date.match(/(\d{4})/);
+  if (parts) return parseInt(parts[1], 10);
+  return new Date().getFullYear() - 30; // fallback
+}
+
+function getAgeAtDate(birthYear: number, dateStr: string): number {
+  const year = new Date(dateStr).getFullYear();
+  return year - birthYear;
+}
+
 export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport {
   const lagna = chart.lagna;
   const lordshipsMap = getLordships(lagna);
   const yogakaraka = getYogakaraka(lagna);
+  const birthYear = getBirthYear(chart);
 
   // ── Chart Summary
   const lagnaLord = RASHI_LORDS[lagna] || "Sun";
@@ -1020,11 +1053,15 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     return { ...cat, overallOutlook: outlook, summary };
   });
 
-  // ── Dasha Predictions
+  // ── Dasha Predictions (clipped at age 100)
   const dashaPredictions: DashaPrediction[] = [];
   const dashaSequence = chart.dasha_sequence || [];
+  const maxYear = birthYear + MAX_AGE;
 
   for (const dasha of dashaSequence) {
+    // Skip dashas that start entirely after age 100
+    const dashaStartYear = new Date(dasha.start_date).getFullYear();
+    if (dashaStartYear > maxYear) continue;
     const dp = getPlanet(chart, dasha.planet);
     const dLordships = lordshipsMap[dasha.planet] || [];
     const dHouse = dp?.house || 1;
@@ -1041,11 +1078,15 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     if (houseAreas && !themes.includes(houseAreas[0])) themes.push(houseAreas[0]);
 
     const eventPredictions = buildDashaEventPredictions(
-      dasha.planet, dLordships, dHouse, dDignity, chart, lordshipsMap, lagna
+      dasha.planet, dLordships, dHouse, dDignity, chart, lordshipsMap, lagna, dasha.start_date
     );
 
+    // Filter antardashas to age 100 cutoff
+    const filteredAntardashas = (dasha.antardashas || []).filter(
+      (ad) => new Date(ad.start_date).getFullYear() <= maxYear
+    );
     const antardashaHighlights = buildAntardashaHighlights(
-      dasha.planet, dasha.antardashas || [], chart, lordshipsMap, lagna
+      dasha.planet, filteredAntardashas, chart, lordshipsMap, lagna
     );
 
     dashaPredictions.push({
