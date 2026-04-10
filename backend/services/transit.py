@@ -285,6 +285,20 @@ PERIOD_GUIDANCE: Dict[str, Dict[str, List[str]]] = {
             "Focus on your own inner stability as family dynamics settle.",
         ],
     },
+    "self_confidence": {
+        "favorable": [
+            "Take initiative on projects and decisions you've been postponing.",
+            "This is an excellent time to assert yourself and step into leadership.",
+            "Public speaking, presentations, and self-promotion are well-favoured.",
+            "Trust your instincts — your judgement is sharp during this period.",
+        ],
+        "unfavorable": [
+            "Avoid making major decisions driven by ego or insecurity.",
+            "Practice self-compassion rather than harsh self-criticism.",
+            "This is a period for inner work — journaling, therapy, or meditation help.",
+            "Seek trusted feedback rather than relying solely on your own perspective.",
+        ],
+    },
 }
 
 # Dasha lords effectiveness (some planets are more powerful in certain areas)
@@ -359,7 +373,8 @@ def build_period_interpretation(
 
     life_area_labels = {
         "love_life": "love life", "health": "health", "career": "career",
-        "finances": "finances", "family": "family relationships"
+        "finances": "finances", "family": "family relationships",
+        "self_confidence": "self-confidence and personal power"
     }
     area_label = life_area_labels.get(life_area, life_area)
 
@@ -641,6 +656,10 @@ def calculate_transit_periods(
     """
     timeline = {area: [] for area in LIFE_AREA_RULES.keys()}
 
+    # Get natal lagna rashi number (0-indexed) for computing transit houses
+    natal_lagna_degree = natal_chart.get("lagna_degree", 0)
+    natal_lagna_rashi_num = int(natal_lagna_degree / 30)
+
     # Build natal planet position map
     natal_positions = {}
     for planet in natal_chart["planets"]:
@@ -679,40 +698,40 @@ def calculate_transit_periods(
                     continue
 
                 natal_lon = natal_positions[planet_name]["longitude"]
-                natal_house = natal_positions[planet_name]["house"]
 
                 conjoining = is_conjunction(transit_lon, natal_lon)
-                in_favorable_house = natal_house in rules["houses"]
-                in_unfavorable_house = natal_house in rules.get("houses_unfav", [])
 
-                # Determine transit rashi
+                # Determine transit house from natal lagna (where the planet is NOW)
                 transit_rashi_num = int(transit_lon / 30)
                 transit_rashi = RASHI_NAMES[transit_rashi_num % 12]
-                transit_house = ((transit_rashi_num - int(natal_positions.get("Sun", natal_positions.get(list(natal_positions.keys())[0]))["longitude"] / 30)) % 12) + 1
+                transit_house = ((transit_rashi_num - natal_lagna_rashi_num) % 12) + 1
+
+                in_favorable_house = transit_house in rules["houses"]
+                in_unfavorable_house = transit_house in rules.get("houses_unfav", [])
 
                 if (conjoining or in_favorable_house) and planet_name in rules["favorable_planets"]:
                     favorable_count += 1
                     active_planets.append((planet_name, "favorable"))
-                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {natal_house}"
+                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {transit_house}"
                     transit_details_day.append({
                         "planet": planet_name,
                         "influence": "favorable",
                         "transit_rashi": transit_rashi,
                         "transit_degree": round(transit_lon % 30, 1),
-                        "natal_house": natal_house,
+                        "transit_house": transit_house,
                         "reason": reason,
                     })
 
                 if (conjoining or in_unfavorable_house) and planet_name in rules["unfavorable_planets"]:
                     unfavorable_count += 1
                     active_planets.append((planet_name, "unfavorable"))
-                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {natal_house}"
+                    reason = f"conjunct natal {planet_name}" if conjoining else f"transiting house {transit_house}"
                     transit_details_day.append({
                         "planet": planet_name,
                         "influence": "unfavorable",
                         "transit_rashi": transit_rashi,
                         "transit_degree": round(transit_lon % 30, 1),
-                        "natal_house": natal_house,
+                        "transit_house": transit_house,
                         "reason": reason,
                     })
 
