@@ -6,6 +6,7 @@ import {
   CHARA_KARAKA_ROLES,
   CHARA_KARAKA_IN_HOUSE,
   NAISARGIKA_KARAKAS,
+  NAISARGIKA_KARAKA_IN_HOUSE,
   KARAKA_PLANET_COLORS,
   KARAKA_PLANET_BG,
   type CharaKarakaRole,
@@ -247,10 +248,10 @@ export function KarakaTab({ planets, lagna }: Props) {
       </Section>
 
       {/* ── Naisargika Karakas (Natural) ── */}
-      <Section title="Naisargika Karakas (Natural Significators)">
+      <Section title="Naisargika Karakas (Natural Significators)" defaultOpen>
         <p className="text-xs text-slate-500 mb-3">
-          Every planet is the permanent karaka (significator) of certain people, body parts, and life themes — regardless of chart.
-          Their condition in <em>your</em> natal chart determines how well these significations manifest.
+          Each planet permanently signifies certain people, body parts, and life themes.
+          Below, each planet&apos;s karaka role is interpreted <em>through</em> its actual house placement in your chart — showing what those significations concretely mean for you.
         </p>
 
         <div className="space-y-2">
@@ -260,6 +261,7 @@ export function KarakaTab({ planets, lagna }: Props) {
             const color = KARAKA_PLANET_COLORS[nk.planet] || "text-slate-200";
             const bg = KARAKA_PLANET_BG[nk.planet] || "bg-slate-800/30 border-slate-700";
             const dignity = natalP?.dignity ? DIGNITY_BADGE[natalP.dignity] : null;
+            const houseInterp = natalP ? NAISARGIKA_KARAKA_IN_HOUSE[nk.planet]?.[natalP.house] : null;
 
             // Find this planet's chara karaka role, if any
             const charaRole = charaKarakas.find(ck => ck.planet === nk.planet);
@@ -297,73 +299,87 @@ export function KarakaTab({ planets, lagna }: Props) {
 
                 {isExpanded && (
                   <div className="px-4 pb-4 space-y-3 border-t border-slate-800/60">
-                    {/* Significations */}
-                    <div className="pt-3">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Natural Significations</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {nk.significations.map(s => (
-                          <span
-                            key={s}
-                            className={`text-xs px-2 py-0.5 rounded-full border ${bg}`}
-                          >
-                            {s}
-                          </span>
-                        ))}
-                      </div>
+                    {/* Signification tags */}
+                    <div className="pt-3 flex flex-wrap gap-1.5">
+                      {nk.significations.map(s => (
+                        <span
+                          key={s}
+                          className={`text-xs px-2 py-0.5 rounded-full border ${bg}`}
+                        >
+                          {s}
+                        </span>
+                      ))}
                     </div>
 
-                    {/* Overview */}
-                    <p className="text-sm text-slate-300 leading-relaxed">{nk.overview}</p>
-
-                    {/* Chart-specific context */}
-                    {natalP && (
-                      <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-amber-400 mb-1">
-                          In Your Chart
+                    {/* ── Primary: Integrated karaka-in-house interpretation ── */}
+                    {natalP && houseInterp && (
+                      <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-4">
+                        <p className="text-xs font-semibold text-amber-400 mb-1.5">
+                          {nk.planet} as Karaka of{" "}
+                          {nk.significations.slice(0, 3).join(", ")} → House {natalP.house} ({natalP.rashi}
+                          {natalP.dignity && <>, <span className="capitalize">{natalP.dignity}</span></>}
+                          {natalP.is_retrograde && <>, retrograde</>})
                         </p>
-                        <p className="text-sm text-slate-300 leading-relaxed">
-                          <span className={`font-semibold ${color}`}>{nk.planet}</span>{" "}
-                          is placed in <span className="text-amber-400 font-semibold">House {natalP.house}</span>{" "}
-                          ({natalP.rashi}
-                          {natalP.dignity && <>, <span className="capitalize text-amber-400">{natalP.dignity}</span></>}
-                          {natalP.is_retrograde && <>, <span className="text-amber-400">retrograde</span></>}
-                          ).{" "}
-                          {natalP.lord_of_houses.length > 0 && (
-                            <>
-                              It rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
-                              <span className="font-semibold text-amber-400">{natalP.lord_of_houses.join(" & ")}</span>.{" "}
-                            </>
-                          )}
-                          {charaRole && (
-                            <>This planet is also your <span className="text-amber-400 font-semibold">{charaRole.name}</span> ({charaRole.meaning}).</>
-                          )}
+                        <p className="text-sm text-slate-300 leading-relaxed">{houseInterp}</p>
+
+                        {/* Lordship context — what houses this planet rules adds another layer */}
+                        {natalP.lord_of_houses.length > 0 && (
+                          <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                            Additionally, {nk.planet} rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
+                            <span className="font-semibold text-amber-400">{natalP.lord_of_houses.join(" & ")}</span>{" "}
+                            in your chart — connecting its karaka significations ({nk.significations.slice(0, 2).join(", ").toLowerCase()}) with the themes of those houses.
+                          </p>
+                        )}
+
+                        {/* Chara Karaka cross-reference */}
+                        {charaRole && (
+                          <p className="text-xs text-slate-400 mt-2 leading-relaxed border-t border-slate-700/50 pt-2">
+                            {nk.planet} is also your <span className="text-amber-400 font-semibold">{charaRole.name}</span> ({charaRole.meaning}) — doubling its importance. Its natural significations and its Jaimini role both express through House {natalP.house}.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Dignity-specific impact on significations */}
+                    {dignity && (
+                      <div className={`border rounded-lg p-3 ${dignity.bg}`}>
+                        <p className={`text-xs font-semibold ${dignity.color} mb-1`}>
+                          {nk.planet} is {dignity.label}
+                        </p>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {dignity.label === "Exalted" || dignity.label === "Moolatrikona" || dignity.label === "Own Sign"
+                            ? `This strengthens all of ${nk.planet}'s karaka significations — ${nk.significations.slice(0, 3).join(", ").toLowerCase()} — allowing them to manifest powerfully and positively in your life.`
+                            : `This weakens ${nk.planet}'s ability to deliver its karaka significations — ${nk.significations.slice(0, 3).join(", ").toLowerCase()} — requiring conscious effort and possible remedial measures to support these life areas.`}
                         </p>
                       </div>
                     )}
 
-                    {/* Strong / Weak outcomes */}
+                    {/* Retrograde impact on karaka significations */}
+                    {natalP?.is_retrograde && (
+                      <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-amber-400 mb-1">
+                          {nk.planet} Retrograde as Karaka
+                        </p>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Retrograde motion turns {nk.planet}&apos;s karaka significations inward. The themes of{" "}
+                          {nk.significations.slice(0, 3).join(", ").toLowerCase()} operate on a deeper, more karmic level.
+                          Results related to these significations may be delayed, non-obvious, or require inner work before external manifestation.
+                          Past-life connections to {nk.planet}&apos;s themes are active.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* General strong/weak — collapsed into a compact row */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="bg-green-950/30 border border-green-900/40 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-green-400 mb-1">Strong Placement</p>
+                        <p className="text-xs font-semibold text-green-400 mb-1">When Strong</p>
                         <p className="text-xs text-slate-300 leading-relaxed">{nk.strongResult}</p>
                       </div>
                       <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-red-400 mb-1">Weak Placement</p>
+                        <p className="text-xs font-semibold text-red-400 mb-1">When Weak</p>
                         <p className="text-xs text-slate-300 leading-relaxed">{nk.weakResult}</p>
                       </div>
                     </div>
-
-                    {/* Dignity assessment if applicable */}
-                    {dignity && (
-                      <div className={`border rounded-lg p-3 ${dignity.bg}`}>
-                        <p className={`text-xs font-semibold ${dignity.color}`}>
-                          {nk.planet} is {dignity.label} in your chart
-                          {dignity.label === "Exalted" || dignity.label === "Moolatrikona" || dignity.label === "Own Sign"
-                            ? " — its natural significations are well-supported. The people and themes it governs bring positive experiences in your life."
-                            : " — its significations may require extra effort or face challenges. Remedial practices and awareness can help strengthen these life areas."}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
