@@ -505,6 +505,9 @@ function buildDashaEventPredictions(
 
   // For Rahu/Ketu, use dispositor lordships
   const effectiveLordships = getEffectiveLordships(planet, lordships, chart, allLordships);
+  const isRahuKetu = planet === "Rahu" || planet === "Ketu";
+  const dispositorName = isRahuKetu ? RASHI_LORDS[getPlanet(chart, planet)?.rashi || ""] : null;
+  const lordLabel = isRahuKetu && dispositorName ? `through ${dispositorName}` : "as lord of";
 
   // Age-based filtering
   const birthYr = getBirthYear(chart);
@@ -535,16 +538,18 @@ function buildDashaEventPredictions(
     let description = "";
     if (cat.type === "positive") {
       if (isStrong || isYogakaraka) {
-        description = `${planet} as lord of ${houseNames} in ${getPlanet(chart, planet)?.rashi || "its sign"} carries supportive energy for ${cat.name.toLowerCase()}. Being ${dignity || "well-placed"} in house ${house}, this period holds promising potential for positive developments in this area.`;
+        description = `${planet} ${lordLabel} ${houseNames} in ${getPlanet(chart, planet)?.rashi || "its sign"} carries supportive energy for ${cat.name.toLowerCase()}. Being ${dignity || "well-placed"} in house ${house}, this period holds promising potential for positive developments in this area.`;
       } else if (isWeak) {
-        description = `While ${planet} activates themes of ${cat.name.toLowerCase()} through its lordship of ${houseNames}, its ${dignity} placement suggests results may come with some delays or require extra effort. Patience and persistence during this period can still yield meaningful outcomes.`;
+        description = `While ${planet} activates themes of ${cat.name.toLowerCase()} ${lordLabel} ${houseNames}, its ${dignity} placement suggests results may come with some delays or require extra effort. Patience and persistence during this period can still yield meaningful outcomes.`;
       } else {
-        description = `${planet}'s influence on ${cat.name.toLowerCase()} comes through its connection to houses ${lordships.join(", ")}. Moderate indicators suggest possibilities that may unfold gradually. Favorable antardasha sub-periods can enhance the outcomes.`;
+        description = `${planet}'s influence on ${cat.name.toLowerCase()} comes through its connection to ${houseNames}. Moderate indicators suggest possibilities that may unfold gradually. Favorable antardasha sub-periods can enhance the outcomes.`;
       }
     } else {
       // Negative category
       if (lordsRelevantHouse && !isStrong) {
-        description = `${planet}'s lordship of house(s) ${lordships.filter((h) => cat.relevantHouses.includes(h)).join(", ")} activates themes related to ${cat.name.toLowerCase()} during this period. This is a time for mindful awareness rather than worry \u2014 being proactive about ${cat.name.toLowerCase().replace("concerns", "care").replace("challenges", "harmony")} can help navigate this energy constructively.`;
+        const activatedHouses = effectiveLordships.filter((h) => cat.relevantHouses.includes(h)).join(", ");
+        const viaNote = isRahuKetu && dispositorName ? ` (via ${dispositorName})` : "";
+        description = `${planet}${viaNote} activates house(s) ${activatedHouses}, bringing themes related to ${cat.name.toLowerCase()} during this period. This is a time for mindful awareness rather than worry \u2014 being proactive about ${cat.name.toLowerCase().replace("concerns", "care").replace("challenges", "harmony")} can help navigate this energy constructively.`;
       } else if (sitsInRelevantHouse) {
         description = `${planet}'s placement in house ${house} touches on ${cat.name.toLowerCase()} themes. The indicators suggest exercising gentle caution in this area. Remember, awareness itself is a powerful tool for navigating challenging periods.`;
       } else {
@@ -922,6 +927,12 @@ function buildUpcomingHighlights(
       // Combined lordship set for this MD-AD pair
       const combinedHouses = new Set([...mdLordships, ...adLordships]);
 
+      // For Rahu/Ketu, get dispositor name for reasoning text
+      const mdDispositor = (dp.planet === "Rahu" || dp.planet === "Ketu")
+        ? RASHI_LORDS[mdPlanet?.rashi || ""] || null : null;
+      const adDispositor = (ad.planet === "Rahu" || ad.planet === "Ketu")
+        ? RASHI_LORDS[adPlanetData?.rashi || ""] || null : null;
+
       for (const evt of HIGHLIGHT_EVENTS) {
         // Age cutoff
         if (evt.maxAge && adAge > evt.maxAge) continue;
@@ -938,11 +949,15 @@ function buildUpcomingHighlights(
         const adRelevantHouses = adLordships.filter(h => evt.relevantHouses.includes(h));
         for (const h of mdRelevantHouses) {
           score += 2;
-          reasons.push(`${dp.planet} lords the ${ordinal(h)} house`);
+          reasons.push(mdDispositor
+            ? `${dp.planet} (via ${mdDispositor}) activates the ${ordinal(h)} house`
+            : `${dp.planet} lords the ${ordinal(h)} house`);
         }
         for (const h of adRelevantHouses) {
           score += 2;
-          reasons.push(`${ad.planet} lords the ${ordinal(h)} house`);
+          reasons.push(adDispositor
+            ? `${ad.planet} (via ${adDispositor}) activates the ${ordinal(h)} house`
+            : `${ad.planet} lords the ${ordinal(h)} house`);
         }
 
         // 2. Occupancy: +1 if MD or AD planet sits in a relevant house
@@ -1009,11 +1024,13 @@ function buildUpcomingHighlights(
         else if (score >= evt.threshold + 2) likelihood = "likely";
 
         // ── Build rich reasoning (like the manual demo analysis)
+        const mdHouseParts = mdLordships.map(h => ordinal(h)).join("+");
         const mdHouseStr = mdLordships.length > 0
-          ? `${ordinal(mdLordships[0])}${mdLordships.length > 1 ? "+" + ordinal(mdLordships[1]) : ""} lord`
+          ? (mdDispositor ? `via ${mdDispositor}, ${mdHouseParts} lord` : `${mdHouseParts} lord`)
           : `placed in house ${mdHouse}`;
+        const adHouseParts = adLordships.map(h => ordinal(h)).join("+");
         const adHouseStr = adLordships.length > 0
-          ? `${ordinal(adLordships[0])}${adLordships.length > 1 ? "+" + ordinal(adLordships[1]) : ""} lord`
+          ? (adDispositor ? `via ${adDispositor}, ${adHouseParts} lord` : `${adHouseParts} lord`)
           : `placed in house ${adHouse}`;
 
         let reasoning = `${dp.planet} (${mdHouseStr}) with ${ad.planet} (${adHouseStr})`;
@@ -1303,13 +1320,16 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     if (dashaStartYear > maxYear) continue;
     const dp = getPlanet(chart, dasha.planet);
     const dLordships = lordshipsMap[dasha.planet] || [];
+    const dEffective = getEffectiveLordships(dasha.planet, dLordships, chart, lordshipsMap);
     const dHouse = dp?.house || 1;
     const dDignity = dp?.dignity || null;
+    const dIsRahuKetu = dasha.planet === "Rahu" || dasha.planet === "Ketu";
+    const dDispositor = dIsRahuKetu ? RASHI_LORDS[dp?.rashi || ""] : null;
 
     const overallNature = dashaOverallNature(dasha.planet, dLordships, dDignity, dHouse, lagna, chart, lordshipsMap);
 
     const themes: string[] = [];
-    for (const h of dLordships) {
+    for (const h of dEffective) {
       const areas = HOUSE_LIFE_AREAS[h];
       if (areas) themes.push(areas[0]);
     }
@@ -1333,7 +1353,9 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
       startDate: dasha.start_date,
       endDate: dasha.end_date,
       isCurrent: dasha.planet === currentDasha?.planet,
-      planetRole: `Lord of house(s) ${dLordships.join(" & ")}`,
+      planetRole: dIsRahuKetu && dDispositor
+        ? `Via ${dDispositor} — activates house(s) ${dEffective.join(" & ")}`
+        : `Lord of house(s) ${dEffective.join(" & ")}`,
       housePosition: `House ${dHouse} (${dp?.rashi || "?"})`,
       dignity: dDignity,
       overallNature,

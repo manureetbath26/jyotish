@@ -556,8 +556,8 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
         <p className="text-2xl">{"\u{1F33F}"}</p>
         <h2 className="text-xl font-bold text-amber-400">Ayurvedic Wellness Report</h2>
         <p className="text-sm text-slate-400">
-          {name ? `${name} \u00b7 ` : ""}
-          {chart.lagna} Lagna \u00b7 {chart.place.split(",")[0]} \u00b7 {chart.date} {chart.time}
+          {name ? `${name} · ` : ""}
+          {chart.lagna} Lagna · {chart.place.split(",")[0]} · {chart.date} {chart.time}
         </p>
         <p className="text-xs text-slate-600">
           Generated on {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
@@ -627,9 +627,9 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
                 <div>
                   <span className="text-sm font-semibold text-slate-200">{hp.planet}</span>
                   <span className="text-xs text-slate-500 ml-2">
-                    {hp.rashi} \u00b7 House {hp.house}
-                    {hp.dignity ? ` \u00b7 ${hp.dignity}` : ""}
-                    {hp.isRetrograde ? " \u00b7 R" : ""}
+                    {hp.rashi} · House {hp.house}
+                    {hp.dignity ? ` · ${hp.dignity}` : ""}
+                    {hp.isRetrograde ? " · R" : ""}
                   </span>
                 </div>
                 <StrengthBadge strength={hp.strength} />
@@ -648,13 +648,13 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
             <div key={ha.house} className="bg-slate-800/30 rounded-lg p-4 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-200">
-                  House {ha.house} {"\u2014"} {ha.title}
+                  House {ha.house} {"—"} {ha.title}
                 </span>
                 <StrengthBadge strength={ha.lordStrength} />
               </div>
               <p className="text-xs text-slate-500">
-                {ha.rashi} \u00b7 Lord: {ha.lord} in {ha.lordPlacement}
-                {ha.occupants.length > 0 ? ` \u00b7 Occupied by: ${ha.occupants.join(", ")}` : ""}
+                {ha.rashi} · Lord: {ha.lord} in {ha.lordPlacement}
+                {ha.occupants.length > 0 ? ` · Occupied by: ${ha.occupants.join(", ")}` : ""}
               </p>
               <p className="text-xs text-slate-400 leading-relaxed mt-1">{ha.interpretation}</p>
             </div>
@@ -693,7 +693,7 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
                 {report.dietaryRecommendations.foods.filter((f) => f.action === "favor").map((f, i) => (
                   <li key={i} className="text-xs text-slate-400 flex items-start gap-1.5">
                     <span className="text-green-500 mt-0.5">{"\u2713"}</span>
-                    <span>{f.food}{f.reasoning ? ` \u2014 ${f.reasoning}` : ""}</span>
+                    <span>{f.food}{f.reasoning ? ` — ${f.reasoning}` : ""}</span>
                   </li>
                 ))}
               </ul>
@@ -706,7 +706,7 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
                 {report.dietaryRecommendations.foods.filter((f) => f.action === "avoid").map((f, i) => (
                   <li key={i} className="text-xs text-slate-400 flex items-start gap-1.5">
                     <span className="text-red-500 mt-0.5">{"\u2717"}</span>
-                    <span>{f.food}{f.reasoning ? ` \u2014 ${f.reasoning}` : ""}</span>
+                    <span>{f.food}{f.reasoning ? ` — ${f.reasoning}` : ""}</span>
                   </li>
                 ))}
               </ul>
@@ -845,7 +845,7 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
                   {hp.type === "favorable" ? "Favorable" : hp.type === "cautious" ? "Caution" : "Neutral"}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">{hp.startDate} \u2013 {hp.endDate}</p>
+              <p className="text-xs text-slate-500">{hp.startDate} – {hp.endDate}</p>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">{hp.interpretation}</p>
             </div>
           ))}

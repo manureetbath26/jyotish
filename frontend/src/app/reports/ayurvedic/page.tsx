@@ -253,7 +253,7 @@ function AyurvedicReportContent() {
             ["birth", "preview", "payment", "report"].indexOf(s);
           return (
             <div key={s} className="flex items-center gap-1">
-              {i > 0 && <span className="text-slate-700 mx-1">{"\u2014"}</span>}
+              {i > 0 && <span className="text-slate-700 mx-1">{"—"}</span>}
               <span
                 className={`px-2.5 py-1 rounded-full ${
                   isCurrent
@@ -376,8 +376,8 @@ function AyurvedicReportContent() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h2 className="text-lg font-semibold text-amber-400">Report Preview</h2>
             <p className="text-xs text-slate-500">
-              {name ? `${name} \u00b7 ` : ""}
-              {chart.lagna} Lagna \u00b7 {chart.place.split(",")[0]} \u00b7 {chart.date}
+              {name ? `${name} · ` : ""}
+              {chart.lagna} Lagna · {chart.place.split(",")[0]} · {chart.date}
             </p>
 
             {/* Dosha preview */}
@@ -401,7 +401,7 @@ function AyurvedicReportContent() {
                 Primary: <span className="text-slate-200 font-medium">{report.doshaConstitution.primaryDosha}</span>
                 {report.doshaConstitution.secondaryDosha && (
                   <>
-                    {" \u00b7 "}Secondary: <span className="text-slate-200 font-medium">{report.doshaConstitution.secondaryDosha}</span>
+                    {" · "}Secondary: <span className="text-slate-200 font-medium">{report.doshaConstitution.secondaryDosha}</span>
                   </>
                 )}
               </p>
@@ -498,7 +498,7 @@ function AyurvedicReportContent() {
                 onClick={() => setStep("payment")}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                Purchase Report {"\u2014"} {"\u20b9"}{REPORT_PRICE}
+                Purchase Report {"—"} {"₹"}{REPORT_PRICE}
               </button>
             )}
           </div>
@@ -510,7 +510,7 @@ function AyurvedicReportContent() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <h2 className="text-lg font-semibold text-amber-400">Payment</h2>
           <p className="text-sm text-slate-400">
-            Pay {"\u20b9"}{REPORT_PRICE} via UPI to receive your complete Ayurvedic Wellness Report.
+            Pay {"₹"}{REPORT_PRICE} via UPI to receive your complete Ayurvedic Wellness Report.
           </p>
 
           {/* QR Code */}
@@ -582,7 +582,7 @@ function AyurvedicReportContent() {
                 disabled={payLoading}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                {payLoading ? "Processing..." : `Confirm Payment \u2014 \u20b9${REPORT_PRICE}`}
+                {payLoading ? "Processing..." : `Confirm Payment — ₹${REPORT_PRICE}`}
               </button>
             </div>
           </form>

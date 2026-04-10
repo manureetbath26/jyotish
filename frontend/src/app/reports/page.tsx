@@ -27,7 +27,7 @@ const REPORT_TYPES: Array<{
     id: "life_events_prediction",
     title: "Life Events Prediction Report",
     description:
-      "A comprehensive life prediction report based on your Vimshottari Dasha timeline, house lordships, and planetary strengths. Covers marriage, children, career growth, wealth, health, relationships, and more \u2014 with empathetic, nuanced guidance for each life phase.",
+      "A comprehensive life prediction report based on your Vimshottari Dasha timeline, house lordships, and planetary strengths. Covers marriage, children, career growth, wealth, health, relationships, and more — with empathetic, nuanced guidance for each life phase.",
     price: 800,
     currency: "INR",
     href: "/reports/life-events",
@@ -156,8 +156,8 @@ export default function ReportsPage() {
                         {REPORT_TYPES.find((t) => t.id === r.reportType)?.title ?? r.reportType}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {r.birthName ? `${r.birthName} \u00b7 ` : ""}
-                        {r.birthData.date} \u00b7 {r.birthData.place?.split(",")[0]}
+                        {r.birthName ? `${r.birthName} · ` : ""}
+                        {r.birthData.date} · {r.birthData.place?.split(",")[0]}
                       </p>
                       <p className="text-xs text-slate-600 mt-1">
                         {new Date(r.createdAt).toLocaleDateString("en-IN", {
@@ -226,7 +226,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-2xl font-bold text-amber-400">
-                      \u20b9{report.price}
+                      ₹{report.price}
                     </p>
                     <p className="text-xs text-slate-500">one-time</p>
                   </div>
@@ -256,7 +256,7 @@ export default function ReportsPage() {
       {/* Coming soon placeholder */}
       <section className="border border-dashed border-slate-800 rounded-2xl p-8 text-center">
         <p className="text-slate-600 text-sm">
-          More reports coming soon \u2014 Career & Finance Report, Marriage Compatibility Report, Annual Transit Report
+          More reports coming soon — Career & Finance Report, Marriage Compatibility Report, Annual Transit Report
         </p>
       </section>
     </div>

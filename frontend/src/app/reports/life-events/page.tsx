@@ -260,7 +260,7 @@ function LifeEventsReportContent() {
             ["birth", "preview", "payment", "report"].indexOf(s);
           return (
             <div key={s} className="flex items-center gap-1">
-              {i > 0 && <span className="text-slate-700 mx-1">{"\u2014"}</span>}
+              {i > 0 && <span className="text-slate-700 mx-1">{"—"}</span>}
               <span
                 className={`px-2.5 py-1 rounded-full ${
                   isCurrent
@@ -374,8 +374,8 @@ function LifeEventsReportContent() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h2 className="text-lg font-semibold text-amber-400">Report Preview</h2>
             <p className="text-xs text-slate-500">
-              {name ? `${name} \u00b7 ` : ""}
-              {chart.lagna} Lagna \u00b7 {chart.place.split(",")[0]} \u00b7 {chart.date}
+              {name ? `${name} · ` : ""}
+              {chart.lagna} Lagna · {chart.place.split(",")[0]} · {chart.date}
             </p>
 
             {/* Chart summary preview */}
@@ -458,8 +458,8 @@ function LifeEventsReportContent() {
                   <span className="text-xs text-slate-600">Do these resonate?</span>
                 </div>
                 <p className="text-xs text-slate-500">
-                  See if these past planetary indicators match your actual life experience {"\u2014"}
-                  this can give you a sense of how your chart{"\u2019"}s predictions work for you.
+                  See if these past planetary indicators match your actual life experience {"—"}
+                  this can give you a sense of how your chart{"’"}s predictions work for you.
                 </p>
                 <div className="space-y-2">
                   {report.pastHighlights.slice(0, 4).map((h: { event: string; type: string; window: string; dashaContext: string; reasoning: string }, i: number) => (
@@ -566,7 +566,7 @@ function LifeEventsReportContent() {
                 onClick={() => setStep("payment")}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                Purchase Report {"\u2014"} {"\u20b9"}{REPORT_PRICE}
+                Purchase Report {"—"} {"₹"}{REPORT_PRICE}
               </button>
             )}
           </div>
@@ -578,7 +578,7 @@ function LifeEventsReportContent() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <h2 className="text-lg font-semibold text-amber-400">Payment</h2>
           <p className="text-sm text-slate-400">
-            Pay {"\u20b9"}{REPORT_PRICE} via UPI to receive your complete Life Events Prediction Report.
+            Pay {"₹"}{REPORT_PRICE} via UPI to receive your complete Life Events Prediction Report.
           </p>
 
           <div className="flex flex-col items-center gap-3 py-4">
@@ -645,7 +645,7 @@ function LifeEventsReportContent() {
                 disabled={payLoading}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                {payLoading ? "Processing..." : `Confirm Payment \u2014 \u20b9${REPORT_PRICE}`}
+                {payLoading ? "Processing..." : `Confirm Payment — ₹${REPORT_PRICE}`}
               </button>
             </div>
           </form>
