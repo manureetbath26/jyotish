@@ -33,45 +33,47 @@ RASHI_NAMES = [
     "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
 ]
 
-# Life area associations
+# ---------------------------------------------------------------------------
+# Classical Gochar (Transit) Rules — from Phaladeepika & BPHS
+# Each planet has specific houses where it gives favorable results when
+# transiting from the Lagna (Ascendant).
+# ---------------------------------------------------------------------------
+CLASSICAL_FAVORABLE_HOUSES: Dict[str, set] = {
+    "Sun":     {3, 6, 10, 11},
+    "Moon":    {1, 3, 6, 10, 11},
+    "Mars":    {3, 6, 10, 11},
+    "Mercury": {2, 4, 6, 8, 10, 11},
+    "Jupiter": {2, 5, 7, 9, 11},
+    "Venus":   {1, 2, 3, 4, 5, 8, 9, 11, 12},
+    "Saturn":  {3, 6, 11},
+    "Rahu":    {3, 6, 10, 11},
+}
+
+# Karaka (significator) planets per life area.
+# Karakas get a score bonus and are NEVER counted as unfavorable for their area.
 LIFE_AREA_RULES = {
     "love_life": {
-        "favorable_planets": ["Venus", "Moon", "Mercury"],
-        "unfavorable_planets": ["Mars", "Saturn", "Rahu"],
-        "houses": [5, 7, 12],  # 5th romance, 7th partner, 12th intimacy
-        "houses_unfav": [6, 8]  # 6th conflict, 8th complications
+        "karakas": ["Venus", "Moon", "Jupiter"],
     },
     "health": {
-        "favorable_planets": ["Sun", "Moon", "Mercury"],
-        "unfavorable_planets": ["Mars", "Saturn", "Rahu"],
-        "houses": [1, 6],  # 1st body, 6th health issues
-        "houses_unfav": [6, 8, 12]
+        "karakas": ["Sun", "Moon", "Mars"],
     },
     "career": {
-        "favorable_planets": ["Sun", "Jupiter", "Saturn"],
-        "unfavorable_planets": ["Rahu", "Mars"],
-        "houses": [10, 6],  # 10th career, 6th service
-        "houses_unfav": [8, 12]
+        "karakas": ["Sun", "Jupiter", "Saturn", "Mercury"],
     },
     "finances": {
-        "favorable_planets": ["Jupiter", "Venus", "Mercury"],
-        "unfavorable_planets": ["Saturn", "Rahu", "Mars"],
-        "houses": [2, 5, 11],  # 2nd wealth, 5th gains, 11th income
-        "houses_unfav": [8, 12]
+        "karakas": ["Jupiter", "Venus", "Mercury"],
     },
     "family": {
-        "favorable_planets": ["Moon", "Venus", "Jupiter"],
-        "unfavorable_planets": ["Saturn", "Mars", "Rahu"],
-        "houses": [4, 9],  # 4th family, 9th father/religion
-        "houses_unfav": [6, 8, 12]
+        "karakas": ["Moon", "Venus", "Jupiter"],
     },
     "self_confidence": {
-        "favorable_planets": ["Sun", "Mars", "Jupiter"],
-        "unfavorable_planets": ["Saturn", "Rahu", "Moon"],
-        "houses": [1, 5, 9],  # 1st self, 5th intelligence/confidence, 9th fortune/dharma
-        "houses_unfav": [6, 8, 12]
-    }
+        "karakas": ["Sun", "Mars", "Jupiter"],
+    },
 }
+
+# Karaka multiplier: karakas get 1.5x score when favorably placed
+KARAKA_BONUS: float = 1.5
 
 # ---------------------------------------------------------------------------
 # Interpretation tables (Vedic astrology)
@@ -334,7 +336,7 @@ ASPECT_MULTIPLIERS: Dict[str, float] = {
     "opposition": 0.8,
     "trine": 0.6,
     "square": 0.5,
-    "house_transit": 0.3,
+    "house_transit": 0.5,
 }
 
 # Dasha match multiplier applied to total period score
@@ -721,81 +723,101 @@ def calculate_transit_periods(
                 planet_nums[0], current_date, ayanamsha_val
             )
 
+        # Precompute transit houses (same for all life areas)
+        transit_house_map: Dict[str, int] = {}
+        transit_rashi_map: Dict[str, str] = {}
+        for planet_name, transit_lon in transit_positions.items():
+            transit_rashi_num = int(transit_lon / 30)
+            transit_rashi_map[planet_name] = RASHI_NAMES[transit_rashi_num % 12]
+            transit_house_map[planet_name] = ((transit_rashi_num - natal_lagna_rashi_num) % 12) + 1
+
+        # Check for Double Transit (Jupiter + Saturn both classically favorable)
+        jupiter_classically_fav = transit_house_map.get("Jupiter", 0) in CLASSICAL_FAVORABLE_HOUSES.get("Jupiter", set())
+        saturn_classically_fav = transit_house_map.get("Saturn", 0) in CLASSICAL_FAVORABLE_HOUSES.get("Saturn", set())
+        double_transit_active = jupiter_classically_fav and saturn_classically_fav
+
         # Check each life area
         for life_area, rules in LIFE_AREA_RULES.items():
             favorable_score = 0.0
             unfavorable_score = 0.0
             active_planets = []
             transit_details_day = []
+            karakas = set(rules["karakas"])
 
             for planet_name, transit_lon in transit_positions.items():
                 planet_weight = PLANET_WEIGHTS.get(planet_name, 1)
+                transit_house = transit_house_map[planet_name]
+                transit_rashi = transit_rashi_map[planet_name]
+                is_karaka = planet_name in karakas
 
-                # Determine transit house from natal lagna
-                transit_rashi_num = int(transit_lon / 30)
-                transit_rashi = RASHI_NAMES[transit_rashi_num % 12]
-                transit_house = ((transit_rashi_num - natal_lagna_rashi_num) % 12) + 1
+                # --- Classical Gochar favorability ---
+                # This is the PRIMARY determinant: is this planet classically
+                # favorable or unfavorable in this transit house?
+                classically_favorable = transit_house in CLASSICAL_FAVORABLE_HOUSES.get(planet_name, set())
 
-                in_favorable_house = transit_house in rules["houses"]
-                in_unfavorable_house = transit_house in rules.get("houses_unfav", [])
-
-                # --- Cross-planet aspect check ---
-                # Check this transit planet against ALL natal planets
+                # --- Aspect check against natal planets ---
+                # Aspects add strength (higher trigger multiplier) but do NOT
+                # change the favorable/unfavorable classification from Gochar.
                 best_aspect_name = None
                 best_aspect_mult = 0.0
                 best_natal_target = None
 
-                for natal_name, natal_info in natal_positions.items():
-                    natal_lon = natal_info["longitude"]
-                    result = find_best_aspect(transit_lon, natal_lon)
+                for nat_name, nat_info in natal_positions.items():
+                    natal_lon = nat_info["longitude"]
+                    orb = 8.0 if nat_name == planet_name else 5.0
+                    result = find_best_aspect(transit_lon, natal_lon, orb)
                     if result and result[1] > best_aspect_mult:
                         best_aspect_name, best_aspect_mult = result
-                        best_natal_target = natal_name
+                        best_natal_target = nat_name
 
-                # Determine trigger multiplier: aspect > house transit
+                # Trigger multiplier: use the HIGHER of aspect or house transit
+                # This ensures planets in any house always have a meaningful score
                 has_aspect = best_aspect_name is not None
-                trigger_mult = best_aspect_mult if has_aspect else 0.0
-
-                # If no aspect but in a relevant house, use house_transit multiplier
-                if not has_aspect and (in_favorable_house or in_unfavorable_house):
-                    trigger_mult = ASPECT_MULTIPLIERS["house_transit"]
+                trigger_mult = max(
+                    best_aspect_mult if has_aspect else 0.0,
+                    ASPECT_MULTIPLIERS["house_transit"],
+                )
 
                 # Build reason string
                 if has_aspect:
-                    reason = f"transit {planet_name} {best_aspect_name} natal {best_natal_target}"
-                elif in_favorable_house or in_unfavorable_house:
-                    reason = f"transiting house {transit_house}"
+                    reason = f"transit {planet_name} {best_aspect_name} natal {best_natal_target} (house {transit_house})"
                 else:
-                    reason = ""
+                    reason = f"transiting house {transit_house}"
 
-                # Calculate planet score
-                planet_score = planet_weight * trigger_mult
+                # --- Scoring based on Classical Gochar + Karaka principle ---
+                if classically_favorable:
+                    # Planet in classically favorable house: POSITIVE contribution
+                    karaka_mult = KARAKA_BONUS if is_karaka else 1.0
+                    score = planet_weight * trigger_mult * karaka_mult
+                    favorable_score += score
+                    influence = "favorable"
+                elif is_karaka:
+                    # Karaka in classically unfavorable house:
+                    # Karakas NEVER count against their own life area.
+                    # They still activate the area, so count as mildly favorable.
+                    score = planet_weight * trigger_mult * 0.5
+                    favorable_score += score
+                    influence = "favorable"
+                else:
+                    # Non-karaka in classically unfavorable house: NEGATIVE
+                    score = planet_weight * trigger_mult
+                    unfavorable_score += score
+                    influence = "unfavorable"
 
-                # Classify as favorable or unfavorable based on life area rules
-                if planet_score > 0:
-                    if (has_aspect or in_favorable_house) and planet_name in rules["favorable_planets"]:
-                        favorable_score += planet_score
-                        active_planets.append((planet_name, "favorable"))
-                        transit_details_day.append({
-                            "planet": planet_name,
-                            "influence": "favorable",
-                            "transit_rashi": transit_rashi,
-                            "transit_degree": round(transit_lon % 30, 1),
-                            "transit_house": transit_house,
-                            "reason": reason,
-                        })
+                active_planets.append((planet_name, influence))
+                transit_details_day.append({
+                    "planet": planet_name,
+                    "influence": influence,
+                    "transit_rashi": transit_rashi,
+                    "transit_degree": round(transit_lon % 30, 1),
+                    "transit_house": transit_house,
+                    "reason": reason,
+                })
 
-                    if (has_aspect or in_unfavorable_house) and planet_name in rules["unfavorable_planets"]:
-                        unfavorable_score += planet_score
-                        active_planets.append((planet_name, "unfavorable"))
-                        transit_details_day.append({
-                            "planet": planet_name,
-                            "influence": "unfavorable",
-                            "transit_rashi": transit_rashi,
-                            "transit_degree": round(transit_lon % 30, 1),
-                            "transit_house": transit_house,
-                            "reason": reason,
-                        })
+            # Double Transit boost (BPHS): when Jupiter AND Saturn are both
+            # classically favorable, major positive life events are indicated.
+            if double_transit_active and favorable_score > 0:
+                favorable_score *= 1.25
 
             if favorable_score > unfavorable_score:
                 status = "favorable"
