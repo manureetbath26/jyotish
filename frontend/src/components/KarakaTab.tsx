@@ -5,6 +5,7 @@ import { PlanetPosition } from "@/lib/api";
 import {
   CHARA_KARAKA_ROLES,
   CHARA_KARAKA_BY_PLANET,
+  CHARA_KARAKA_LORDSHIP,
   NAISARGIKA_KARAKAS,
   NAISARGIKA_KARAKA_IN_HOUSE,
   KARAKA_PLANET_COLORS,
@@ -195,46 +196,22 @@ export function KarakaTab({ planets, lagna }: Props) {
                   </div>
                 )}
 
-                {/* House placement context — how the above manifests */}
-                <div className="bg-slate-800/30 border border-slate-700/40 rounded-lg p-4">
-                  <p className="text-xs font-semibold text-amber-400 mb-1.5">
-                    Placed in House {ck.house} ({ck.rashi})
-                  </p>
-                  <p className="text-sm text-slate-300 leading-relaxed">
-                    {ck.planet}&apos;s {ck.meaning.toLowerCase()} role expresses through House {ck.house} — the domain of{" "}
-                    {ck.house === 1 ? "self-identity, body, and personality" :
-                     ck.house === 2 ? "wealth, family values, and speech" :
-                     ck.house === 3 ? "courage, siblings, and communication" :
-                     ck.house === 4 ? "home, mother, education, and emotional peace" :
-                     ck.house === 5 ? "creativity, children, romance, and intelligence" :
-                     ck.house === 6 ? "obstacles, enemies, disease, and service" :
-                     ck.house === 7 ? "marriage, partnerships, and public dealings" :
-                     ck.house === 8 ? "transformation, hidden matters, and longevity" :
-                     ck.house === 9 ? "dharma, fortune, higher learning, and the guru" :
-                     ck.house === 10 ? "career, public status, and authority" :
-                     ck.house === 11 ? "gains, income, ambitions, and social networks" :
-                     "spiritual liberation, foreign lands, and expenses"}.{" "}
-                    This means {ck.planet}&apos;s natural qualities of{" "}
-                    {ck.planet === "Sun" ? "authority, leadership, and vitality" :
-                     ck.planet === "Moon" ? "emotion, intuition, and nurturing" :
-                     ck.planet === "Mars" ? "courage, energy, and competitive drive" :
-                     ck.planet === "Mercury" ? "intellect, communication, and analytical skill" :
-                     ck.planet === "Jupiter" ? "wisdom, ethics, and expansion" :
-                     ck.planet === "Venus" ? "love, beauty, and artistic refinement" :
-                     ck.planet === "Saturn" ? "discipline, endurance, and karmic responsibility" :
-                     "ambition, unconventionality, and foreign influence"}{" "}
-                    directly shape how the {ck.meaning.toLowerCase()} themes play out in your life through {ck.house === 4 ? "domestic" : ck.house === 10 ? "professional" : ck.house === 7 ? "partnership" : ck.house === 1 ? "personal" : ck.house === 9 ? "dharmic" : ck.house === 12 ? "spiritual" : `house ${ck.house}`} matters.
-                  </p>
-
-                  {/* Lordship connection */}
-                  {natalP && natalP.lord_of_houses.length > 0 && (
-                    <p className="text-xs text-slate-400 mt-2 leading-relaxed border-t border-slate-700/40 pt-2">
-                      {ck.planet} also rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
-                      <span className="font-semibold text-amber-400">{natalP.lord_of_houses.join(" & ")}</span>{" "}
-                      — linking its {ck.meaning.toLowerCase()} role to those house themes as well.
-                    </p>
-                  )}
-                </div>
+                {/* Lordship — what houses this karaka rules and what that means */}
+                {natalP && natalP.lord_of_houses.length > 0 && (
+                  <div className="space-y-2">
+                    {natalP.lord_of_houses.map(h => {
+                      const lordInterp = CHARA_KARAKA_LORDSHIP[ck.id]?.[h];
+                      return lordInterp ? (
+                        <div key={h} className="bg-slate-800/30 border border-slate-700/40 rounded-lg p-3">
+                          <p className="text-xs font-semibold text-slate-300 mb-1">
+                            {ck.shortName} rules House {h}
+                          </p>
+                          <p className="text-xs text-slate-400 leading-relaxed">{lordInterp}</p>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                )}
 
                 {/* Life themes */}
                 <div className="flex flex-wrap gap-1.5">
