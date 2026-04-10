@@ -82,7 +82,7 @@ export default function SubscribePage() {
       {/* Header */}
       <div className="text-center">
         <h1 className="text-2xl font-bold text-amber-400">Upgrade to Premium</h1>
-        <p className="text-slate-500 text-sm mt-1">₹500/month</p>
+        <p className="text-slate-500 text-sm mt-1">₹500 for 30 days access (one-time payment, no auto-renewal)</p>
       </div>
 
       {/* What's included */}

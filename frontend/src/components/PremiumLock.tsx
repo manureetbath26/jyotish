@@ -73,13 +73,13 @@ export function PremiumLock({ children }: { children: React.ReactNode }) {
           </h3>
           <p className="text-slate-400 text-sm mb-5 leading-relaxed">
             Unlock Navamsa interpretations, transit predictions, and future
-            dasha analysis with a monthly subscription.
+            dasha analysis. One-time payment, no auto-renewal.
           </p>
           <Link
             href="/subscribe"
             className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
           >
-            Unlock for ₹500/month
+            Unlock for ₹500
           </Link>
           <div className="mt-3">
             <Link
