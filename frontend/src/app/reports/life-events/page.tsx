@@ -458,7 +458,7 @@ function LifeEventsReportContent() {
                   <span className="text-xs text-slate-600">Do these resonate?</span>
                 </div>
                 <p className="text-xs text-slate-500">
-                  See if these past planetary indicators match your actual life experience \u2014
+                  See if these past planetary indicators match your actual life experience {"\u2014"}
                   this can give you a sense of how your chart{"\u2019"}s predictions work for you.
                 </p>
                 <div className="space-y-2">

@@ -114,6 +114,7 @@ export interface LifeHighlight {
   type: "positive" | "negative" | "neutral";
   window: string;
   startDateRaw: string;      // ISO date for sorting (YYYY-MM-DD)
+  endDateRaw: string;        // ISO date for past/current/future classification
   dashaContext: string;
   likelihood: "very_likely" | "likely" | "possible";
   reasoning: string;
@@ -1036,6 +1037,7 @@ function buildUpcomingHighlights(
           type: evt.type,
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
           startDateRaw: ad.startDate,
+          endDateRaw: ad.endDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood,
           reasoning,
@@ -1168,9 +1170,8 @@ function splitHighlights(
   const upcoming: LifeHighlight[] = [];
 
   for (const h of allHighlights) {
-    // If the period ended before now, it's past
-    // Use startDateRaw as the reference — if it's before now, it's past
-    if (h.startDateRaw < now) {
+    // Only classify as past if the period has fully ended
+    if (h.endDateRaw < now) {
       past.push(h);
     } else {
       upcoming.push(h);
