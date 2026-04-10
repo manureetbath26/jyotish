@@ -253,6 +253,9 @@ function assessPlanetStrength(
   if (KENDRA_HOUSES.includes(house) || TRIKONA_HOUSES.includes(house)) score += 1;
   if (TRIK_HOUSES.includes(house)) score -= 1;
 
+  // Malefics in upachaya houses (3, 6, 10, 11) do well
+  if (NATURAL_MALEFICS.includes(planet) && UPACHAYA_HOUSES.includes(house)) score += 1;
+
   // Yogakaraka bonus
   const hasKendra = lordships.some((h) => KENDRA_HOUSES.includes(h));
   const hasTrikona = lordships.some((h) => TRIKONA_HOUSES.includes(h));
@@ -260,9 +263,6 @@ function assessPlanetStrength(
 
   // Trik lordship penalty
   if (lordships.some((h) => [6, 8, 12].includes(h))) score -= 1;
-
-  // Retrograde outer planets in certain houses can be strong
-  if (isRetrograde && ["Saturn", "Jupiter"].includes(planet)) score += 0;
 
   if (score >= 3) return "strong";
   if (score >= 1) return "moderate";
@@ -323,25 +323,53 @@ function formatDate(d: string): string {
   return dt.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
 }
 
+// Rahu/Ketu act as proxy for the lord of the sign they occupy
+function getEffectiveLordships(
+  planet: string,
+  lordships: number[],
+  chart: ChartResponse,
+  allLordships: Record<string, number[]>
+): number[] {
+  if (lordships.length > 0) return lordships;
+  // Rahu/Ketu: use dispositor's (sign lord's) lordships as proxy
+  if (planet === "Rahu" || planet === "Ketu") {
+    const p = getPlanet(chart, planet);
+    if (p) {
+      const dispositor = RASHI_LORDS[p.rashi];
+      if (dispositor && allLordships[dispositor]) {
+        return allLordships[dispositor];
+      }
+    }
+  }
+  return [];
+}
+
 function dashaOverallNature(
   planet: string,
   lordships: number[],
   dignity: string | null,
   house: number,
-  lagna: string
+  lagna: string,
+  chart?: ChartResponse,
+  allLordships?: Record<string, number[]>
 ): "very_favorable" | "favorable" | "mixed" | "challenging" {
   let score = 0;
 
+  // For Rahu/Ketu, use dispositor lordships as proxy
+  const effectiveLordships = (chart && allLordships)
+    ? getEffectiveLordships(planet, lordships, chart, allLordships)
+    : lordships;
+
   // Lordship quality
-  const hasTrikona = lordships.some((h) => TRIKONA_HOUSES.includes(h));
-  const hasKendra = lordships.some((h) => KENDRA_HOUSES.includes(h));
-  const hasTrik = lordships.some((h) => TRIK_HOUSES.includes(h));
+  const hasTrikona = effectiveLordships.some((h) => TRIKONA_HOUSES.includes(h));
+  const hasKendra = effectiveLordships.some((h) => KENDRA_HOUSES.includes(h));
+  const hasTrik = effectiveLordships.some((h) => TRIK_HOUSES.includes(h));
 
   if (hasTrikona && hasKendra) score += 3; // Yogakaraka
   else if (hasTrikona) score += 2;
   else if (hasKendra) score += 1;
   if (hasTrik) score -= 1;
-  if (lordships.includes(8) || lordships.includes(12)) score -= 1;
+  if (effectiveLordships.includes(8) || effectiveLordships.includes(12)) score -= 1;
 
   // Dignity
   if (dignity === "exalted") score += 2;
@@ -351,6 +379,25 @@ function dashaOverallNature(
   // House placement
   if (KENDRA_HOUSES.includes(house) || TRIKONA_HOUSES.includes(house)) score += 1;
   if (TRIK_HOUSES.includes(house)) score -= 1;
+
+  // Malefics in upachaya houses (3, 6, 10, 11) do well — especially Rahu, Saturn, Mars
+  if (NATURAL_MALEFICS.includes(planet) && UPACHAYA_HOUSES.includes(house)) {
+    score += 2; // Malefics thrive in upachaya houses
+  }
+
+  // Rahu/Ketu conjunct their dispositor amplifies results
+  if ((planet === "Rahu" || planet === "Ketu") && chart) {
+    const p = getPlanet(chart, planet);
+    if (p) {
+      const dispositor = RASHI_LORDS[p.rashi];
+      const dispositorP = getPlanet(chart, dispositor);
+      if (dispositorP && dispositorP.house === p.house) {
+        score += 1; // Conjunct dispositor = amplified results
+      }
+      // Rahu with Jupiter is generally protective
+      if (planet === "Rahu" && dispositor === "Jupiter") score += 1;
+    }
+  }
 
   // Yogakaraka bonus
   if (planet === getYogakaraka(lagna)) score += 2;
@@ -452,9 +499,12 @@ function buildDashaEventPredictions(
   const isStrong = dignity === "exalted" || dignity === "own" || dignity === "mooltrikona";
   const isWeak = dignity === "debilitated";
 
+  // For Rahu/Ketu, use dispositor lordships
+  const effectiveLordships = getEffectiveLordships(planet, lordships, chart, allLordships);
+
   for (const cat of EVENT_CATEGORIES_DEF) {
     // Check if this dasha lord is relevant to this category
-    const lordsRelevantHouse = lordships.some((h) => cat.relevantHouses.includes(h));
+    const lordsRelevantHouse = effectiveLordships.some((h) => cat.relevantHouses.includes(h));
     const sitsInRelevantHouse = cat.relevantHouses.includes(house);
     const isRelevantPlanet = cat.relevantPlanets.includes(planet);
 
@@ -524,11 +574,11 @@ function buildAntardashaHighlights(
   const currentADPlanet = chart.current_antardasha?.planet;
   return antardashas.map((ad) => {
     const adPlanet = getPlanet(chart, ad.planet);
-    const adLordships = allLordships[ad.planet] || [];
+    const adLordships = getEffectiveLordships(ad.planet, allLordships[ad.planet] || [], chart, allLordships);
     const adHouse = adPlanet?.house || 1;
     const adDignity = adPlanet?.dignity || null;
 
-    const nature = dashaOverallNature(ad.planet, adLordships, adDignity, adHouse, lagna);
+    const nature = dashaOverallNature(ad.planet, adLordships, adDignity, adHouse, lagna, chart, allLordships);
 
     const themes: string[] = [];
     for (const h of adLordships) {
@@ -980,7 +1030,7 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     const dHouse = dp?.house || 1;
     const dDignity = dp?.dignity || null;
 
-    const overallNature = dashaOverallNature(dasha.planet, dLordships, dDignity, dHouse, lagna);
+    const overallNature = dashaOverallNature(dasha.planet, dLordships, dDignity, dHouse, lagna, chart, lordshipsMap);
 
     const themes: string[] = [];
     for (const h of dLordships) {
@@ -1026,7 +1076,9 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
     adLordships,
     adPlanet?.dignity || null,
     adPlanet?.house || 1,
-    lagna
+    lagna,
+    chart,
+    lordshipsMap
   );
 
   const mdThemes = mdLordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase()).filter(Boolean);
