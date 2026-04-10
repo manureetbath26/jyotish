@@ -381,7 +381,7 @@ function LifeEventsReportContent() {
             {/* Chart summary preview */}
             <div className="bg-slate-800/50 rounded-xl p-4 space-y-3">
               <h3 className="text-sm font-semibold text-slate-200">Your Chart at a Glance</h3>
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-2 gap-3 text-center">
                 <div>
                   <p className="text-lg font-bold text-amber-400">{report.chartSummary.lagna}</p>
                   <p className="text-xs text-slate-500">Ascendant</p>
@@ -390,12 +390,7 @@ function LifeEventsReportContent() {
                   <p className="text-lg font-bold text-amber-400">{report.chartSummary.moonSign}</p>
                   <p className="text-xs text-slate-500">Moon Sign</p>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-amber-400">{report.chartSummary.currentDasha}</p>
-                  <p className="text-xs text-slate-500">Current Dasha</p>
-                </div>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">{report.chartSummary.description}</p>
             </div>
 
             {/* Event categories outlook preview */}
@@ -439,10 +434,10 @@ function LifeEventsReportContent() {
                   "Planetary Strength Assessment",
                   "20+ Event Category Predictions",
                   "Full Dasha Timeline with Events",
-                  "Current Period Deep Dive",
                   "Top 15 Life Event Highlights",
                   "Key Yoga Influences",
-                  "Remedial Suggestions",
+                  "Personalized Remedial Suggestions",
+                  "Downloadable PDF Report",
                 ].map((f) => (
                   <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
                     <span className="text-amber-500">{"\u2713"}</span>
@@ -504,13 +499,13 @@ function LifeEventsReportContent() {
               <div className="blur-sm pointer-events-none select-none opacity-40 space-y-2 p-4 bg-slate-800/30">
                 <p className="text-sm text-slate-300 font-medium">Upcoming Life Highlights</p>
                 <p className="text-xs text-slate-400">
-                  Based on your {report.chartSummary.currentDasha} Mahadasha and upcoming planetary periods,
+                  Based on your planetary periods and house lordships,
                   the indicators suggest significant developments in career and relationships...
                 </p>
                 <p className="text-sm text-slate-300 font-medium mt-3">Dasha-by-Dasha Predictions</p>
                 <p className="text-xs text-slate-400">
-                  Your current {report.chartSummary.currentDasha}-{report.chartSummary.currentAntardasha} period
-                  activates houses related to...
+                  Your planetary periods activate houses related to wealth, partnerships, career,
+                  and more — with specific timing windows for each...
                 </p>
               </div>
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 rounded-xl">
