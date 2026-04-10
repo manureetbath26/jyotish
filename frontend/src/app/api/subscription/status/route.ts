@@ -39,6 +39,8 @@ export async function GET() {
       plan: subscription.plan,
       endDate: subscription.endDate,
       daysRemaining,
+      transitAccessUntil: subscription.transitAccessUntil,
+      dashaAccessUntil: subscription.dashaAccessUntil,
       couponCode: subscription.coupon?.code ?? undefined,
     },
   });

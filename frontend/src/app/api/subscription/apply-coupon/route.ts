@@ -31,6 +31,7 @@ export async function POST(request: Request) {
   }
 
   if (coupon.type === "unlimited") {
+    const farFuture = new Date("2099-12-31T23:59:59.999Z");
     const [subscription] = await prisma.$transaction([
       prisma.subscription.create({
         data: {
@@ -39,7 +40,9 @@ export async function POST(request: Request) {
           plan: "unlimited",
           amount: 0,
           startDate: new Date(),
-          endDate: new Date("2099-12-31T23:59:59.999Z"),
+          endDate: farFuture,
+          transitAccessUntil: farFuture,
+          dashaAccessUntil: farFuture,
           couponId: coupon.id,
         },
       }),

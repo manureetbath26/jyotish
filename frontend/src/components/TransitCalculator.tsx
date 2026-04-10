@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ChartResponse, CurrentTransitResponse, calculateCurrentTransits } from "@/lib/api";
 import { TransitTimeline } from "./TransitTimeline";
 import { NorthIndianChart } from "./charts/NorthIndianChart";
-import { PremiumLock } from "./PremiumLock";
+import { PremiumLock, usePremium } from "./PremiumLock";
 
 interface TransitData {
   start_date: string;
@@ -297,12 +297,17 @@ async function downloadPdf(transitData: TransitData, selectedAreas: string[]) {
 }
 
 export function TransitCalculator({ chart }: TransitCalculatorProps) {
+  const { transitAccessUntil } = usePremium();
+
+  // Compute the max allowed end date from the subscription
+  const maxEndDate = transitAccessUntil
+    ? new Date(transitAccessUntil).toISOString().split("T")[0]
+    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
   const [startDate, setStartDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const [endDate, setEndDate] = useState(
-    new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-  );
+  const [endDate, setEndDate] = useState(maxEndDate);
   const [selectedAreas, setSelectedAreas] = useState<string[]>(
     LIFE_AREAS.map(a => a.id)
   );
@@ -345,6 +350,15 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
       return;
     }
 
+    // Clamp end date to transit access limit
+    let effectiveEndDate = endDate;
+    if (transitAccessUntil) {
+      const limit = new Date(transitAccessUntil).toISOString().split("T")[0];
+      if (endDate > limit) {
+        effectiveEndDate = limit;
+      }
+    }
+
     setLoading(true);
     setError("");
 
@@ -355,7 +369,7 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
         body: JSON.stringify({
           chart_data: chart,
           start_date: startDate,
-          end_date: endDate,
+          end_date: effectiveEndDate,
           life_areas: selectedAreas,
         }),
       });
@@ -451,11 +465,25 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
               <input
                 type="date"
                 value={endDate}
+                max={maxEndDate}
                 onChange={e => setEndDate(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50"
               />
             </div>
           </div>
+          {transitAccessUntil && (
+            <p className="text-xs text-slate-500 mt-2">
+              Your plan covers transits until{" "}
+              <span className="text-slate-300 font-medium">
+                {new Date(transitAccessUntil).toLocaleDateString("en-IN", {
+                  day: "numeric", month: "long", year: "numeric",
+                })}
+              </span>.{" "}
+              <a href="/subscribe" className="text-amber-400 hover:text-amber-300 underline">
+                Top up for more
+              </a>
+            </p>
+          )}
         </div>
 
         {/* Life Areas Selection */}

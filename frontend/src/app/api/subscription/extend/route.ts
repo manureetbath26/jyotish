@@ -8,10 +8,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { upiTransactionId } = await request.json();
+  const { upiTransactionId, topupType } = await request.json();
 
   if (!upiTransactionId || typeof upiTransactionId !== "string" || !upiTransactionId.trim()) {
     return Response.json({ error: "UPI transaction ID is required" }, { status: 400 });
+  }
+
+  if (!topupType || !["transit", "dasha"].includes(topupType)) {
+    return Response.json({ error: "topupType must be 'transit' or 'dasha'" }, { status: 400 });
   }
 
   // Find the user's most recent subscription
@@ -22,22 +26,46 @@ export async function POST(request: Request) {
 
   if (!existing) {
     return Response.json(
-      { error: "No existing subscription found. Please purchase a new plan first." },
+      { error: "No existing subscription found. Please purchase a monthly plan first." },
       { status: 400 }
     );
   }
 
-  // Extend from the current endDate if still active, or from now if expired
+  // Must have active subscription to top up
+  if (existing.endDate < new Date()) {
+    return Response.json(
+      { error: "Your subscription has expired. Please renew your monthly plan before adding top-ups." },
+      { status: 400 }
+    );
+  }
+
   const now = new Date();
-  const baseDate = existing.endDate > now ? existing.endDate : now;
-  const newEndDate = new Date(baseDate);
-  newEndDate.setDate(newEndDate.getDate() + 365);
+  const updateData: Record<string, Date> = {};
+  let description = "";
+
+  if (topupType === "transit") {
+    // +1 year of transit from current limit or now, whichever is later
+    const base = existing.transitAccessUntil && existing.transitAccessUntil > now
+      ? new Date(existing.transitAccessUntil)
+      : new Date(now);
+    base.setFullYear(base.getFullYear() + 1);
+    updateData.transitAccessUntil = base;
+    description = `Transit access extended to ${base.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`;
+  } else {
+    // +2 years of dasha from current limit or now, whichever is later
+    const base = existing.dashaAccessUntil && existing.dashaAccessUntil > now
+      ? new Date(existing.dashaAccessUntil)
+      : new Date(now);
+    base.setFullYear(base.getFullYear() + 2);
+    updateData.dashaAccessUntil = base;
+    description = `Dasha access extended to ${base.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`;
+  }
 
   const [payment] = await prisma.$transaction([
     prisma.payment.create({
       data: {
         userId: session.user.id,
-        amount: 20000, // 200 INR in paise
+        amount: 20000, // ₹200 in paise
         method: "upi",
         upiTransactionId: upiTransactionId.trim(),
         status: "verified",
@@ -45,16 +73,12 @@ export async function POST(request: Request) {
     }),
     prisma.subscription.update({
       where: { id: existing.id },
-      data: {
-        status: "active",
-        endDate: newEndDate,
-      },
+      data: updateData,
     }),
   ]);
 
   return Response.json({
     payment,
-    newEndDate,
-    message: `Subscription extended by 1 year until ${newEndDate.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.`,
+    message: `Top-up confirmed! ${description}`,
   });
 }

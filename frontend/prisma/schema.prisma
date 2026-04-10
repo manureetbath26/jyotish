@@ -79,15 +79,17 @@ model InterestEmail {
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String
-  status    String   @default("active") // active, expired, cancelled
-  plan      String   @default("monthly")
-  amount    Int      // in paise (50000 = INR 500)
-  startDate DateTime @default(now())
-  endDate   DateTime
-  couponId  String?
-  createdAt DateTime @default(now())
+  id                 String    @id @default(cuid())
+  userId             String
+  status             String    @default("active") // active, expired, cancelled
+  plan               String    @default("monthly")
+  amount             Int       // in paise (50000 = INR 500)
+  startDate          DateTime  @default(now())
+  endDate            DateTime
+  transitAccessUntil DateTime? // how far ahead transit reports are accessible
+  dashaAccessUntil   DateTime? // how far ahead dasha reports are accessible
+  couponId           String?
+  createdAt          DateTime  @default(now())
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   coupon Coupon? @relation(fields: [couponId], references: [id])

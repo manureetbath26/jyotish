@@ -7,12 +7,16 @@ import Link from "next/link";
 interface PremiumContextValue {
   isPremium: boolean;
   loading: boolean;
+  transitAccessUntil: string | null;
+  dashaAccessUntil: string | null;
   refresh: () => Promise<void>;
 }
 
 const PremiumContext = createContext<PremiumContextValue>({
   isPremium: false,
   loading: true,
+  transitAccessUntil: null,
+  dashaAccessUntil: null,
   refresh: async () => {},
 });
 
@@ -24,6 +28,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status: sessionStatus } = useSession();
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [transitAccessUntil, setTransitAccessUntil] = useState<string | null>(null);
+  const [dashaAccessUntil, setDashaAccessUntil] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -31,6 +37,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setIsPremium(!!data.premium);
+        setTransitAccessUntil(data.subscription?.transitAccessUntil ?? null);
+        setDashaAccessUntil(data.subscription?.dashaAccessUntil ?? null);
       }
     } catch {
       // keep current state on error
@@ -46,7 +54,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, [refresh, session?.user?.id, sessionStatus]);
 
   return (
-    <PremiumContext.Provider value={{ isPremium, loading, refresh }}>
+    <PremiumContext.Provider value={{ isPremium, loading, transitAccessUntil, dashaAccessUntil, refresh }}>
       {children}
     </PremiumContext.Provider>
   );
@@ -76,14 +84,14 @@ export function PremiumLock({ children }: { children: React.ReactNode }) {
             Premium Feature
           </h3>
           <p className="text-slate-400 text-sm mb-5 leading-relaxed">
-            Unlock Navamsa interpretations, 1-year transit predictions, and
-            future dasha analysis. One-time payment, no auto-renewal.
+            Unlock Navamsa interpretations, transit predictions, and
+            dasha analysis. No auto-debit, cancel anytime.
           </p>
           <Link
             href="/subscribe"
             className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
           >
-            Unlock for ₹500/year
+            Subscribe — ₹500/month
           </Link>
           <div className="mt-3">
             <Link
