@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 
 interface PremiumContextValue {
@@ -20,6 +21,7 @@ export function usePremium() {
 }
 
 export function PremiumProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status: sessionStatus } = useSession();
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -37,9 +39,11 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Re-fetch premium status whenever session changes (login/logout)
   useEffect(() => {
+    if (sessionStatus === "loading") return;
     refresh();
-  }, [refresh]);
+  }, [refresh, session?.user?.id, sessionStatus]);
 
   return (
     <PremiumContext.Provider value={{ isPremium, loading, refresh }}>
