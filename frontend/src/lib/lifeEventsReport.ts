@@ -1170,7 +1170,48 @@ function buildUpcomingHighlights(
     }
   }
 
-  const deduped = Array.from(seen2.values());
+  // Resolve conflicting pairs: when a positive and negative event target the
+  // same life theme in the same MD-AD period, keep only one. The period's
+  // overall nature decides: favorable → positive wins, challenging → negative.
+  const CONFLICT_PAIRS: [string, string][] = [
+    ["marriage", "relationship_conflict"],
+    ["career_growth", "career_setback"],
+    ["wealth", "financial_loss"],
+  ];
+
+  const afterConflict = Array.from(seen2.values());
+  const toRemove = new Set<string>();
+
+  for (const [positiveCat, negativeCat] of CONFLICT_PAIRS) {
+    // Group by dashaContext (MD-AD period)
+    const positiveByPeriod = new Map<string, LifeHighlight>();
+    const negativeByPeriod = new Map<string, LifeHighlight>();
+
+    for (const h of afterConflict) {
+      if (h.category === positiveCat) positiveByPeriod.set(h.dashaContext, h);
+      if (h.category === negativeCat) negativeByPeriod.set(h.dashaContext, h);
+    }
+
+    for (const [period] of positiveByPeriod) {
+      const neg = negativeByPeriod.get(period);
+      if (!neg) continue; // No conflict
+      const pos = positiveByPeriod.get(period)!;
+
+      // Determine which to remove based on the period's dasha nature:
+      // If the reasoning mentions "Yogakaraka provides protection" → favor positive
+      // Otherwise compare scores; if equal, check if the period context leans positive/negative
+      // Simple heuristic: higher score wins; on tie, positive wins
+      if (pos.score >= neg.score) {
+        toRemove.add(`${neg.category}-${neg.dashaContext}`);
+      } else {
+        toRemove.add(`${pos.category}-${pos.dashaContext}`);
+      }
+    }
+  }
+
+  const deduped = afterConflict.filter(
+    h => !toRemove.has(`${h.category}-${h.dashaContext}`)
+  );
 
   // Sort chronologically by startDateRaw, then by likelihood
   deduped.sort((a, b) => {
