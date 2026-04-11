@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { calculateChart, ChartResponse, fetchLifetimeTransits } from "@/lib/api";
-import { generateLifeEventsReport, LifeEventsReport } from "@/lib/lifeEventsReport";
+import { generateLifeEventsReport, LifeEventsReport, MaritalStatus } from "@/lib/lifeEventsReport";
 import { LifeEventsReportView } from "@/components/reports/LifeEventsReportView";
 
 const UPI_ID = "9872653657@ybl";
@@ -52,6 +52,7 @@ function LifeEventsReportContent() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [place, setPlace] = useState("");
+  const [maritalStatus, setMaritalStatus] = useState<MaritalStatus>("single");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,7 +155,7 @@ function LifeEventsReportContent() {
         // Transit data is optional — engine works without it
       }
 
-      const rpt = generateLifeEventsReport(result, transitSnapshots);
+      const rpt = generateLifeEventsReport(result, transitSnapshots, maritalStatus);
       setReport(rpt);
       setStep("preview");
     } catch (err) {
@@ -381,6 +382,21 @@ function LifeEventsReportContent() {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Marital Status</label>
+            <select
+              value={maritalStatus}
+              onChange={(e) => setMaritalStatus(e.target.value as MaritalStatus)}
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="single">Single</option>
+              <option value="married">Married</option>
+              <option value="divorced">Divorced</option>
+              <option value="widowed">Widowed</option>
+            </select>
+            <p className="text-xs text-slate-600">Used to tailor marriage and relationship predictions to your situation.</p>
           </div>
 
           {error && (

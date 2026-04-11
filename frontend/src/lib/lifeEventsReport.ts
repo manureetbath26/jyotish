@@ -4,6 +4,10 @@
 
 import { ChartResponse, SlowPlanetSnapshot } from "@/lib/api";
 
+// ─── Marital Status ─────────────────────────────────────────────────────────
+
+export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
+
 // ─── Exported Interfaces ────────────────────────────────────────────────────
 
 export interface LifeEventsReport {
@@ -954,7 +958,8 @@ function buildUpcomingHighlights(
   chart: ChartResponse,
   lordshipsMap: Record<string, number[]>,
   lagna: string,
-  transitSnapshots?: SlowPlanetSnapshot[]
+  transitSnapshots?: SlowPlanetSnapshot[],
+  maritalStatus?: MaritalStatus,
 ): LifeHighlight[] {
   const highlights: LifeHighlight[] = [];
   const birthYr = getBirthYear(chart);
@@ -1132,10 +1137,13 @@ function buildUpcomingHighlights(
         }
 
         // Add event-specific interpretation
-        reasoning += `. ${getEventInterpretation(evt, score, dp.planet, ad.planet)}`;
+        reasoning += `. ${getEventInterpretation(evt, score, dp.planet, ad.planet, maritalStatus)}`;
+
+        // Adjust event label based on marital status
+        const eventLabel = getMaritalAwareEventName(evt, maritalStatus);
 
         highlights.push({
-          event: evt.event,
+          event: eventLabel,
           category: evt.category,
           type: evt.type,
           window: `${formatDate(ad.startDate)} \u2013 ${formatDate(ad.endDate)}`,
@@ -1222,22 +1230,48 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+function getMaritalAwareEventName(evt: HighlightEventDef, maritalStatus?: MaritalStatus): string {
+  if (evt.id === "marriage") {
+    if (maritalStatus === "married") return "Marital Growth & Renewal";
+    if (maritalStatus === "divorced" || maritalStatus === "widowed") return "Remarriage / New Partnership";
+  }
+  if (evt.id === "romance" && maritalStatus === "married") return "Romantic Revival with Spouse";
+  if (evt.id === "relationship_conflict" && maritalStatus === "married") return "Marital Strain Period";
+  return evt.event;
+}
+
 function getEventInterpretation(
   evt: HighlightEventDef,
   score: number,
   mdPlanet: string,
   adPlanet: string,
+  maritalStatus?: MaritalStatus,
 ): string {
   const strong = score >= evt.threshold + 4;
   const moderate = score >= evt.threshold + 2;
 
   switch (evt.id) {
     case "marriage":
+      if (maritalStatus === "married") {
+        if (strong) return "A STRONG period of marital renewal \u2014 deepening of bonds, renewed commitment, or a significant milestone in your marriage such as a fresh chapter together.";
+        if (moderate) return "This window supports strengthening your existing partnership \u2014 a good time for renewing commitment or celebrating your relationship.";
+        return "Partnership themes are activated, bringing opportunities to deepen your marital bond.";
+      }
+      if (maritalStatus === "divorced" || maritalStatus === "widowed") {
+        if (strong) return "This is a STRONG indicator for remarriage or a new committed partnership \u2014 multiple house activations create a compelling window for a fresh start in love.";
+        if (moderate) return "This combination creates a supportive window for entering a new committed relationship or remarriage.";
+        return "Partnership themes are activated during this period, with possibilities for a new meaningful relationship.";
+      }
+      // single or unspecified
       if (strong) return "This is a STRONG marriage indicator \u2014 multiple house activations create a compelling window for committed partnership or marriage.";
       if (moderate) return "This combination creates a supportive window for committed relationships or marriage.";
       return "Partnership themes are activated during this period, with possibilities for deeper commitment.";
 
     case "romance":
+      if (maritalStatus === "married") {
+        if (strong) return "A particularly romantic period \u2014 love and emotional bonding with your spouse are strongly favoured. A wonderful time for rekindling warmth.";
+        return "Romance is highlighted during this window \u2014 nurture emotional closeness with your partner.";
+      }
       if (strong) return "A particularly romantic period with strong 5th house activation \u2014 love, attraction, and emotional bonding are strongly indicated.";
       return "Romance and emotional connections are highlighted during this window.";
 
@@ -1284,6 +1318,8 @@ function getEventInterpretation(
       return "This is simply a call for mindfulness about health \u2014 regular check-ups and self-care during this window can be beneficial. This is not a prediction of illness, but an indicator for preventive awareness.";
 
     case "relationship_conflict":
+      if (maritalStatus === "married") return "Your marriage may face some friction during this period \u2014 patience, open communication, and mutual understanding will help you navigate this phase together.";
+      if (maritalStatus === "divorced" || maritalStatus === "widowed") return "Past relationship patterns may resurface emotionally. This is a period for healing and self-awareness before entering new commitments.";
       return "Relationship dynamics may require extra patience and communication during this period. Awareness itself is a powerful tool for maintaining harmony.";
 
     case "financial_loss":
@@ -1344,7 +1380,8 @@ function splitHighlights(
 
 export function generateLifeEventsReport(
   chart: ChartResponse,
-  transitSnapshots?: SlowPlanetSnapshot[]
+  transitSnapshots?: SlowPlanetSnapshot[],
+  maritalStatus?: MaritalStatus,
 ): LifeEventsReport {
   const lagna = chart.lagna;
   const lordshipsMap = getLordships(lagna);
@@ -1577,7 +1614,7 @@ export function generateLifeEventsReport(
   };
 
   // ── Life Highlights (past + upcoming, sorted chronologically)
-  const allHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna, transitSnapshots);
+  const allHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna, transitSnapshots, maritalStatus);
   const { past: pastHighlights, upcoming: upcomingHighlights } = splitHighlights(allHighlights);
 
   // ── Yoga Influences
