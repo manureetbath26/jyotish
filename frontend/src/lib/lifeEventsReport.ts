@@ -117,6 +117,7 @@ export interface LifeHighlight {
   endDateRaw: string;        // ISO date for past/current/future classification
   dashaContext: string;
   likelihood: "very_likely" | "likely" | "possible";
+  score: number;             // raw score for ranking importance
   reasoning: string;
 }
 
@@ -888,16 +889,11 @@ function buildUpcomingHighlights(
   lagna: string
 ): LifeHighlight[] {
   const highlights: LifeHighlight[] = [];
-  const now = new Date();
-  const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
   const birthYr = getBirthYear(chart);
   const maxYear = birthYr + MAX_AGE;
   const yogakaraka = getYogakaraka(lagna);
 
   for (const dp of dashaPredictions) {
-    const dpEnd = new Date(dp.endDate);
-    if (dpEnd < fiveYearsAgo) continue;
-
     // MD lordships (effective — handles Rahu/Ketu)
     const mdLordships = getEffectiveLordships(
       dp.planet, lordshipsMap[dp.planet] || [], chart, lordshipsMap
@@ -908,9 +904,6 @@ function buildUpcomingHighlights(
     const mdIsStrong = mdDignity === "exalted" || mdDignity === "own" || mdDignity === "mooltrikona";
 
     for (const ad of dp.antardashaHighlights) {
-      const adEnd = new Date(ad.endDate);
-      if (adEnd < fiveYearsAgo) continue;
-
       const adStartYear = new Date(ad.startDate).getFullYear();
       if (adStartYear > maxYear) continue;
       const adAge = adStartYear - birthYr;
@@ -1057,19 +1050,19 @@ function buildUpcomingHighlights(
           endDateRaw: ad.endDate,
           dashaContext: `${dp.planet}-${ad.planet} period`,
           likelihood,
+          score,
           reasoning,
         });
       }
     }
   }
 
-  // Deduplicate by category+window, keep highest likelihood
+  // Deduplicate by category+window, keep highest score
   const seen = new Map<string, LifeHighlight>();
   for (const h of highlights) {
     const key = `${h.category}-${h.window}`;
     const existing = seen.get(key);
-    const order = { very_likely: 0, likely: 1, possible: 2 };
-    if (!existing || order[h.likelihood] < order[existing.likelihood]) {
+    if (!existing || h.score > existing.score) {
       seen.set(key, h);
     }
   }
@@ -1079,8 +1072,7 @@ function buildUpcomingHighlights(
   for (const [, h] of seen) {
     const key = `${h.category}-${h.dashaContext}`;
     const existing = seen2.get(key);
-    const order = { very_likely: 0, likely: 1, possible: 2 };
-    if (!existing || order[h.likelihood] < order[existing.likelihood]) {
+    if (!existing || h.score > existing.score) {
       seen2.set(key, h);
     }
   }
@@ -1195,9 +1187,12 @@ function splitHighlights(
     }
   }
 
-  // Past: most recent first (reverse chrono), limit to 10
-  past.reverse();
-  return { past: past.slice(0, 10), upcoming: upcoming.slice(0, 15) };
+  // Past: sort by score (strongest first), then by date (most recent first)
+  past.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.startDateRaw.localeCompare(a.startDateRaw);
+  });
+  return { past: past.slice(0, 15), upcoming: upcoming.slice(0, 15) };
 }
 
 // ─── Main Export ────────────────────────────────────────────────────────────
