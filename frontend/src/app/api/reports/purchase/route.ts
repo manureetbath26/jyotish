@@ -2,11 +2,6 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-// Valid coupon codes (keep in sync with coupon/validate/route.ts)
-const VALID_COUPONS: Record<string, { discount: number }> = {
-  FREEFOREVER2026: { discount: 100 },
-};
-
 export async function POST(req: NextRequest) {
   const session = await auth();
   const body = await req.json();
@@ -23,11 +18,33 @@ export async function POST(req: NextRequest) {
   };
   let amount = REPORT_PRICES[reportType] ?? 20000;
   let isFree = false;
+
   if (couponCode) {
-    const couponEntry = VALID_COUPONS[couponCode.trim().toUpperCase()];
-    if (couponEntry && couponEntry.discount === 100) {
-      amount = 0;
-      isFree = true;
+    const code = couponCode.trim().toUpperCase();
+    const coupon = await prisma.coupon.findUnique({ where: { code } });
+
+    if (coupon && coupon.active) {
+      const notExpired = !coupon.expiresAt || new Date(coupon.expiresAt) >= new Date();
+      const hasUses = coupon.maxUses == null || coupon.usedCount < coupon.maxUses;
+
+      if (notExpired && hasUses) {
+        if (coupon.type === "unlimited") {
+          amount = 0;
+          isFree = true;
+        } else if (coupon.type === "percentage" && coupon.value) {
+          amount = Math.round(amount * (1 - coupon.value / 100));
+          if (amount <= 0) { amount = 0; isFree = true; }
+        } else if (coupon.type === "fixed" && coupon.value) {
+          amount = Math.max(0, amount - coupon.value);
+          if (amount <= 0) { amount = 0; isFree = true; }
+        }
+
+        // Increment usage count
+        await prisma.coupon.update({
+          where: { id: coupon.id },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
     }
   }
 

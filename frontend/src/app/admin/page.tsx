@@ -31,6 +31,24 @@ interface PaymentStats {
   count: number;
 }
 
+interface ReportRow {
+  id: string;
+  email: string;
+  reportType: string;
+  amount: number;
+  upiTransactionId: string | null;
+  status: string;
+  birthName: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string } | null;
+}
+
+interface ReportStats {
+  total: number;
+  monthlyTotal: number;
+  count: number;
+}
+
 interface CouponRow {
   id: string;
   code: string;
@@ -43,7 +61,7 @@ interface CouponRow {
   createdAt: string;
 }
 
-type AdminTab = "users" | "payments" | "coupons";
+type AdminTab = "users" | "payments" | "coupons" | "reports";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +97,11 @@ export default function AdminPage() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [paymentStats, setPaymentStats] = useState<PaymentStats>({ total: 0, monthlyTotal: 0, count: 0 });
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+  // Reports
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [reportStats, setReportStats] = useState<ReportStats>({ total: 0, monthlyTotal: 0, count: 0 });
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   // Coupons
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
@@ -127,6 +150,37 @@ export default function AdminPage() {
     }
   };
 
+  // ── Fetch reports ──
+  const fetchReports = async () => {
+    setReportsLoading(true);
+    try {
+      const res = await fetch("/api/admin/reports");
+      if (!res.ok) return;
+      const data = await res.json();
+      setReports(data.reports);
+      setReportStats(data.stats);
+    } catch { /* ignore */ } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  const handleDeleteReport = async (r: ReportRow) => {
+    if (!confirm(`Delete report purchase for "${r.birthName || r.email}"?`)) return;
+    const res = await fetch(`/api/admin/reports?id=${r.id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Delete failed"); return; }
+    await fetchReports();
+  };
+
+  const handleChangeReportStatus = async (r: ReportRow, newStatus: string) => {
+    const res = await fetch("/api/admin/reports", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: r.id, status: newStatus }),
+    });
+    if (!res.ok) { alert("Status update failed"); return; }
+    await fetchReports();
+  };
+
   // ── Fetch coupons ──
   const fetchCoupons = async () => {
     setCouponsLoading(true);
@@ -147,6 +201,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (tab === "payments" && payments.length === 0) fetchPayments();
+    if (tab === "reports" && reports.length === 0) fetchReports();
     if (tab === "coupons" && coupons.length === 0) fetchCoupons();
   }, [tab]);
 
@@ -233,6 +288,7 @@ export default function AdminPage() {
         {([
           { id: "users" as AdminTab, label: "Users" },
           { id: "payments" as AdminTab, label: "Payments" },
+          { id: "reports" as AdminTab, label: "Reports" },
           { id: "coupons" as AdminTab, label: "Coupons" },
         ]).map(t => (
           <button
@@ -349,6 +405,115 @@ export default function AdminPage() {
                           }`}>{p.status}</span>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(p.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══════════════ REPORTS TAB ═══════════════ */}
+      {tab === "reports" && (
+        <>
+          {/* Stats cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Report Revenue</p>
+              <p className="text-2xl font-bold text-amber-400 mt-1">{formatINR(reportStats.total)}</p>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">This Month</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">{formatINR(reportStats.monthlyTotal)}</p>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Reports Sold</p>
+              <p className="text-2xl font-bold text-slate-200 mt-1">{reportStats.count}</p>
+            </div>
+          </div>
+
+          {/* Report type breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {["life_events_prediction", "ayurvedic_wellness"].map(rt => {
+              const typeReports = reports.filter(r => r.reportType === rt);
+              const typeRevenue = typeReports.reduce((s, r) => s + r.amount, 0);
+              const label = rt === "life_events_prediction" ? "Life Events" : "Ayurvedic";
+              return (
+                <div key={rt} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">{label}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{typeReports.length} sold</p>
+                  </div>
+                  <p className="text-lg font-semibold text-amber-400">{formatINR(typeRevenue)}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {reportsLoading ? (
+            <div className="flex items-center justify-center h-24"><div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : reports.length === 0 ? (
+            <div className="text-center py-12 text-slate-600 border border-dashed border-slate-800 rounded-2xl">No report purchases yet.</div>
+          ) : (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-left">
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Customer</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Report</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Amount</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Payment</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Status</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Date</th>
+                      <th className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {reports.map(r => (
+                      <tr key={r.id} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="text-slate-200 text-sm">{r.birthName || r.user?.name || "—"}</p>
+                          <p className="text-slate-500 text-xs">{r.email}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            r.reportType === "life_events_prediction"
+                              ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                              : "bg-teal-500/20 text-teal-400 border border-teal-500/30"
+                          }`}>
+                            {r.reportType === "life_events_prediction" ? "Life Events" : "Ayurvedic"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-200 font-medium">
+                          {r.amount === 0 ? <span className="text-emerald-400">Free</span> : formatINR(r.amount)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-xs font-mono">
+                          {r.upiTransactionId?.startsWith("COUPON:") ? (
+                            <span className="text-amber-400">{r.upiTransactionId}</span>
+                          ) : (r.upiTransactionId || "—")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={r.status}
+                            onChange={e => handleChangeReportStatus(r, e.target.value)}
+                            className={`text-xs font-medium rounded px-2 py-1 border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                              r.status === "verified" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                              r.status === "rejected" ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                              "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                            }`}
+                          >
+                            <option value="verified">Verified</option>
+                            <option value="pending">Pending</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(r.createdAt)}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => handleDeleteReport(r)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Delete</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
