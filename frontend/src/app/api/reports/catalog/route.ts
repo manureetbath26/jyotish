@@ -1,19 +1,17 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
-  // Check if current user is admin
+  // Check if current user is admin — use JWT role directly
   let isAdmin = false;
   try {
     const session = await auth();
-    if (session?.user?.id) {
-      const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { role: true },
-      });
-      isAdmin = user?.role === "admin";
-    }
-  } catch { /* not logged in */ }
+    isAdmin = session?.user?.role === "admin";
+  } catch {
+    // not logged in — treat as public
+  }
 
   const catalog = await prisma.reportCatalog.findMany({
     where: {
