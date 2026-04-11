@@ -1098,7 +1098,102 @@ function buildUpcomingHighlights(
         if (ad.nature === "very_favorable" && evt.type === "positive") score += 1;
         if (ad.nature === "challenging" && evt.type === "negative") score += 1;
 
-        // 9. Transit confirmation: slow planets transiting relevant houses
+        // 9. Lord + Occupant reinforcement (Phaladeepika Ch.20 Sloka 34):
+        //    When a dasha planet BOTH lords AND sits in the same event-relevant
+        //    house, that house is doubly activated — the planet rules it AND
+        //    occupies it. "A planet in Swakshetra promotes that bhava's prosperity
+        //    during its dasha." +2 bonus per such reinforcement.
+        for (const h of mdRelevantHouses) {
+          if (mdHouse === h) {
+            score += 2;
+            reasons.push(`${dp.planet} lords AND occupies ${ordinal(h)} house (double activation)`);
+          }
+        }
+        for (const h of adRelevantHouses) {
+          if (adHouse === h) {
+            score += 2;
+            reasons.push(`${ad.planet} lords AND occupies ${ordinal(h)} house (double activation)`);
+          }
+        }
+
+        // 10. Conjunction awareness (dignity-weighted):
+        //     Planets sharing a house with MD/AD lord bleed their lordship
+        //     themes into the period. The STRENGTH of this bleed depends on:
+        //     (a) Conjunct planet's own dignity — strong = forceful imposition
+        //     (b) Relative dignity — stronger conjunct dominates the dasha lord
+        //     (c) Natural benefic/malefic — colors the event positively/negatively
+        const allPlanets = chart.planets || [];
+        const mdConjuncts = allPlanets.filter(p =>
+          p.name !== dp.planet && p.name !== ad.planet && p.house === mdHouse
+        );
+        const adConjuncts = allPlanets.filter(p =>
+          p.name !== dp.planet && p.name !== ad.planet && p.house === adHouse
+        );
+
+        const dignityRank = (d: string | null): number => {
+          if (d === "exalted") return 3;
+          if (d === "mooltrikona" || d === "own") return 2;
+          if (d === "debilitated") return -1;
+          return 0;
+        };
+
+        const scoreConjunction = (
+          conj: { name: string; dignity?: string | null },
+          dashaLordDignity: string | null,
+          dashaLordName: string
+        ) => {
+          const conjDignity = conj.dignity || null;
+          const conjLordships = getEffectiveLordships(
+            conj.name, lordshipsMap[conj.name] || [], chart, lordshipsMap
+          );
+          const conjRelevant = conjLordships.filter(h => evt.relevantHouses.includes(h));
+          if (conjRelevant.length === 0) return;
+
+          const conjRank = dignityRank(conjDignity);
+          const dashaRank = dignityRank(dashaLordDignity);
+          const houseList = conjRelevant.map(h => ordinal(h)).join("+");
+
+          // (a) Base score from conjunct planet's dignity
+          let conjScore = 1; // neutral default
+          if (conjRank >= 2) {
+            // Strong conjunct (exalted/own/mooltrikona) — forcefully imposes themes
+            conjScore = 2;
+          } else if (conjRank < 0) {
+            // Debilitated conjunct — distorted themes:
+            // can still cause trouble (negative events) but can't deliver good (positive)
+            conjScore = evt.type === "negative" ? 1 : 0;
+          }
+
+          // (b) Relative strength — stronger conjunct dominates the dasha lord
+          if (conjRank > dashaRank) {
+            conjScore += 1;
+          }
+
+          // (c) Natural benefic/malefic coloring
+          if (NATURAL_MALEFICS.includes(conj.name)) {
+            // Malefic conjunct amplifies negative events, taints positive ones
+            if (evt.type === "negative") conjScore += 1;
+            else if (conjScore > 0) conjScore -= 1;
+          } else if (NATURAL_BENEFICS.includes(conj.name)) {
+            // Benefic conjunct amplifies positive events, mitigates negative ones
+            if (evt.type === "positive") conjScore += 1;
+            else if (conjScore > 0) conjScore -= 1;
+          }
+
+          if (conjScore !== 0) {
+            score += conjScore;
+            const dignityLabel = conjDignity ? ` (${conjDignity})` : "";
+            const dominanceNote = conjRank > dashaRank ? ", dominates conjunction" : "";
+            reasons.push(
+              `${conj.name}${dignityLabel} conjunct ${dashaLordName} activates ${houseList}${dominanceNote}`
+            );
+          }
+        };
+
+        for (const conj of mdConjuncts) scoreConjunction(conj, mdDignity, dp.planet);
+        for (const conj of adConjuncts) scoreConjunction(conj, adDignity, ad.planet);
+
+        // 11. Transit confirmation: slow planets transiting relevant houses
         if (transitSnapshots && transitSnapshots.length > 0) {
           const transitHouses = getTransitSnapshot(transitSnapshots, ad.startDate, ad.endDate);
           if (transitHouses) {
