@@ -12,24 +12,15 @@ interface PurchasedReport {
   createdAt: string;
 }
 
-const REPORT_TYPES: Array<{
-  id: string;
-  title: string;
-  description: string;
+interface CatalogEntry {
+  slug: string;
+  name: string;
+  description: string | null;
   price: number;
-  currency: string;
-  href: string;
-  icon: string;
-  badge?: string;
-  features: string[];
-}> = [
-  {
-    id: "life_events_prediction",
-    title: "Life Events Prediction Report",
-    description:
-      "A comprehensive life prediction report based on your Vimshottari Dasha timeline, house lordships, and planetary strengths. Covers marriage, children, career growth, wealth, health, relationships, and more — with empathetic, nuanced guidance for each life phase.",
-    price: 800,
-    currency: "INR",
+}
+
+const REPORT_META: Record<string, { href: string; icon: string; badge?: string; features: string[] }> = {
+  life_events_prediction: {
     href: "/reports/life-events",
     icon: "\u{1F52E}",
     badge: "Most Popular",
@@ -44,13 +35,7 @@ const REPORT_TYPES: Array<{
       "Empathetic Guidance & Cautions",
     ],
   },
-  {
-    id: "ayurvedic_wellness",
-    title: "Ayurvedic Wellness Report",
-    description:
-      "A comprehensive health and wellness analysis based on your Vedic birth chart. Includes dosha constitution (Prakriti), body type profile, health planet analysis, vulnerable body areas, dietary and yoga recommendations, lifestyle guidance, health period timeline, and Ayurvedic remedies.",
-    price: 200,
-    currency: "INR",
+  ayurvedic_wellness: {
     href: "/reports/ayurvedic",
     icon: "\u{1F33F}",
     features: [
@@ -64,7 +49,7 @@ const REPORT_TYPES: Array<{
       "Gemstone & Mantra Remedies",
     ],
   },
-];
+};
 
 export default function ReportsPage() {
   const { data: session } = useSession();
@@ -72,6 +57,7 @@ export default function ReportsPage() {
   const [loadingReports, setLoadingReports] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [catalogEntries, setCatalogEntries] = useState<CatalogEntry[]>([]);
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -87,6 +73,13 @@ export default function ReportsPage() {
       setConfirmDeleteId(null);
     }
   }
+
+  useEffect(() => {
+    fetch("/api/reports/catalog")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setCatalogEntries)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -115,8 +108,9 @@ export default function ReportsPage() {
           <h2 className="text-lg font-semibold text-amber-400">My Reports</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {myReports.map((r) => {
-              const reportDef = REPORT_TYPES.find((t) => t.id === r.reportType);
-              const reportHref = reportDef ? `${reportDef.href}?id=${r.id}` : `/reports/ayurvedic?id=${r.id}`;
+              const meta = REPORT_META[r.reportType];
+              const reportHref = meta ? `${meta.href}?id=${r.id}` : `/reports/ayurvedic?id=${r.id}`;
+              const catalogEntry = catalogEntries.find((c) => c.slug === r.reportType);
               const isConfirming = confirmDeleteId === r.id;
               const isDeleting = deletingId === r.id;
               return (
@@ -153,7 +147,7 @@ export default function ReportsPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm font-semibold text-slate-200">
-                        {REPORT_TYPES.find((t) => t.id === r.reportType)?.title ?? r.reportType}
+                        {catalogEntry?.name ?? r.reportType}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
                         {r.birthName ? `${r.birthName} · ` : ""}
@@ -205,51 +199,55 @@ export default function ReportsPage() {
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-200">Available Reports</h2>
         <div className="grid grid-cols-1 gap-6">
-          {REPORT_TYPES.map((report) => (
-            <div
-              key={report.id}
-              className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden"
-            >
-              <div className="p-6 space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-                      <span className="text-2xl">{report.icon}</span>
-                      {report.title}
-                      {report.badge && (
-                        <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5 font-medium">
-                          {report.badge}
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">{report.description}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-2xl font-bold text-amber-400">
-                      ₹{report.price}
-                    </p>
-                    <p className="text-xs text-slate-500">one-time</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {report.features.map((f) => (
-                    <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="text-amber-500 flex-shrink-0">\u2713</span>
-                      {f}
+          {catalogEntries.map((entry) => {
+            const meta = REPORT_META[entry.slug];
+            if (!meta) return null;
+            return (
+              <div
+                key={entry.slug}
+                className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden"
+              >
+                <div className="p-6 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                        <span className="text-2xl">{meta.icon}</span>
+                        {entry.name}
+                        {meta.badge && (
+                          <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5 font-medium">
+                            {meta.badge}
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-sm text-slate-400 mt-2 leading-relaxed">{entry.description}</p>
                     </div>
-                  ))}
-                </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-2xl font-bold text-amber-400">
+                        {"\u20B9"}{entry.price / 100}
+                      </p>
+                      <p className="text-xs text-slate-500">one-time</p>
+                    </div>
+                  </div>
 
-                <Link
-                  href={report.href}
-                  className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
-                >
-                  Generate Report \u2192
-                </Link>
+                  <div className="grid grid-cols-2 gap-2">
+                    {meta.features.map((f) => (
+                      <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="text-amber-500 flex-shrink-0">{"\u2713"}</span>
+                        {f}
+                      </div>
+                    ))}
+                  </div>
+
+                  <Link
+                    href={meta.href}
+                    className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+                  >
+                    Generate Report {"\u2192"}
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

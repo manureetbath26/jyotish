@@ -9,7 +9,7 @@ import { generateLifeEventsReport, LifeEventsReport } from "@/lib/lifeEventsRepo
 import { LifeEventsReportView } from "@/components/reports/LifeEventsReportView";
 
 const UPI_ID = "9872653657@ybl";
-const REPORT_PRICE = 800;
+const DEFAULT_REPORT_PRICE = 800;
 
 function buildUpiLink(amount: number, note: string) {
   return `upi://pay?pa=${UPI_ID}&pn=Jyotish&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
@@ -73,6 +73,18 @@ function LifeEventsReportContent() {
   const [coupon, setCoupon] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponMsg, setCouponMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Price from catalog
+  const [reportPrice, setReportPrice] = useState(DEFAULT_REPORT_PRICE);
+  useEffect(() => {
+    fetch("/api/reports/catalog")
+      .then(r => r.ok ? r.json() : [])
+      .then((entries: { slug: string; price: number }[]) => {
+        const entry = entries.find(e => e.slug === "life_events_prediction");
+        if (entry) setReportPrice(entry.price / 100);
+      })
+      .catch(() => {});
+  }, []);
 
   // Load existing report
   useEffect(() => {
@@ -241,7 +253,7 @@ function LifeEventsReportContent() {
     }
   };
 
-  const upiLink = buildUpiLink(REPORT_PRICE, "Jyotish Life Events Report");
+  const upiLink = buildUpiLink(reportPrice, "Jyotish Life Events Report");
 
   if (loading && !chart) {
     return (
@@ -583,7 +595,7 @@ function LifeEventsReportContent() {
                 onClick={() => setStep("payment")}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                Purchase Report {"—"} {"₹"}{REPORT_PRICE}
+                Purchase Report {"—"} {"₹"}{reportPrice}
               </button>
             )}
           </div>
@@ -595,7 +607,7 @@ function LifeEventsReportContent() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <h2 className="text-lg font-semibold text-amber-400">Payment</h2>
           <p className="text-sm text-slate-400">
-            Pay {"₹"}{REPORT_PRICE} via UPI to receive your complete Life Events Prediction Report.
+            Pay {"₹"}{reportPrice} via UPI to receive your complete Life Events Prediction Report.
           </p>
 
           <div className="flex flex-col items-center gap-3 py-4">
@@ -662,7 +674,7 @@ function LifeEventsReportContent() {
                 disabled={payLoading}
                 className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
-                {payLoading ? "Processing..." : `Confirm Payment — ₹${REPORT_PRICE}`}
+                {payLoading ? "Processing..." : `Confirm Payment — ₹${reportPrice}`}
               </button>
             </div>
           </form>

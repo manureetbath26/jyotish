@@ -11,12 +11,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Determine base price by report type (in paise)
-  const REPORT_PRICES: Record<string, number> = {
-    ayurvedic_wellness: 20000,       // INR 200
-    life_events_prediction: 80000,   // INR 800
-  };
-  let amount = REPORT_PRICES[reportType] ?? 20000;
+  // Look up price from catalog
+  const catalogEntry = await prisma.reportCatalog.findUnique({ where: { slug: reportType } });
+  if (!catalogEntry || !catalogEntry.active) {
+    return Response.json({ error: "This report is not currently available" }, { status: 400 });
+  }
+  let amount = catalogEntry.price;
   let isFree = false;
 
   if (couponCode) {

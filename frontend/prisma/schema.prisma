@@ -126,6 +126,17 @@ model ReportPurchase {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
+model ReportCatalog {
+  id          String   @id @default(cuid())
+  slug        String   @unique // e.g. "life_events_prediction", "ayurvedic_wellness"
+  name        String           // display name
+  description String?
+  price       Int              // in paise (80000 = INR 800)
+  active      Boolean  @default(true) // whether purchasable
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Coupon {
   id        String    @id @default(cuid())
   code      String    @unique
