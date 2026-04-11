@@ -1,9 +1,8 @@
 /**
- * Chat engine: classifies user questions and composes answers
- * from the pre-computed LifeEventsReport.
+ * Chat engine: classifies user questions and composes natural,
+ * conversational answers from the pre-computed LifeEventsReport.
  *
- * The engine does NOT use LLMs — it's a deterministic keyword-matching
- * + template system that extracts relevant sections from the report.
+ * No LLMs — deterministic keyword matching + conversational templates.
  */
 
 import { ChartResponse } from "@/lib/api";
@@ -12,7 +11,6 @@ import {
   LifeHighlight,
   EventCategory,
   DashaPrediction,
-  HouseSignificance,
   PlanetStrength,
   YogaInfluence,
 } from "@/lib/lifeEventsReport";
@@ -125,6 +123,9 @@ const QUESTION_CATEGORIES: QuestionCategory[] = [
   },
 ];
 
+// Past-specific keywords — only show past events if user explicitly asks
+const PAST_KEYWORDS = ["past", "before", "earlier", "previous", "ago", "happened", "did i", "was there", "last year", "back then", "history", "already"];
+
 // ─── Classification ─────────────────────────────────────────────────────────
 
 interface ClassificationResult {
@@ -132,6 +133,7 @@ interface ClassificationResult {
   houses: number[];
   planets: string[];
   isGeneral: boolean;
+  askingAboutPast: boolean;
 }
 
 function classifyQuestion(question: string): ClassificationResult {
@@ -147,32 +149,26 @@ function classifyQuestion(question: string): ClassificationResult {
     }
   }
 
+  const askingAboutPast = PAST_KEYWORDS.some(kw => lower.includes(kw));
+
   if (matched.length === 0) {
-    return { categories: ["general"], houses: [], planets: [], isGeneral: true };
+    return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast };
   }
 
   const categories = [...new Set(matched.map(m => m.id))];
   const houses = [...new Set(matched.flatMap(m => m.houses))];
   const planets = [...new Set(matched.flatMap(m => m.planets))];
 
-  return { categories, houses, planets, isGeneral: false };
+  return { categories, houses, planets, isGeneral: false, askingAboutPast };
 }
 
-// ─── Answer Composition ─────────────────────────────────────────────────────
-
-function getRelevantHouseAnalysis(report: LifeEventsReport, houses: number[]): HouseSignificance[] {
-  return report.houseAnalysis.filter(h => houses.includes(h.house));
-}
-
-function getRelevantPlanets(report: LifeEventsReport, planets: string[]): PlanetStrength[] {
-  return report.planetaryStrengths.filter(p => planets.includes(p.planet));
-}
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getRelevantCategories(report: LifeEventsReport, categoryIds: string[]): EventCategory[] {
   return report.eventCategories.filter(c => categoryIds.includes(c.id));
 }
 
-function getRelevantHighlights(highlights: LifeHighlight[], categoryIds: string[], limit: number = 5): LifeHighlight[] {
+function getRelevantHighlights(highlights: LifeHighlight[], categoryIds: string[], limit: number = 3): LifeHighlight[] {
   return highlights
     .filter(h => categoryIds.includes(h.category))
     .sort((a, b) => b.score - a.score)
@@ -192,188 +188,172 @@ function getCurrentDashaPrediction(report: LifeEventsReport): DashaPrediction | 
   return report.dashaPredictions.find(d => d.isCurrent);
 }
 
-// ─── Answer Templates ───────────────────────────────────────────────────────
+function getRelevantPlanets(report: LifeEventsReport, planets: string[]): PlanetStrength[] {
+  return report.planetaryStrengths.filter(p => planets.includes(p.planet));
+}
+
+function outlookWord(outlook: string): string {
+  const map: Record<string, string> = {
+    very_favorable: "really strong",
+    favorable: "quite positive",
+    mixed: "mixed — there are both opportunities and things to watch out for",
+    challenging: "a bit challenging, but awareness is power",
+    needs_care: "something you'll want to be mindful about",
+  };
+  return map[outlook] || outlook;
+}
+
+function likelihoodWord(likelihood: string): string {
+  const map: Record<string, string> = {
+    very_likely: "strong indicators",
+    likely: "good indicators",
+    possible: "some indicators",
+  };
+  return map[likelihood] || likelihood;
+}
+
+// ─── Conversational Answer Builders ─────────────────────────────────────────
 
 function buildCategoryAnswer(
   report: LifeEventsReport,
   categoryIds: string[],
   houses: number[],
   planets: string[],
+  askingAboutPast: boolean,
 ): string {
-  const sections: string[] = [];
-
-  // 1. Category outlook
+  const parts: string[] = [];
   const categories = getRelevantCategories(report, categoryIds);
-  if (categories.length > 0) {
-    for (const cat of categories) {
-      sections.push(`**${cat.icon} ${cat.name} — Overall Outlook: ${formatOutlook(cat.overallOutlook)}**\n${cat.summary}`);
-    }
-  }
-
-  // 2. House analysis for relevant houses
-  const houseInfo = getRelevantHouseAnalysis(report, houses);
-  if (houseInfo.length > 0) {
-    const houseLines = houseInfo.map(h =>
-      `• **House ${h.house}** (${h.rashi}, lord ${h.lord} in ${h.lordPlacement}${h.lordDignity ? `, ${h.lordDignity}` : ""}): ${h.interpretation}`
-    );
-    sections.push(`**Key Houses:**\n${houseLines.join("\n")}`);
-  }
-
-  // 3. Planet strengths
-  const planetInfo = getRelevantPlanets(report, planets);
-  if (planetInfo.length > 0) {
-    const planetLines = planetInfo.map(p =>
-      `• **${p.planet}** in ${p.rashi} (House ${p.house}${p.dignity ? `, ${p.dignity}` : ""}): ${p.interpretation}`
-    );
-    sections.push(`**Key Planets:**\n${planetLines.join("\n")}`);
-  }
-
-  // 4. Current period context
   const currentDasha = getCurrentDashaPrediction(report);
+  const cpa = report.currentPeriodAnalysis;
+
+  // Opening — warm, direct summary
+  if (categories.length > 0) {
+    const cat = categories[0];
+    const outlookDesc = outlookWord(cat.overallOutlook);
+    parts.push(`Looking at your chart, ${cat.name.toLowerCase()} is ${outlookDesc} for you overall. ${cat.summary}`);
+  }
+
+  // What's relevant RIGHT NOW — current period context
   if (currentDasha) {
-    const relevantPredictions = currentDasha.eventPredictions
+    const relevantPreds = currentDasha.eventPredictions
       .filter(ep => categoryIds.includes(ep.category))
       .slice(0, 2);
-    if (relevantPredictions.length > 0) {
-      const predLines = relevantPredictions.map(p =>
-        `• ${p.description} (${p.likelihood}, ${p.timing})`
-      );
-      sections.push(`**Current ${currentDasha.planet} Mahadasha Context:**\n${predLines.join("\n")}`);
+    if (relevantPreds.length > 0) {
+      parts.push(`Right now, you're running **${cpa.mahadasha}-${cpa.antardasha}** (until ${cpa.endDate.slice(0, 7).replace("-", "/")}). ${relevantPreds.map(p => p.description).join(" ")}`);
+    } else {
+      parts.push(`You're currently in **${cpa.mahadasha}-${cpa.antardasha}** period. While this period's main themes don't directly focus on this area, the underlying chart strengths still apply.`);
     }
   }
 
-  // 5. Current period opportunities/cautions
-  const cpa = report.currentPeriodAnalysis;
-  const relevantOpps = cpa.opportunities.filter(o =>
-    categoryIds.some(cid => o.toLowerCase().includes(cid.replace("_", " ")))
-  );
-  const relevantCautions = cpa.cautions.filter(c =>
-    categoryIds.some(cid => c.toLowerCase().includes(cid.replace("_", " ")))
-  );
-  if (relevantOpps.length > 0) {
-    sections.push(`**Current Opportunities:**\n${relevantOpps.map(o => `• ${o}`).join("\n")}`);
-  }
-  if (relevantCautions.length > 0) {
-    sections.push(`**Current Cautions:**\n${relevantCautions.map(c => `• ${c}`).join("\n")}`);
+  // Key planetary influences — woven naturally
+  const relevantPlanets = getRelevantPlanets(report, planets);
+  if (relevantPlanets.length > 0) {
+    const planetNotes = relevantPlanets.slice(0, 2).map(p => {
+      const dignityNote = p.dignity ? ` (in ${p.dignity})` : "";
+      return `**${p.planet}**${dignityNote} sitting in house ${p.house}`;
+    });
+    parts.push(`The key planets here are ${planetNotes.join(" and ")}. ${relevantPlanets[0].interpretation}`);
   }
 
-  // 6. Upcoming highlights
+  // Upcoming windows — the most actionable part
   const upcoming = getRelevantHighlights(report.upcomingHighlights, categoryIds, 3);
   if (upcoming.length > 0) {
-    const lines = upcoming.map(h =>
-      `• **${h.event}** (${h.window}, ${h.dashaContext}): ${h.likelihood} — ${h.reasoning}`
-    );
-    sections.push(`**Upcoming Predictions:**\n${lines.join("\n")}`);
+    const windowTexts = upcoming.map(h => {
+      const indicator = likelihoodWord(h.likelihood);
+      return `• **${h.window}** (${h.dashaContext}) — ${indicator}. ${trimReasoning(h.reasoning)}`;
+    });
+    parts.push(`Here are your best upcoming windows:\n${windowTexts.join("\n")}`);
   }
 
-  // 7. Past highlights (for context)
-  const past = getRelevantHighlights(report.pastHighlights, categoryIds, 2);
-  if (past.length > 0) {
-    const lines = past.map(h =>
-      `• **${h.event}** (${h.window}, ${h.dashaContext}): ${h.reasoning}`
-    );
-    sections.push(`**Past Events (for context):**\n${lines.join("\n")}`);
+  // Past — ONLY if user explicitly asked
+  if (askingAboutPast) {
+    const past = getRelevantHighlights(report.pastHighlights, categoryIds, 2);
+    if (past.length > 0) {
+      const pastTexts = past.map(h =>
+        `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
+      );
+      parts.push(`Looking back at past periods:\n${pastTexts.join("\n")}`);
+    }
   }
 
-  // 8. Yoga influences
+  // Yoga mention if relevant — brief
   const yogas = getRelevantYogas(report, houses, planets);
   if (yogas.length > 0) {
-    const yogaLines = yogas.map(y =>
-      `• **${y.name}** (${y.strength}): ${y.lifeEventImpact}`
-    );
-    sections.push(`**Yoga Influences:**\n${yogaLines.join("\n")}`);
+    const topYoga = yogas[0];
+    parts.push(`Worth noting — you have **${topYoga.name}** in your chart, which ${topYoga.lifeEventImpact.charAt(0).toLowerCase()}${topYoga.lifeEventImpact.slice(1)}`);
   }
 
-  return sections.join("\n\n");
+  return parts.join("\n\n");
 }
 
 function buildGeneralAnswer(report: LifeEventsReport): string {
-  const sections: string[] = [];
-
-  // Chart summary
+  const parts: string[] = [];
   const cs = report.chartSummary;
-  sections.push(
-    `**Your Chart Overview:**\n` +
-    `Lagna (Ascendant): ${cs.lagna} | Lagna Lord: ${cs.lagnaLord} in ${cs.lagnaLordPlacement}\n` +
-    `Moon Sign: ${cs.moonSign} | Sun Sign: ${cs.sunSign}\n` +
-    `Current Period: ${cs.currentDasha}-${cs.currentAntardasha}\n\n` +
-    cs.description
-  );
-
-  // Current period
   const cpa = report.currentPeriodAnalysis;
-  sections.push(
-    `**Current Period: ${cpa.mahadasha}-${cpa.antardasha} (${cpa.startDate} – ${cpa.endDate})**\n` +
-    `Nature: ${formatOutlook(cpa.overallNature)}\n\n` +
-    cpa.detailedAnalysis
-  );
 
+  // Warm opening
+  parts.push(`You have a **${cs.lagna}** ascendant with ${cs.lagnaLord} as your lagna lord, placed in ${cs.lagnaLordPlacement}. ${cs.description}`);
+
+  // Current period — what matters NOW
+  parts.push(`Right now you're in **${cpa.mahadasha}-${cpa.antardasha}** period (until ${cpa.endDate.slice(0, 7).replace("-", "/")}), which is ${outlookWord(cpa.overallNature)}. ${cpa.detailedAnalysis}`);
+
+  // Quick opportunities + cautions
   if (cpa.opportunities.length > 0) {
-    sections.push(`**Opportunities:**\n${cpa.opportunities.map(o => `• ${o}`).join("\n")}`);
+    parts.push(`Some things working in your favour right now:\n${cpa.opportunities.slice(0, 3).map(o => `• ${o}`).join("\n")}`);
   }
   if (cpa.cautions.length > 0) {
-    sections.push(`**Cautions:**\n${cpa.cautions.map(c => `• ${c}`).join("\n")}`);
+    parts.push(`Things to be mindful about:\n${cpa.cautions.slice(0, 2).map(c => `• ${c}`).join("\n")}`);
   }
 
-  // Top upcoming highlights across all categories
+  // Top upcoming — just a taste
   const topUpcoming = [...report.upcomingHighlights]
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 3);
   if (topUpcoming.length > 0) {
     const lines = topUpcoming.map(h =>
-      `• **${h.event}** (${h.window}): ${h.likelihood} — ${h.reasoning.slice(0, 150)}${h.reasoning.length > 150 ? "..." : ""}`
+      `• **${h.event}** around ${h.window} — ${likelihoodWord(h.likelihood)}`
     );
-    sections.push(`**Top Upcoming Predictions:**\n${lines.join("\n")}`);
+    parts.push(`Some key things coming up for you:\n${lines.join("\n")}`);
   }
 
-  // Yogas
-  const activeYogas = report.yogaInfluences.filter(y => y.isPresent);
-  if (activeYogas.length > 0) {
-    const yogaLines = activeYogas.slice(0, 4).map(y =>
-      `• **${y.name}** (${y.strength}): ${y.effect}`
-    );
-    sections.push(`**Active Yogas in Your Chart:**\n${yogaLines.join("\n")}`);
-  }
+  parts.push("Feel free to ask me about anything specific — career, marriage, health, money, travel, or any other area of life!");
 
-  sections.push("Feel free to ask about specific life areas like career, marriage, health, wealth, education, or any other topic!");
-
-  return sections.join("\n\n");
+  return parts.join("\n\n");
 }
 
 function buildDashaAnswer(report: LifeEventsReport): string {
-  const sections: string[] = [];
-
+  const parts: string[] = [];
   const cpa = report.currentPeriodAnalysis;
-  sections.push(
-    `**Current Period: ${cpa.mahadasha}-${cpa.antardasha}**\n` +
-    `Window: ${cpa.startDate} – ${cpa.endDate}\n` +
-    `Nature: ${formatOutlook(cpa.overallNature)}\n\n` +
-    cpa.detailedAnalysis
-  );
 
-  // Show all mahadasha periods
-  const dashaLines = report.dashaPredictions.map(d =>
-    `• **${d.planet} Mahadasha** (${d.startDate} – ${d.endDate})${d.isCurrent ? " ← CURRENT" : ""}: ` +
-    `${formatOutlook(d.overallNature)} — ${d.themes.slice(0, 3).join(", ")}`
-  );
-  sections.push(`**Your Dasha Timeline:**\n${dashaLines.join("\n")}`);
+  parts.push(`You're currently running **${cpa.mahadasha}-${cpa.antardasha}** (${cpa.startDate.slice(0, 7).replace("-", "/")} to ${cpa.endDate.slice(0, 7).replace("-", "/")}). This period is ${outlookWord(cpa.overallNature)}.`);
+  parts.push(cpa.detailedAnalysis);
+
+  // Brief timeline of major periods
+  const dashaLines = report.dashaPredictions.map(d => {
+    const current = d.isCurrent ? " ← **you are here**" : "";
+    return `• **${d.planet}** (${d.startDate.slice(0, 4)}–${d.endDate.slice(0, 4)})${current} — ${outlookWord(d.overallNature)}, themes: ${d.themes.slice(0, 3).join(", ")}`;
+  });
+  parts.push(`Your major life periods:\n${dashaLines.join("\n")}`);
 
   if (cpa.remedialSuggestions.length > 0) {
-    sections.push(`**Remedial Suggestions:**\n${cpa.remedialSuggestions.map(r => `• ${r}`).join("\n")}`);
+    parts.push(`Some supportive remedies for this period:\n${cpa.remedialSuggestions.map(r => `• ${r}`).join("\n")}`);
   }
 
-  return sections.join("\n\n");
+  return parts.join("\n\n");
 }
 
-function formatOutlook(outlook: string): string {
-  const map: Record<string, string> = {
-    very_favorable: "Very Favorable ✨",
-    favorable: "Favorable 🟢",
-    mixed: "Mixed 🟡",
-    challenging: "Challenging 🟠",
-    needs_care: "Needs Care 🔴",
-  };
-  return map[outlook] || outlook;
+// Trim reasoning to be more concise — remove the technical prefix
+function trimReasoning(reasoning: string): string {
+  // The reasoning often starts with "Planet (Xth lord) with Planet (Yth lord)."
+  // Keep it but trim if too long
+  if (reasoning.length > 200) {
+    const firstSentenceEnd = reasoning.indexOf(". ", 100);
+    if (firstSentenceEnd > 0 && firstSentenceEnd < 250) {
+      return reasoning.slice(0, firstSentenceEnd + 1);
+    }
+    return reasoning.slice(0, 200) + "...";
+  }
+  return reasoning;
 }
 
 // ─── Main Entry Point ───────────────────────────────────────────────────────
@@ -393,9 +373,8 @@ export function answerAstrologyQuestion(
   chart: ChartResponse,
   report: LifeEventsReport,
 ): ChatAnswer {
-  // Check for dasha/period-specific questions
   const lower = question.toLowerCase();
-  const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will/.test(lower);
+  const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
 
   const classification = classifyQuestion(question);
 
@@ -411,16 +390,14 @@ export function answerAstrologyQuestion(
       classification.categories,
       classification.houses,
       classification.planets,
+      classification.askingAboutPast,
     );
 
-    // If category answer is too thin, append general context
-    if (answer.length < 200) {
-      answer += "\n\n" + buildGeneralAnswer(report);
+    // If answer is too thin, add a gentle general nudge
+    if (answer.length < 150) {
+      answer += "\n\nI don't have very strong indicators in your chart for this specific area. Would you like me to look at something else — like career, relationships, or your current dasha period?";
     }
   }
-
-  // Add footer
-  answer += "\n\n---\n*Analysis based on your Vedic birth chart using Vimshottari dasha system, planetary dignities, house lordships, and transit positions.*";
 
   return {
     answer,
