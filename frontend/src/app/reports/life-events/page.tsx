@@ -706,7 +706,7 @@ function LifeEventsReportContent() {
           >
             <span>{"\u2190"}</span> Back to Reports
           </button>
-          <LifeEventsReportView report={report} chart={chart} name={name} />
+          <LifeEventsReportView report={report} chart={chart} name={name} isAdmin={session?.user?.role === "admin"} />
         </div>
       )}
     </div>

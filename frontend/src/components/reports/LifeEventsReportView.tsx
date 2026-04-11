@@ -14,6 +14,7 @@ interface Props {
   report: LifeEventsReport;
   chart: ChartResponse;
   name?: string;
+  isAdmin?: boolean;
 }
 
 /* ── Shared UI Helpers ────────────────────────────────────────────────────── */
@@ -109,7 +110,7 @@ function formatDateRange(start: string, end: string): string {
 
 /* ── PDF Download ─────────────────────────────────────────────────────────── */
 
-async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse, name?: string) {
+async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse, name?: string, isAdmin?: boolean) {
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -207,9 +208,9 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
     y += 2;
   }
 
-  // === PAST HIGHLIGHTS ===
-  if (report.pastHighlights && report.pastHighlights.length > 0) {
-    sectionTitle("Past Life Events - Looking Back");
+  // === PAST HIGHLIGHTS (admin only) ===
+  if (isAdmin && report.pastHighlights && report.pastHighlights.length > 0) {
+    sectionTitle("Past Life Events - Looking Back (Admin)");
     for (const h of report.pastHighlights) {
       checkPage(14);
       const evColor = h.type === "positive" ? colors.green : h.type === "negative" ? colors.red : colors.amber;
@@ -227,22 +228,59 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
     }
   }
 
-  // === UPCOMING HIGHLIGHTS ===
+  // === UPCOMING HIGHLIGHTS (grouped by category) ===
   sectionTitle("Upcoming Life Event Predictions");
-  for (const h of report.upcomingHighlights) {
-    checkPage(14);
-    const evColor = h.type === "positive" ? colors.green : h.type === "negative" ? colors.red : colors.amber;
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...evColor);
-    doc.text(h.event, margin, y);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...colors.gray);
-    doc.text(`${h.window} | ${h.dashaContext} | ${h.likelihood.replace(/_/g, " ")}`, margin, y + 4);
-    y += 8.5;
-    bodyText(h.reasoning);
-    y += 2;
+  {
+    const grouped = new Map<string, typeof report.upcomingHighlights>();
+    for (const h of report.upcomingHighlights) {
+      const list = grouped.get(h.category) || [];
+      list.push(h);
+      grouped.set(h.category, list);
+    }
+    const catOrder = report.eventCategories.map(c => c.id);
+    const sortedCats = [...grouped.entries()].sort((a, b) => {
+      const ai = catOrder.indexOf(a[0]);
+      const bi = catOrder.indexOf(b[0]);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    for (const [catId, highlights] of sortedCats) {
+      const catMeta = report.eventCategories.find(c => c.id === catId);
+      const catName = catMeta ? `${catMeta.icon} ${catMeta.name}` : catId.replace(/_/g, " ");
+      const sorted = [...highlights].sort((a, b) => a.startDateRaw.localeCompare(b.startDateRaw));
+
+      // Category sub-header
+      checkPage(12);
+      y += 2;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...colors.amber);
+      doc.text(catName, margin, y);
+      if (catMeta) {
+        const outlookStr = `[${catMeta.overallOutlook.replace(/_/g, " ").toUpperCase()}]`;
+        doc.setFontSize(8);
+        doc.setTextColor(...colors.gray);
+        doc.text(outlookStr, margin + doc.getTextWidth(catName + "  ") + 1, y);
+      }
+      y += 6;
+
+      for (const h of sorted) {
+        checkPage(14);
+        const evColor = h.type === "positive" ? colors.green : h.type === "negative" ? colors.red : colors.amber;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...evColor);
+        doc.text(h.event, margin + 3, y);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...colors.gray);
+        doc.text(`${h.window} | ${h.dashaContext} | ${h.likelihood.replace(/_/g, " ")}`, margin + 3, y + 4);
+        y += 8.5;
+        bodyText(h.reasoning);
+        y += 2;
+      }
+      y += 3;
+    }
   }
 
   // === DASHA PREDICTIONS ===
@@ -367,7 +405,7 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
 
 /* ── Main Component ───────────────────────────────────────────────────────── */
 
-export function LifeEventsReportView({ report, chart, name }: Props) {
+export function LifeEventsReportView({ report, chart, name, isAdmin }: Props) {
   return (
     <div className="space-y-5">
       {/* Report header */}
@@ -446,11 +484,11 @@ export function LifeEventsReportView({ report, chart, name }: Props) {
         </div>
       </Section>
 
-      {/* 3a. Past Life Events */}
-      {report.pastHighlights && report.pastHighlights.length > 0 && (
-        <Section title="Past Life Events — Looking Back" icon={"\u{1F550}"}>
+      {/* 3a. Past Life Events — admin only */}
+      {isAdmin && report.pastHighlights && report.pastHighlights.length > 0 && (
+        <Section title="Past Life Events — Looking Back (Admin)" icon={"\u{1F550}"}>
           <p className="text-xs text-slate-500 mb-3">
-            These are significant events your chart indicated for past periods. Reflect on how these
+            <span className="text-amber-500 font-semibold">[Admin view]</span> These are significant events your chart indicated for past periods. Reflect on how these
             planetary influences may have already manifested in your life — this can help you understand
             how dasha patterns work for you personally.
           </p>
@@ -482,36 +520,89 @@ export function LifeEventsReportView({ report, chart, name }: Props) {
         </Section>
       )}
 
-      {/* 3b. Upcoming Life Highlights */}
+      {/* 3b. Upcoming Life Highlights — grouped by category */}
       <Section title="Upcoming Life Event Predictions" icon={"\u{2B50}"}>
         <p className="text-xs text-slate-500 mb-3">
-          The most significant events indicated by your chart, sorted by timeline. Remember, these are
+          The most significant events indicated by your chart, grouped by life area. Remember, these are
           astrological indicators — your choices and actions always play the central role.
         </p>
-        <div className="space-y-3">
-          {report.upcomingHighlights.map((h: LifeHighlight, i: number) => (
-            <div
-              key={i}
-              className={`rounded-lg p-4 border ${
-                h.type === "positive"
-                  ? "bg-green-500/5 border-green-500/10"
-                  : h.type === "negative"
-                  ? "bg-red-500/5 border-red-500/10"
-                  : "bg-amber-500/5 border-amber-500/10"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-semibold text-slate-200">{h.event}</span>
-                <LikelihoodBadge likelihood={h.likelihood} />
-              </div>
-              <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
-                <span>{h.window}</span>
-                <span className="text-slate-700">|</span>
-                <span>{h.dashaContext}</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">{h.reasoning}</p>
-            </div>
-          ))}
+        <div className="space-y-6">
+          {(() => {
+            // Group highlights by category
+            const grouped = new Map<string, LifeHighlight[]>();
+            for (const h of report.upcomingHighlights) {
+              const list = grouped.get(h.category) || [];
+              list.push(h);
+              grouped.set(h.category, list);
+            }
+
+            // Sort categories: use the eventCategories order, then any remaining
+            const catOrder = report.eventCategories.map((c: EventCategory) => c.id);
+            const sortedCategories = [...grouped.entries()].sort((a, b) => {
+              const ai = catOrder.indexOf(a[0]);
+              const bi = catOrder.indexOf(b[0]);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+
+            return sortedCategories.map(([catId, highlights]) => {
+              const catMeta = report.eventCategories.find((c: EventCategory) => c.id === catId);
+              const icon = catMeta?.icon || "\u{1F52E}";
+              const catName = catMeta?.name || catId.replace(/_/g, " ");
+              const catType = catMeta?.type || highlights[0]?.type || "neutral";
+
+              // Sort events within category by startDateRaw (chronological)
+              const sorted = [...highlights].sort((a, b) =>
+                a.startDateRaw.localeCompare(b.startDateRaw)
+              );
+
+              // Determine category-level border color
+              const borderClass = catType === "positive"
+                ? "border-green-500/20"
+                : catType === "negative"
+                ? "border-red-500/20"
+                : "border-amber-500/20";
+
+              return (
+                <div key={catId} className={`border rounded-xl overflow-hidden ${borderClass}`}>
+                  {/* Category header */}
+                  <div className={`px-4 py-3 flex items-center justify-between ${
+                    catType === "positive"
+                      ? "bg-green-500/5"
+                      : catType === "negative"
+                      ? "bg-red-500/5"
+                      : "bg-amber-500/5"
+                  }`}>
+                    <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                      <span className="text-lg">{icon}</span>
+                      {catName}
+                      <span className="text-xs text-slate-500 font-normal">
+                        ({sorted.length} prediction{sorted.length !== 1 ? "s" : ""})
+                      </span>
+                    </span>
+                    {catMeta && <OutlookBadge outlook={catMeta.overallOutlook} />}
+                  </div>
+
+                  {/* Events within category */}
+                  <div className="divide-y divide-slate-800/50">
+                    {sorted.map((h: LifeHighlight, i: number) => (
+                      <div key={i} className="px-4 py-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-slate-300">{h.event}</span>
+                          <LikelihoodBadge likelihood={h.likelihood} />
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mb-1.5">
+                          <span>{h.window}</span>
+                          <span className="text-slate-700">|</span>
+                          <span>{h.dashaContext}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">{h.reasoning}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </Section>
 
@@ -777,7 +868,7 @@ export function LifeEventsReportView({ report, chart, name }: Props) {
       {/* Download buttons */}
       <div className="text-center space-x-3">
         <button
-          onClick={() => downloadReportPdf(report, chart, name)}
+          onClick={() => downloadReportPdf(report, chart, name, isAdmin)}
           className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
         >
           {"\u{1F4E5}"} Save as PDF
