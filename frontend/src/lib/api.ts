@@ -185,6 +185,40 @@ export async function calculateCurrentTransits(
   return res.json();
 }
 
+// ── Lifetime Transit Snapshots ───────────────────────────────────────────────
+
+export interface SlowPlanetSnapshot {
+  date: string; // YYYY-MM-DD
+  planets: Record<string, number>; // planet_name -> house (1-12)
+}
+
+export interface LifetimeTransitResponse {
+  snapshots: SlowPlanetSnapshot[];
+}
+
+export async function fetchLifetimeTransits(
+  ayanamshaValue: number,
+  natalLagnaDegree: number,
+  birthYear: number,
+  birthMonth: number = 1,
+): Promise<LifetimeTransitResponse> {
+  const res = await fetch("/api/chart/lifetime-transits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ayanamsha_value: ayanamshaValue,
+      natal_lagna_degree: natalLagnaDegree,
+      birth_year: birthYear,
+      birth_month: birthMonth,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to fetch lifetime transits");
+  }
+  return res.json();
+}
+
 // ── Panchang & Avakhada ──────────────────────────────────────────────────────
 
 export interface TithiInfo {

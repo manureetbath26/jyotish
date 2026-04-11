@@ -5,13 +5,14 @@ import pytz
 from models.schemas import (
     BirthDataInput, ChartResponse, TransitChartRequest, TransitChartResponse,
     CurrentTransitRequest, CurrentTransitResponse,
+    LifetimeTransitRequest, LifetimeTransitResponse,
     PanchangRequest, PanchangResponse,
 )
 from services.geocoding import geocode_place, local_to_utc
 from services.astrology import calculate_full_chart
 from services.dasha import build_dasha_sequence, get_current_dasha_antardasha
 from services.yogas import calculate_yogas
-from services.transit import calculate_transit_periods, get_next_major_transit, get_current_transit_positions
+from services.transit import calculate_transit_periods, get_next_major_transit, get_current_transit_positions, get_lifetime_transit_snapshots
 from services.panchang import calculate_panchang
 router = APIRouter(prefix="/api/chart", tags=["chart"])
 
@@ -199,6 +200,21 @@ async def calculate_transits(body: TransitChartRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transit calculation error: {e}")
+
+
+@router.post("/lifetime-transits", response_model=LifetimeTransitResponse)
+async def lifetime_transits(body: LifetimeTransitRequest):
+    """Get slow-planet transit positions sampled monthly from birth to age 100."""
+    try:
+        snapshots = get_lifetime_transit_snapshots(
+            body.ayanamsha_value,
+            body.natal_lagna_degree,
+            body.birth_year,
+            body.birth_month,
+        )
+        return LifetimeTransitResponse(snapshots=snapshots)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lifetime transit error: {e}")
 
 
 @router.post("/current-transits", response_model=CurrentTransitResponse)

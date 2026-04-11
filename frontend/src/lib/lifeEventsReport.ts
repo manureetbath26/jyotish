@@ -2,7 +2,7 @@
 // Analyzes birth chart to predict major life events using Vimshottari Dasha,
 // house lordships, planetary strengths, and yoga influences.
 
-import { ChartResponse } from "@/lib/api";
+import { ChartResponse, SlowPlanetSnapshot } from "@/lib/api";
 
 // ─── Exported Interfaces ────────────────────────────────────────────────────
 
@@ -882,13 +882,79 @@ const HIGHLIGHT_EVENTS: HighlightEventDef[] = [
   },
 ];
 
+// ─── Transit Lookup Helper ──────────────────────────────────────────────────
+
+/** Find the snapshot closest to the midpoint of a date range. */
+function getTransitSnapshot(
+  snapshots: SlowPlanetSnapshot[],
+  startDate: string,
+  endDate: string
+): Record<string, number> | null {
+  if (!snapshots || snapshots.length === 0) return null;
+  // Compute midpoint as YYYY-MM-DD
+  const s = new Date(startDate).getTime();
+  const e = new Date(endDate).getTime();
+  const mid = new Date((s + e) / 2);
+  const midStr = mid.toISOString().slice(0, 10);
+
+  // Binary search for closest snapshot
+  let lo = 0, hi = snapshots.length - 1;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (snapshots[m].date < midStr) lo = m + 1;
+    else hi = m;
+  }
+  // Check lo and lo-1 for closest
+  if (lo > 0) {
+    const d1 = Math.abs(new Date(snapshots[lo - 1].date).getTime() - mid.getTime());
+    const d2 = Math.abs(new Date(snapshots[lo].date).getTime() - mid.getTime());
+    if (d1 < d2) lo = lo - 1;
+  }
+  return snapshots[lo].planets;
+}
+
+/**
+ * Score transit contribution for an event.
+ * Checks if slow planets (Jupiter, Saturn, Rahu, Ketu) are transiting
+ * houses relevant to the event during the antardasha window.
+ */
+function scoreTransits(
+  transitHouses: Record<string, number>,
+  relevantHouses: number[],
+): { transitScore: number; transitReasons: string[] } {
+  let transitScore = 0;
+  const transitReasons: string[] = [];
+  const TRANSIT_PLANETS = ["Jupiter", "Saturn", "Rahu", "Ketu"];
+
+  const transiting: string[] = [];
+  for (const planet of TRANSIT_PLANETS) {
+    const house = transitHouses[planet];
+    if (house && relevantHouses.includes(house)) {
+      // Jupiter and Saturn get +2, Rahu/Ketu get +1
+      const pts = (planet === "Jupiter" || planet === "Saturn") ? 2 : 1;
+      transitScore += pts;
+      transitReasons.push(`Transit ${planet} in ${ordinal(house)} house`);
+      transiting.push(planet);
+    }
+  }
+
+  // Double transit bonus: Jupiter + Saturn both in relevant houses
+  if (transiting.includes("Jupiter") && transiting.includes("Saturn")) {
+    transitScore += 2;
+    transitReasons.push("Double transit (Jupiter + Saturn) confirms event");
+  }
+
+  return { transitScore, transitReasons };
+}
+
 // ─── Upcoming Highlights Builder (Scoring-Based) ───────────────────────────
 
 function buildUpcomingHighlights(
   dashaPredictions: DashaPrediction[],
   chart: ChartResponse,
   lordshipsMap: Record<string, number[]>,
-  lagna: string
+  lagna: string,
+  transitSnapshots?: SlowPlanetSnapshot[]
 ): LifeHighlight[] {
   const highlights: LifeHighlight[] = [];
   const birthYr = getBirthYear(chart);
@@ -1024,6 +1090,16 @@ function buildUpcomingHighlights(
         // 8. Favorable period bonus: +1 for very_favorable AD nature
         if (ad.nature === "very_favorable" && evt.type === "positive") score += 1;
         if (ad.nature === "challenging" && evt.type === "negative") score += 1;
+
+        // 9. Transit confirmation: slow planets transiting relevant houses
+        if (transitSnapshots && transitSnapshots.length > 0) {
+          const transitHouses = getTransitSnapshot(transitSnapshots, ad.startDate, ad.endDate);
+          if (transitHouses) {
+            const { transitScore, transitReasons } = scoreTransits(transitHouses, evt.relevantHouses);
+            score += transitScore;
+            reasons.push(...transitReasons);
+          }
+        }
 
         // ── Check threshold
         if (score < evt.threshold) continue;
@@ -1233,7 +1309,10 @@ function splitHighlights(
 
 // ─── Main Export ────────────────────────────────────────────────────────────
 
-export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport {
+export function generateLifeEventsReport(
+  chart: ChartResponse,
+  transitSnapshots?: SlowPlanetSnapshot[]
+): LifeEventsReport {
   const lagna = chart.lagna;
   const lordshipsMap = getLordships(lagna);
   const yogakaraka = getYogakaraka(lagna);
@@ -1465,7 +1544,7 @@ export function generateLifeEventsReport(chart: ChartResponse): LifeEventsReport
   };
 
   // ── Life Highlights (past + upcoming, sorted chronologically)
-  const allHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna);
+  const allHighlights = buildUpcomingHighlights(dashaPredictions, chart, lordshipsMap, lagna, transitSnapshots);
   const { past: pastHighlights, upcoming: upcomingHighlights } = splitHighlights(allHighlights);
 
   // ── Yoga Influences

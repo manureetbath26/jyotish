@@ -558,6 +558,65 @@ def get_current_transit_positions(
     }
 
 
+SLOW_PLANETS = {
+    swe.JUPITER: "Jupiter",
+    swe.SATURN: "Saturn",
+    swe.MEAN_NODE: "Rahu",
+}
+
+
+def get_lifetime_transit_snapshots(
+    ayanamsha_val: float,
+    natal_lagna_degree: float,
+    birth_year: int,
+    birth_month: int = 1,
+) -> List[Dict]:
+    """
+    Compute slow-planet (Jupiter, Saturn, Rahu, Ketu) house positions
+    sampled monthly from birth to age 100.
+
+    Returns a list of {date: "YYYY-MM-DD", planets: {name: house_num}}.
+    """
+    natal_lagna_rashi_num = int(natal_lagna_degree / 30)  # 0-indexed
+    flag = swe.FLG_SWIEPH | swe.FLG_SPEED
+    snapshots = []
+
+    for month_offset in range(100 * 12):  # 1200 months = 100 years
+        year = birth_year + month_offset // 12
+        month = birth_month + month_offset % 12
+        if month > 12:
+            year += 1
+            month -= 12
+
+        jd = swe.julday(year, month, 15, 12.0, 1)  # 15th of each month at noon
+
+        planet_houses = {}
+        rahu_lon = 0.0
+
+        for planet_num, planet_name in SLOW_PLANETS.items():
+            pos, _ = swe.calc_ut(jd, planet_num, flag)
+            sidereal_lng = (pos[0] - ayanamsha_val) % 360
+            rashi_num_0 = int(sidereal_lng / 30)
+            house = ((rashi_num_0 - natal_lagna_rashi_num) % 12) + 1
+            planet_houses[planet_name] = house
+
+            if planet_name == "Rahu":
+                rahu_lon = sidereal_lng
+
+        # Ketu = Rahu + 180°
+        ketu_lon = (rahu_lon + 180) % 360
+        ketu_rashi_0 = int(ketu_lon / 30)
+        ketu_house = ((ketu_rashi_0 - natal_lagna_rashi_num) % 12) + 1
+        planet_houses["Ketu"] = ketu_house
+
+        snapshots.append({
+            "date": f"{year:04d}-{month:02d}-15",
+            "planets": planet_houses,
+        })
+
+    return snapshots
+
+
 def get_planet_position_on_date(
     planet_num: int,
     utc_datetime: datetime,

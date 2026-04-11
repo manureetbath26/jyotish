@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
-import { calculateChart, ChartResponse } from "@/lib/api";
+import { calculateChart, ChartResponse, fetchLifetimeTransits } from "@/lib/api";
 import { generateLifeEventsReport, LifeEventsReport } from "@/lib/lifeEventsReport";
 import { LifeEventsReportView } from "@/components/reports/LifeEventsReportView";
 
@@ -125,7 +125,24 @@ function LifeEventsReportContent() {
     try {
       const result = await calculateChart({ date, time, place });
       setChart(result);
-      const rpt = generateLifeEventsReport(result);
+
+      // Fetch slow-planet transit positions for lifetime scoring
+      const birthYear = parseInt(date.split("-")[0], 10);
+      const birthMonth = parseInt(date.split("-")[1], 10);
+      let transitSnapshots;
+      try {
+        const transitData = await fetchLifetimeTransits(
+          result.ayanamsha_value,
+          result.lagna_degree,
+          birthYear,
+          birthMonth,
+        );
+        transitSnapshots = transitData.snapshots;
+      } catch {
+        // Transit data is optional — engine works without it
+      }
+
+      const rpt = generateLifeEventsReport(result, transitSnapshots);
       setReport(rpt);
       setStep("preview");
     } catch (err) {

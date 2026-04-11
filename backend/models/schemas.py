@@ -165,6 +165,25 @@ class CurrentTransitRequest(BaseModel):
     natal_lagna_degree: float
 
 
+class LifetimeTransitRequest(BaseModel):
+    """Request slow-planet transit positions sampled monthly from birth to age 100."""
+    ayanamsha_value: float
+    natal_lagna_degree: float
+    birth_year: int
+    birth_month: int = 1
+
+
+class SlowPlanetSnapshot(BaseModel):
+    """Planet positions at a single sample date."""
+    date: str  # YYYY-MM-DD
+    planets: Dict[str, int]  # planet_name -> house (1-12)
+
+
+class LifetimeTransitResponse(BaseModel):
+    """Monthly slow-planet positions across a lifetime."""
+    snapshots: List[SlowPlanetSnapshot]
+
+
 class CurrentTransitResponse(BaseModel):
     transit_date: str
     planets: List[PlanetPosition]
