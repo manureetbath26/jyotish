@@ -1171,8 +1171,10 @@ function buildUpcomingHighlights(
   }
 
   // Resolve conflicting pairs: when a positive and negative event target the
-  // same life theme in the same MD-AD period, keep only one. The period's
-  // overall nature decides: favorable → positive wins, challenging → negative.
+  // same life theme in the same MD-AD period, don't show both.
+  // Negative events inherently score higher (more dusthana houses, malefic karakas),
+  // so we bias toward the positive: remove the negative unless it's the ONLY one,
+  // i.e., no positive counterpart exists for that period.
   const CONFLICT_PAIRS: [string, string][] = [
     ["marriage", "relationship_conflict"],
     ["career_growth", "career_setback"],
@@ -1183,7 +1185,6 @@ function buildUpcomingHighlights(
   const toRemove = new Set<string>();
 
   for (const [positiveCat, negativeCat] of CONFLICT_PAIRS) {
-    // Group by dashaContext (MD-AD period)
     const positiveByPeriod = new Map<string, LifeHighlight>();
     const negativeByPeriod = new Map<string, LifeHighlight>();
 
@@ -1192,19 +1193,10 @@ function buildUpcomingHighlights(
       if (h.category === negativeCat) negativeByPeriod.set(h.dashaContext, h);
     }
 
-    for (const [period] of positiveByPeriod) {
-      const neg = negativeByPeriod.get(period);
-      if (!neg) continue; // No conflict
-      const pos = positiveByPeriod.get(period)!;
-
-      // Determine which to remove based on the period's dasha nature:
-      // If the reasoning mentions "Yogakaraka provides protection" → favor positive
-      // Otherwise compare scores; if equal, check if the period context leans positive/negative
-      // Simple heuristic: higher score wins; on tie, positive wins
-      if (pos.score >= neg.score) {
-        toRemove.add(`${neg.category}-${neg.dashaContext}`);
-      } else {
-        toRemove.add(`${pos.category}-${pos.dashaContext}`);
+    // When both exist for the same period, remove the negative
+    for (const [period] of negativeByPeriod) {
+      if (positiveByPeriod.has(period)) {
+        toRemove.add(`${negativeCat}-${period}`);
       }
     }
   }
