@@ -47,10 +47,6 @@ export function Navbar() {
               Reports
             </Link>
 
-            <Link href="/chat" className="text-slate-300 hover:text-white transition-colors">
-              Ask
-            </Link>
-
             {session ? (
               <>
                 <Link href="/compatibility" className="text-slate-300 hover:text-white transition-colors">
@@ -60,9 +56,14 @@ export function Navbar() {
                   My Charts
                 </Link>
                 {session.user?.role === "admin" && (
-                  <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
-                    Admin
-                  </Link>
+                  <>
+                    <Link href="/chat" className="text-slate-300 hover:text-white transition-colors">
+                      Ask
+                    </Link>
+                    <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
+                      Admin
+                    </Link>
+                  </>
                 )}
                 <span className="text-slate-500">{session.user?.email}</span>
                 <button
