@@ -1398,15 +1398,145 @@ function buildUpcomingHighlights(
     h => !toRemove.has(`${h.category}-${h.dashaContext}`)
   );
 
+  // ── Consolidate MD-level themes ──────────────────────────────────
+  // When an entire Mahadasha triggers the same event category across
+  // most of its Antardashas, collapse them into one summarised entry
+  // spanning the full MD period. Keep individual AD entries only when
+  // they are outliers (significantly different score or event label).
+  const consolidated = consolidateMDHighlights(deduped, dashaPredictions);
+
   // Sort chronologically by startDateRaw, then by likelihood
-  deduped.sort((a, b) => {
+  consolidated.sort((a, b) => {
     const cmp = a.startDateRaw.localeCompare(b.startDateRaw);
     if (cmp !== 0) return cmp;
     const order = { very_likely: 0, likely: 1, possible: 2 };
     return order[a.likelihood] - order[b.likelihood];
   });
 
-  return deduped;
+  return consolidated;
+}
+
+/**
+ * Consolidate highlights when a Mahadasha triggers the same event category
+ * across most of its Antardashas. Instead of listing 7 separate "Health
+ * Awareness" entries for Rahu MD, show one summarised entry for the full period
+ * and only keep individual AD entries that are meaningfully different.
+ *
+ * Threshold: ≥50% of AD sub-periods within a MD must trigger the same category.
+ * "Outlier" ADs are kept individually when their score deviates >40% from the
+ * group average or their event label differs from the majority.
+ */
+function consolidateMDHighlights(
+  highlights: LifeHighlight[],
+  dashaPredictions: DashaPrediction[],
+): LifeHighlight[] {
+  // Build a lookup: MD planet → { startDate, endDate, adCount }
+  const mdInfo = new Map<string, { start: string; end: string; adCount: number }>();
+  for (const dp of dashaPredictions) {
+    mdInfo.set(dp.planet, {
+      start: dp.startDate,
+      end: dp.endDate,
+      adCount: dp.antardashaHighlights.length,
+    });
+  }
+
+  // Extract MD planet name from dashaContext "Saturn-Mercury period" → "Saturn"
+  const getMD = (h: LifeHighlight) => h.dashaContext.split("-")[0];
+
+  // Group highlights by category + MD planet
+  const groups = new Map<string, LifeHighlight[]>();
+  for (const h of highlights) {
+    const key = `${h.category}::${getMD(h)}`;
+    const arr = groups.get(key) || [];
+    arr.push(h);
+    groups.set(key, arr);
+  }
+
+  const result: LifeHighlight[] = [];
+  const consumed = new Set<LifeHighlight>(); // highlights absorbed into summaries
+
+  for (const [key, group] of groups) {
+    const [category, mdPlanet] = key.split("::");
+    const md = mdInfo.get(mdPlanet);
+    if (!md) {
+      // Safety: if we can't find MD info, keep originals
+      result.push(...group);
+      continue;
+    }
+
+    // Need at least 3 AD entries and ≥50% of ADs in this MD
+    const adCoverage = group.length / md.adCount;
+    if (group.length < 3 || adCoverage < 0.5) {
+      // Not pervasive enough — keep individual entries
+      result.push(...group);
+      continue;
+    }
+
+    // Calculate average score and majority event label
+    const avgScore = group.reduce((s, h) => s + h.score, 0) / group.length;
+    const labelCounts = new Map<string, number>();
+    for (const h of group) {
+      labelCounts.set(h.event, (labelCounts.get(h.event) || 0) + 1);
+    }
+    const majorityLabel = [...labelCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+    // Find best likelihood in the group
+    const likelihoodOrder: Record<string, number> = { very_likely: 0, likely: 1, possible: 2 };
+    const bestLikelihood = group.reduce((best, h) =>
+      likelihoodOrder[h.likelihood] < likelihoodOrder[best.likelihood] ? h : best
+    ).likelihood;
+
+    // Separate outliers (score deviates >40% from average or different event label)
+    const outliers: LifeHighlight[] = [];
+    const mainstream: LifeHighlight[] = [];
+    for (const h of group) {
+      const deviation = Math.abs(h.score - avgScore) / Math.max(avgScore, 1);
+      if (deviation > 0.4 || h.event !== majorityLabel) {
+        outliers.push(h);
+      } else {
+        mainstream.push(h);
+      }
+    }
+
+    // If after removing outliers we still have ≥3 mainstream, consolidate
+    if (mainstream.length >= 3) {
+      // Build summary reasoning from top-scoring entry + AD count
+      const topEntry = mainstream.reduce((a, b) => a.score > b.score ? a : b);
+      const summaryReasoning = `${mdPlanet} Mahadasha activates this theme across ${mainstream.length} sub-periods. ` +
+        topEntry.reasoning;
+
+      // Mark mainstream as consumed
+      for (const h of mainstream) consumed.add(h);
+
+      result.push({
+        event: majorityLabel,
+        category,
+        type: mainstream[0].type,
+        window: `${formatDate(md.start)} – ${formatDate(md.end)}`,
+        startDateRaw: md.start,
+        endDateRaw: md.end,
+        dashaContext: `${mdPlanet} Mahadasha (overall)`,
+        likelihood: bestLikelihood,
+        score: Math.round(avgScore),
+        reasoning: summaryReasoning,
+      });
+
+      // Keep outliers as individual entries
+      result.push(...outliers);
+    } else {
+      // Not enough mainstream after outlier removal — keep all individual
+      result.push(...group);
+    }
+  }
+
+  // Add any highlights that weren't part of any consolidation group
+  for (const h of highlights) {
+    if (!consumed.has(h) && !result.includes(h)) {
+      result.push(h);
+    }
+  }
+
+  return result;
 }
 
 function ordinal(n: number): string {
