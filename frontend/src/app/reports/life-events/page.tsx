@@ -654,14 +654,14 @@ function LifeEventsReportContent() {
 
       {/* Step 4: Full Report */}
       {step === "report" && report && chart && (
-        <div className="space-y-4">
-          <button
-            onClick={() => window.history.length > 1 ? window.history.back() : setStep("preview")}
-            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <span>{"\u2190"}</span> Back to Reports
-          </button>
-          <LifeEventsReportView report={report} chart={chart} name={name} isAdmin={session?.user?.role === "admin"} />
+        <div>
+          <LifeEventsReportView
+            report={report}
+            chart={chart}
+            name={name}
+            isAdmin={session?.user?.role === "admin"}
+            onBack={() => window.history.length > 1 ? window.history.back() : setStep("preview")}
+          />
         </div>
       )}
     </div>
