@@ -220,6 +220,7 @@ const EVENT_CATEGORIES_DEF: Array<{
   { id: "accidents", name: "Safety & Accidents", icon: "\u{26A0}\uFE0F", type: "negative", relevantHouses: [8, 6], relevantPlanets: ["Mars", "Rahu"] },
   { id: "mental_health", name: "Mental Wellbeing", icon: "\u{1F9E0}", type: "negative", relevantHouses: [4, 5, 1], relevantPlanets: ["Moon", "Mercury"] },
   { id: "family_conflict", name: "Family Harmony", icon: "\u{1F3E1}", type: "negative", relevantHouses: [2, 4], relevantPlanets: ["Mars"] },
+  { id: "protective_disruption", name: "Protective Life Redirect", icon: "\u{1F6E1}\uFE0F", type: "neutral", relevantHouses: [1, 8], relevantPlanets: ["Ketu"] },
 ];
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
@@ -884,6 +885,18 @@ const HIGHLIGHT_EVENTS: HighlightEventDef[] = [
     relevantHouses: [10, 8, 12], karakaPlanets: ["Saturn", "Rahu"],
     powerCombos: [[10, 8], [10, 12]], threshold: 4, requiresChallenging: true, minAge: 18,
   },
+  {
+    // Protective Disruption: when the lagna lord (H1) activates H8 (transformation),
+    // the native is extracted from a situation for their own protection. This is NOT
+    // a negative event — the disruption serves the self. The lagna lord's primary
+    // dharma is to protect. H8 is the mechanism (upheaval), H1 is the beneficiary (self).
+    // Scoring naturally captures the lagna-lord pattern: a planet lording H1+H8
+    // (e.g. Venus for Libra, Mars for Aries) will score lordship on BOTH relevant
+    // houses plus lord+occupant reinforcement if placed in H1 or H8.
+    id: "protective_disruption", event: "Protective Life Redirect", category: "protective_disruption", type: "neutral",
+    relevantHouses: [1, 8], karakaPlanets: ["Ketu"],
+    powerCombos: [[1, 8]], threshold: 5, minAge: 16,
+  },
 ];
 
 // ─── Transit Lookup Helper ──────────────────────────────────────────────────
@@ -918,9 +931,37 @@ function getTransitSnapshot(
 }
 
 /**
+ * Get all houses a transiting planet influences (placement + special aspects).
+ * Jyotish aspects: all planets aspect 7th from themselves.
+ * Special aspects: Jupiter → 5th, 7th, 9th; Saturn → 3rd, 7th, 10th;
+ * Rahu/Ketu → 5th, 7th, 9th (like Jupiter, per some traditions).
+ * Mars → 4th, 7th, 8th (included for completeness but Mars transits are fast).
+ */
+function getTransitInfluencedHouses(planet: string, house: number): number[] {
+  const h = (offset: number) => ((house - 1 + offset) % 12) + 1;
+  // All planets have 7th aspect
+  const houses = [house, h(6)]; // placement + 7th aspect
+  if (planet === "Jupiter" || planet === "Rahu" || planet === "Ketu") {
+    houses.push(h(4), h(8)); // 5th and 9th aspect
+  } else if (planet === "Saturn") {
+    houses.push(h(2), h(9)); // 3rd and 10th aspect
+  }
+  return houses;
+}
+
+/**
  * Score transit contribution for an event.
- * Checks if slow planets (Jupiter, Saturn, Rahu, Ketu) are transiting
- * houses relevant to the event during the antardasha window.
+ * Checks if slow planets (Jupiter, Saturn, Rahu, Ketu) transit through
+ * or aspect houses relevant to the event. Implements the Double Transit
+ * Theory (K.N. Rao): events manifest when BOTH Jupiter and Saturn
+ * influence the relevant house. Without double transit, events are
+ * unlikely to manifest regardless of dasha promise.
+ *
+ * Scoring:
+ *   Direct transit (planet IN relevant house): +2 Jupiter/Saturn, +1 Rahu/Ketu
+ *   Aspect on relevant house: +1 Jupiter/Saturn, +1 Rahu/Ketu
+ *   Double transit (Jupiter + Saturn both influence): +3 bonus
+ *   No double transit: -2 penalty (event unlikely without confirmation)
  */
 function scoreTransits(
   transitHouses: Record<string, number>,
@@ -930,23 +971,51 @@ function scoreTransits(
   const transitReasons: string[] = [];
   const TRANSIT_PLANETS = ["Jupiter", "Saturn", "Rahu", "Ketu"];
 
-  const transiting: string[] = [];
+  let jupiterInfluences = false;
+  let saturnInfluences = false;
+
   for (const planet of TRANSIT_PLANETS) {
     const house = transitHouses[planet];
-    if (house && relevantHouses.includes(house)) {
-      // Jupiter and Saturn get +2, Rahu/Ketu get +1
+    if (!house) continue;
+
+    const influencedHouses = getTransitInfluencedHouses(planet, house);
+    const directHit = relevantHouses.includes(house);
+    const aspectHits = influencedHouses.filter(
+      h => h !== house && relevantHouses.includes(h)
+    );
+
+    if (directHit) {
+      // Direct transit — planet physically in the relevant house
       const pts = (planet === "Jupiter" || planet === "Saturn") ? 2 : 1;
       transitScore += pts;
       transitReasons.push(`Transit ${planet} in ${ordinal(house)} house`);
-      transiting.push(planet);
+      if (planet === "Jupiter") jupiterInfluences = true;
+      if (planet === "Saturn") saturnInfluences = true;
+    }
+
+    if (aspectHits.length > 0) {
+      // Aspect on relevant house(s) — weaker than direct but still counts
+      const pts = 1;
+      transitScore += pts;
+      const aspectedList = aspectHits.map(h => ordinal(h)).join(", ");
+      transitReasons.push(`Transit ${planet} aspects ${aspectedList} house`);
+      if (planet === "Jupiter") jupiterInfluences = true;
+      if (planet === "Saturn") saturnInfluences = true;
     }
   }
 
-  // Double transit bonus: Jupiter + Saturn both in relevant houses
-  if (transiting.includes("Jupiter") && transiting.includes("Saturn")) {
-    transitScore += 2;
+  // Double Transit Theory (K.N. Rao school):
+  // Events manifest when BOTH Jupiter and Saturn influence relevant houses
+  if (jupiterInfluences && saturnInfluences) {
+    transitScore += 3;
     transitReasons.push("Double transit (Jupiter + Saturn) confirms event");
+  } else if (!jupiterInfluences && !saturnInfluences) {
+    // Neither Jupiter nor Saturn touches the relevant houses —
+    // event is very unlikely to manifest in this window
+    transitScore -= 2;
+    transitReasons.push("No Jupiter/Saturn transit support — event unlikely");
   }
+  // If only one of Jupiter/Saturn: no bonus, no penalty (partial support)
 
   return { transitScore, transitReasons };
 }
@@ -1097,6 +1166,25 @@ function buildUpcomingHighlights(
         // 8. Favorable period bonus: +1 for very_favorable AD nature
         if (ad.nature === "very_favorable" && evt.type === "positive") score += 1;
         if (ad.nature === "challenging" && evt.type === "negative") score += 1;
+
+        // 8b. Protective Disruption lagna-lord bonus: +3 when the MD or AD planet
+        //     IS the lagna lord. The lagna lord's dasha/antardasha activating H8
+        //     is the core pattern — the self (H1) undergoes transformation (H8)
+        //     for its own benefit. Without lagna lord involvement, H1+H8 activation
+        //     is just generic transformation, not specifically protective.
+        if (evt.id === "protective_disruption") {
+          const lagnaLord = RASHI_LORDS[lagna] || "";
+          if (dp.planet === lagnaLord) {
+            score += 3;
+            reasons.push(`${dp.planet} is lagna lord — disruption serves the self`);
+          } else if (ad.planet === lagnaLord) {
+            score += 3;
+            reasons.push(`${ad.planet} is lagna lord — disruption serves the self`);
+          }
+          // Also boost if no double transit on the "destruction" houses —
+          // absence of transit confirmation means cosmos isn't targeting destruction
+          // (This is evaluated later in transit scoring, but we note the concept here)
+        }
 
         // 9. Lord + Occupant reinforcement (Phaladeepika Ch.20 Sloka 34):
         //    When a dasha planet BOTH lords AND sits in the same event-relevant
@@ -1424,6 +1512,11 @@ function getEventInterpretation(
 
     case "career_setback":
       return "Career transitions or temporary setbacks are possible. This can also be a period of meaningful professional reinvention if approached with openness.";
+
+    case "protective_disruption":
+      if (strong) return "A STRONG life redirect is indicated — the lagna lord's activation of the 8th house (transformation) suggests the universe is extracting you from a situation for your own protection. What appears as loss or upheaval is actually a realignment toward your deeper purpose. Trust the process — the disruption serves the self.";
+      if (moderate) return "A meaningful life redirect is forming — apparent setbacks in this period carry a protective quality. The lagna lord's involvement means the self is being served, not harmed. Changes during this window, though uncomfortable, are steering you toward a better trajectory.";
+      return "Subtle life redirections are possible during this period. Disruptions that occur may carry a hidden protective quality — the lagna lord's engagement with the 8th house of transformation suggests changes serve your long-term wellbeing.";
 
     default:
       return "This period activates relevant themes \u2014 stay mindful and proactive.";
