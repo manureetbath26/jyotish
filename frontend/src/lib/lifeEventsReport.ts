@@ -862,12 +862,12 @@ const HIGHLIGHT_EVENTS: HighlightEventDef[] = [
   },
   {
     id: "health_issues", event: "Health Awareness Period", category: "health_issues", type: "negative",
-    relevantHouses: [6, 8, 1, 12], karakaPlanets: ["Saturn", "Mars"],
+    relevantHouses: [6, 8, 1, 12], karakaPlanets: ["Saturn", "Mars", "Rahu"],
     powerCombos: [[6, 8], [8, 12], [1, 6]], threshold: 4, requiresChallenging: true, minAge: 5,
   },
   {
     id: "relationship_conflict", event: "Relationship Challenges", category: "relationship_conflict", type: "negative",
-    relevantHouses: [7, 6, 12, 8], karakaPlanets: ["Mars", "Saturn", "Rahu"],
+    relevantHouses: [7, 6, 12, 8], karakaPlanets: ["Mars", "Saturn", "Rahu", "Ketu"],
     powerCombos: [[7, 6], [7, 12], [7, 8]], threshold: 4, requiresChallenging: true, minAge: 14,
   },
   {
@@ -933,8 +933,17 @@ function buildUpcomingHighlights(
         if (evt.maxAge && adAge > evt.maxAge) continue;
         if (evt.minAge && adAge < evt.minAge) continue;
 
-        // For negative events, only trigger during challenging/mixed periods
-        if (evt.requiresChallenging && ad.nature !== "challenging" && ad.nature !== "mixed") continue;
+        // For negative events: allow if AD nature is challenging/mixed,
+        // OR if either MD/AD lords a dusthana (6/8/12) that overlaps with
+        // this event's relevant houses ("negative pathway").
+        // A planet lording both a positive house and a dusthana delivers
+        // different results depending on which lordship the event activates.
+        if (evt.requiresChallenging && ad.nature !== "challenging" && ad.nature !== "mixed") {
+          const dusthanaPathway = [...mdLordships, ...adLordships]
+            .filter(h => TRIK_HOUSES.includes(h))
+            .some(h => evt.relevantHouses.includes(h));
+          if (!dusthanaPathway) continue;
+        }
 
         // ── SCORING ──
         let score = 0;
@@ -996,11 +1005,16 @@ function buildUpcomingHighlights(
           reasons.push(`${ad.planet} in ${adDignity}`);
         }
 
-        // 6. Yogakaraka bonus: +2
+        // 6. Yogakaraka: +2 for positive events (amplifies), -2 for negative (protects)
         if (dp.planet === yogakaraka || ad.planet === yogakaraka) {
           const ykPlanet = dp.planet === yogakaraka ? dp.planet : ad.planet;
-          score += 2;
-          reasons.push(`${ykPlanet} is Yogakaraka`);
+          if (evt.type === "negative") {
+            score -= 2;
+            reasons.push(`${ykPlanet} (Yogakaraka) provides protection`);
+          } else {
+            score += 2;
+            reasons.push(`${ykPlanet} is Yogakaraka`);
+          }
         }
 
         // 7. Debilitation penalty: -1 for weakened planets
