@@ -47,6 +47,10 @@ export function Navbar() {
               Reports
             </Link>
 
+            <Link href="/chat" className="text-slate-300 hover:text-white transition-colors">
+              Ask
+            </Link>
+
             {session ? (
               <>
                 <Link href="/compatibility" className="text-slate-300 hover:text-white transition-colors">

@@ -18,12 +18,13 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  charts        Chart[]
-  subscriptions Subscription[]
+  accounts        Account[]
+  sessions        Session[]
+  charts          Chart[]
+  subscriptions   Subscription[]
   payments        Payment[]
   reportPurchases ReportPurchase[]
+  chatSessions    ChatSession[]
 }
 
 model Account {
@@ -136,6 +137,48 @@ model ReportCatalog {
   adminOnly   Boolean  @default(false) // visible only to admins (for testing)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model ChatPricingTier {
+  id            String   @id @default(cuid())
+  name          String           // e.g. "Starter", "Popular", "Pro"
+  questionCount Int              // number of questions included
+  price         Int              // in paise (9900 = INR 99)
+  isMostPopular Boolean  @default(false)
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ChatSession {
+  id               String   @id @default(cuid())
+  userId           String
+  chartData        Json              // full ChartResponse snapshot (so no FK needed)
+  birthData        Json?             // {date, time, place, name}
+  tierId           String?           // nullable for free tier
+  questionLimit    Int               // snapshot of allowed questions at purchase time
+  questionsUsed    Int      @default(0)
+  amount           Int               // paise paid (0 for free/coupon)
+  upiTransactionId String?
+  couponCode       String?
+  status           String   @default("active") // active, exhausted
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String           // "user" or "assistant"
+  content   String
+  metadata  Json?            // engine data used to generate answer
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model Coupon {

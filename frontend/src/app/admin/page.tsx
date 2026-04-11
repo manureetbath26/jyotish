@@ -55,7 +55,19 @@ interface CouponRow {
   createdAt: string;
 }
 
-type AdminTab = "users" | "payments" | "coupons" | "reports";
+interface ChatTier {
+  id: string;
+  name: string;
+  questionCount: number;
+  price: number;
+  isMostPopular: boolean;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type AdminTab = "users" | "payments" | "coupons" | "reports" | "chat-pricing";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +126,20 @@ export default function AdminPage() {
   const [couponExpires, setCouponExpires] = useState("");
   const [couponFormLoading, setCouponFormLoading] = useState(false);
   const [couponFormError, setCouponFormError] = useState<string | null>(null);
+
+  // Chat Pricing
+  const [chatTiers, setChatTiers] = useState<ChatTier[]>([]);
+  const [chatTiersLoading, setChatTiersLoading] = useState(false);
+  const [showTierModal, setShowTierModal] = useState(false);
+  const [editTier, setEditTier] = useState<ChatTier | null>(null);
+  const [tierName, setTierName] = useState("");
+  const [tierQuestions, setTierQuestions] = useState("");
+  const [tierPrice, setTierPrice] = useState("");
+  const [tierMostPopular, setTierMostPopular] = useState(false);
+  const [tierActive, setTierActive] = useState(true);
+  const [tierSortOrder, setTierSortOrder] = useState("0");
+  const [tierFormLoading, setTierFormLoading] = useState(false);
+  const [tierFormError, setTierFormError] = useState<string | null>(null);
 
   // ── Auth guard ──
   useEffect(() => {
@@ -231,10 +257,83 @@ export default function AdminPage() {
     }
   }, [status, session]);
 
+  // ── Chat pricing CRUD ──
+  const fetchChatTiers = async () => {
+    setChatTiersLoading(true);
+    try {
+      const res = await fetch("/api/admin/chat-pricing");
+      if (!res.ok) return;
+      setChatTiers(await res.json());
+    } catch { /* ignore */ } finally {
+      setChatTiersLoading(false);
+    }
+  };
+
+  const openAddTier = () => {
+    setEditTier(null); setTierName(""); setTierQuestions(""); setTierPrice(""); setTierMostPopular(false); setTierActive(true); setTierSortOrder("0"); setTierFormError(null); setShowTierModal(true);
+  };
+  const openEditTier = (t: ChatTier) => {
+    setEditTier(t); setTierName(t.name); setTierQuestions(t.questionCount.toString()); setTierPrice((t.price / 100).toString()); setTierMostPopular(t.isMostPopular); setTierActive(t.active); setTierSortOrder(t.sortOrder.toString()); setTierFormError(null); setShowTierModal(true);
+  };
+
+  const handleTierSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTierFormLoading(true);
+    setTierFormError(null);
+    const payload: Record<string, unknown> = {
+      name: tierName,
+      questionCount: parseInt(tierQuestions),
+      price: Math.round(parseFloat(tierPrice) * 100),
+      isMostPopular: tierMostPopular,
+      active: tierActive,
+      sortOrder: parseInt(tierSortOrder) || 0,
+    };
+    if (editTier) payload.id = editTier.id;
+    try {
+      const res = await fetch("/api/admin/chat-pricing", {
+        method: editTier ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+      setShowTierModal(false);
+      await fetchChatTiers();
+    } catch (err) {
+      setTierFormError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setTierFormLoading(false);
+    }
+  };
+
+  const handleToggleTierActive = async (t: ChatTier) => {
+    await fetch("/api/admin/chat-pricing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: t.id, active: !t.active }),
+    });
+    await fetchChatTiers();
+  };
+
+  const handleToggleTierPopular = async (t: ChatTier) => {
+    await fetch("/api/admin/chat-pricing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: t.id, isMostPopular: !t.isMostPopular }),
+    });
+    await fetchChatTiers();
+  };
+
+  const handleDeleteTier = async (t: ChatTier) => {
+    if (!confirm(`Delete tier "${t.name}"? This cannot be undone.`)) return;
+    await fetch(`/api/admin/chat-pricing?id=${t.id}`, { method: "DELETE" });
+    await fetchChatTiers();
+  };
+
   useEffect(() => {
     if (tab === "payments" && payments.length === 0) fetchPayments();
     if (tab === "reports" && catalog.length === 0) fetchCatalog();
     if (tab === "coupons" && coupons.length === 0) fetchCoupons();
+    if (tab === "chat-pricing" && chatTiers.length === 0) fetchChatTiers();
   }, [tab]);
 
   // ── User modal ──
@@ -322,6 +421,7 @@ export default function AdminPage() {
           { id: "payments" as AdminTab, label: "Payments" },
           { id: "reports" as AdminTab, label: "Reports" },
           { id: "coupons" as AdminTab, label: "Coupons" },
+          { id: "chat-pricing" as AdminTab, label: "Chat Pricing" },
         ]).map(t => (
           <button
             key={t.id}
@@ -628,6 +728,71 @@ export default function AdminPage() {
         </>
       )}
 
+      {/* ═══════════════ CHAT PRICING TAB ═══════════════ */}
+      {tab === "chat-pricing" && (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-slate-500 text-sm">Manage chat question pricing tiers.</p>
+            <button onClick={openAddTier} className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-4 py-2 rounded-lg transition-colors text-sm">+ Add Tier</button>
+          </div>
+
+          {chatTiersLoading ? (
+            <div className="flex items-center justify-center h-24"><div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : chatTiers.length === 0 ? (
+            <div className="text-center py-12 text-slate-600 border border-dashed border-slate-800 rounded-2xl">No pricing tiers. Click &quot;+ Add Tier&quot; to create one.</div>
+          ) : (
+            <div className="space-y-4">
+              {chatTiers.map(tier => (
+                <div key={tier.id} className={`bg-slate-900 border rounded-2xl p-5 ${tier.isMostPopular ? "border-amber-500/50" : "border-slate-800"}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-semibold text-slate-200">{tier.name}</h3>
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                          tier.active
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                        }`}>
+                          {tier.active ? "Active" : "Paused"}
+                        </span>
+                        {tier.isMostPopular && (
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-500 text-black">
+                            Most Popular
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-500 text-sm mt-1">
+                        {tier.questionCount} questions • Sort order: {tier.sortOrder}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-2xl font-bold text-amber-400">{formatINR(tier.price)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-4 pt-3 border-t border-slate-800">
+                    <button onClick={() => openEditTier(tier)} className="text-xs text-slate-400 hover:text-amber-400 transition-colors">Edit</button>
+                    <button
+                      onClick={() => handleToggleTierActive(tier)}
+                      className={`text-xs transition-colors ${tier.active ? "text-slate-400 hover:text-red-400" : "text-slate-400 hover:text-emerald-400"}`}
+                    >
+                      {tier.active ? "Pause" : "Activate"}
+                    </button>
+                    <button
+                      onClick={() => handleToggleTierPopular(tier)}
+                      className={`text-xs transition-colors ${tier.isMostPopular ? "text-amber-400 hover:text-slate-400" : "text-slate-400 hover:text-amber-400"}`}
+                    >
+                      {tier.isMostPopular ? "Remove Badge" : "Mark Popular"}
+                    </button>
+                    <button onClick={() => handleDeleteTier(tier)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* ═══════════════ USER MODAL ═══════════════ */}
       {showUserModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -659,6 +824,52 @@ export default function AdminPage() {
               {formError && <p className="text-red-400 text-sm">{formError}</p>}
               <button type="submit" disabled={formLoading} className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm">
                 {formLoading ? (editUser ? "Updating..." : "Creating...") : (editUser ? "Update User" : "Create User")}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ CHAT TIER MODAL ═══════════════ */}
+      {showTierModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-amber-400">{editTier ? "Edit Tier" : "Add Pricing Tier"}</h2>
+              <button onClick={() => setShowTierModal(false)} className="text-slate-500 hover:text-slate-300">&#10005;</button>
+            </div>
+            <form onSubmit={handleTierSubmit} className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Tier Name</label>
+                <input type="text" value={tierName} onChange={e => setTierName(e.target.value)} required placeholder="e.g. Starter, Popular, Pro" className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Questions</label>
+                  <input type="number" value={tierQuestions} onChange={e => setTierQuestions(e.target.value)} required min="1" placeholder="e.g. 16" className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Price (INR)</label>
+                  <input type="number" value={tierPrice} onChange={e => setTierPrice(e.target.value)} required min="0" step="1" placeholder="e.g. 169" className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">Sort Order</label>
+                <input type="number" value={tierSortOrder} onChange={e => setTierSortOrder(e.target.value)} placeholder="0" className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 w-24" />
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="tierActive" checked={tierActive} onChange={e => setTierActive(e.target.checked)} className="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500" />
+                  <label htmlFor="tierActive" className="text-sm text-slate-300">Active</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="tierPopular" checked={tierMostPopular} onChange={e => setTierMostPopular(e.target.checked)} className="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500" />
+                  <label htmlFor="tierPopular" className="text-sm text-slate-300">Most Popular badge</label>
+                </div>
+              </div>
+              {tierFormError && <p className="text-red-400 text-sm">{tierFormError}</p>}
+              <button type="submit" disabled={tierFormLoading} className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm">
+                {tierFormLoading ? (editTier ? "Updating..." : "Creating...") : (editTier ? "Update Tier" : "Create Tier")}
               </button>
             </form>
           </div>
