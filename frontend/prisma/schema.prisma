@@ -133,6 +133,7 @@ model ReportCatalog {
   description String?
   price       Int              // in paise (80000 = INR 800)
   active      Boolean  @default(true) // whether purchasable
+  adminOnly   Boolean  @default(false) // visible only to admins (for testing)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

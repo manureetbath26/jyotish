@@ -38,6 +38,7 @@ interface CatalogEntry {
   description: string | null;
   price: number;
   active: boolean;
+  adminOnly: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -164,6 +165,16 @@ export default function AdminPage() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: entry.id, active: !entry.active }),
+    });
+    if (!res.ok) { alert("Toggle failed"); return; }
+    await fetchCatalog();
+  };
+
+  const handleToggleAdminOnly = async (entry: CatalogEntry) => {
+    const res = await fetch("/api/admin/report-catalog", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: entry.id, adminOnly: !entry.adminOnly }),
     });
     if (!res.ok) { alert("Toggle failed"); return; }
     await fetchCatalog();
@@ -507,6 +518,11 @@ export default function AdminPage() {
                           }`}>
                             {entry.active ? "Active" : "Paused"}
                           </span>
+                          {entry.adminOnly && (
+                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                              Admin Only
+                            </span>
+                          )}
                         </div>
                         <p className="text-slate-500 text-xs mt-0.5 font-mono">{entry.slug}</p>
                         {entry.description && (
@@ -534,6 +550,14 @@ export default function AdminPage() {
                         }`}
                       >
                         {entry.active ? "Pause Sales" : "Resume Sales"}
+                      </button>
+                      <button
+                        onClick={() => handleToggleAdminOnly(entry)}
+                        className={`text-xs transition-colors ${
+                          entry.adminOnly ? "text-blue-400 hover:text-slate-400" : "text-slate-400 hover:text-blue-400"
+                        }`}
+                      >
+                        {entry.adminOnly ? "Make Public" : "Admin Only"}
                       </button>
                       <button
                         onClick={() => handleDeleteCatalog(entry)}

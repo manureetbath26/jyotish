@@ -16,6 +16,17 @@ export async function POST(req: NextRequest) {
   if (!catalogEntry || !catalogEntry.active) {
     return Response.json({ error: "This report is not currently available" }, { status: 400 });
   }
+
+  // Admin-only reports require admin role
+  if (catalogEntry.adminOnly) {
+    if (!session?.user?.id) {
+      return Response.json({ error: "This report is not currently available" }, { status: 400 });
+    }
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
+    if (user?.role !== "admin") {
+      return Response.json({ error: "This report is not currently available" }, { status: 400 });
+    }
+  }
   let amount = catalogEntry.price;
   let isFree = false;
 

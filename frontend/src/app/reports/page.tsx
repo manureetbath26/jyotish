@@ -17,6 +17,7 @@ interface CatalogEntry {
   name: string;
   description: string | null;
   price: number;
+  adminOnly?: boolean;
 }
 
 const REPORT_META: Record<string, { href: string; icon: string; badge?: string; features: string[] }> = {
@@ -216,6 +217,11 @@ export default function ReportsPage() {
                         {meta.badge && (
                           <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-2 py-0.5 font-medium">
                             {meta.badge}
+                          </span>
+                        )}
+                        {entry.adminOnly && (
+                          <span className="text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full px-2 py-0.5 font-medium">
+                            Admin Preview
                           </span>
                         )}
                       </h3>

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { slug, name, description, price, active } = body;
+  const { slug, name, description, price, active, adminOnly } = body;
 
   if (!slug || !name || price == null) {
     return Response.json({ error: "slug, name, and price are required" }, { status: 400 });
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       description: description || null,
       price: parseInt(price),
       active: active ?? true,
+      adminOnly: adminOnly ?? false,
     },
   });
 
@@ -61,7 +62,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, name, description, price, active } = body;
+  const { id, name, description, price, active, adminOnly } = body;
 
   if (!id) {
     return Response.json({ error: "id is required" }, { status: 400 });
@@ -72,6 +73,7 @@ export async function PUT(req: NextRequest) {
   if (description !== undefined) data.description = description || null;
   if (price !== undefined) data.price = parseInt(price);
   if (active !== undefined) data.active = active;
+  if (adminOnly !== undefined) data.adminOnly = adminOnly;
 
   const updated = await prisma.reportCatalog.update({
     where: { id },
