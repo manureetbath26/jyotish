@@ -800,83 +800,85 @@ interface HighlightEventDef {
   requiresChallenging?: boolean;
   /** Age cutoff (e.g. children only before 50) */
   maxAge?: number;
+  /** Minimum age for this event to be relevant */
+  minAge?: number;
 }
 
 const HIGHLIGHT_EVENTS: HighlightEventDef[] = [
   {
     id: "marriage", event: "Marriage / Committed Partnership", category: "marriage", type: "positive",
     relevantHouses: [7, 2, 1, 11], karakaPlanets: ["Venus"],
-    powerCombos: [[7, 2], [7, 1], [7, 11], [7, 5]], threshold: 4,
+    powerCombos: [[7, 2], [7, 1], [7, 11], [7, 5]], threshold: 4, minAge: 16,
   },
   {
     id: "romance", event: "Romance & Love", category: "romance", type: "positive",
     relevantHouses: [5, 7, 11], karakaPlanets: ["Venus", "Moon"],
-    powerCombos: [[5, 7], [5, 11]], threshold: 3,
+    powerCombos: [[5, 7], [5, 11]], threshold: 3, minAge: 14,
   },
   {
     id: "children", event: "Children / Progeny", category: "children", type: "positive",
     relevantHouses: [5, 9, 2], karakaPlanets: ["Jupiter"],
-    powerCombos: [[5, 2], [5, 9]], threshold: 4, maxAge: MAX_CHILDBEARING_AGE,
+    powerCombos: [[5, 2], [5, 9]], threshold: 4, minAge: 18, maxAge: MAX_CHILDBEARING_AGE,
   },
   {
     id: "career_growth", event: "Career Advancement / Peak", category: "career_growth", type: "positive",
     relevantHouses: [10, 6, 11, 1], karakaPlanets: ["Sun", "Saturn"],
-    powerCombos: [[10, 11], [10, 1], [10, 9], [6, 10]], threshold: 4,
+    powerCombos: [[10, 11], [10, 1], [10, 9], [6, 10]], threshold: 4, minAge: 16,
   },
   {
     id: "wealth", event: "Wealth Accumulation", category: "wealth", type: "positive",
     relevantHouses: [2, 11, 9, 5], karakaPlanets: ["Jupiter", "Venus"],
-    powerCombos: [[2, 11], [2, 9], [11, 9]], threshold: 4,
+    powerCombos: [[2, 11], [2, 9], [11, 9]], threshold: 4, minAge: 16,
   },
   {
     id: "property", event: "Property / Vehicle Acquisition", category: "property", type: "positive",
     relevantHouses: [4, 11, 2], karakaPlanets: ["Mars", "Moon"],
-    powerCombos: [[4, 11], [4, 2]], threshold: 3,
+    powerCombos: [[4, 11], [4, 2]], threshold: 3, minAge: 20,
   },
   {
     id: "education", event: "Education & Knowledge", category: "education", type: "positive",
     relevantHouses: [4, 5, 9], karakaPlanets: ["Jupiter", "Mercury"],
-    powerCombos: [[4, 5], [5, 9], [4, 9]], threshold: 3,
+    powerCombos: [[4, 5], [5, 9], [4, 9]], threshold: 3, minAge: 5,
   },
   {
     id: "fame", event: "Fame & Recognition", category: "fame", type: "positive",
     relevantHouses: [10, 1, 5, 11], karakaPlanets: ["Sun", "Rahu"],
-    powerCombos: [[10, 1], [10, 5], [1, 11]], threshold: 4,
+    powerCombos: [[10, 1], [10, 5], [1, 11]], threshold: 4, minAge: 16,
   },
   {
     id: "new_business", event: "New Business / Venture", category: "new_business", type: "positive",
     relevantHouses: [7, 10, 3, 11], karakaPlanets: ["Mercury"],
-    powerCombos: [[7, 10], [3, 11], [10, 3]], threshold: 4,
+    powerCombos: [[7, 10], [3, 11], [10, 3]], threshold: 4, minAge: 18,
   },
   {
     id: "foreign_travel", event: "Foreign Travel / Opportunity", category: "foreign_travel", type: "positive",
     relevantHouses: [9, 12, 3], karakaPlanets: ["Rahu"],
-    powerCombos: [[9, 12], [12, 3]], threshold: 3,
+    powerCombos: [[9, 12], [12, 3]], threshold: 3, minAge: 10,
   },
   {
     id: "spiritual_growth", event: "Spiritual Awakening / Growth", category: "spiritual_growth", type: "positive",
     relevantHouses: [9, 12, 5], karakaPlanets: ["Ketu", "Jupiter"],
-    powerCombos: [[9, 12], [5, 9]], threshold: 3,
+    powerCombos: [[9, 12], [5, 9]], threshold: 3, minAge: 12,
   },
   {
     id: "health_issues", event: "Health Awareness Period", category: "health_issues", type: "negative",
     relevantHouses: [6, 8, 1, 12], karakaPlanets: ["Saturn", "Mars"],
-    powerCombos: [[6, 8], [8, 12], [1, 6]], threshold: 4, requiresChallenging: true,
+    powerCombos: [[6, 8], [8, 12], [1, 6]], threshold: 4, requiresChallenging: true, minAge: 5,
   },
   {
     id: "relationship_conflict", event: "Relationship Challenges", category: "relationship_conflict", type: "negative",
     relevantHouses: [7, 6, 12, 8], karakaPlanets: ["Mars", "Saturn", "Rahu"],
-    powerCombos: [[7, 6], [7, 12], [7, 8]], threshold: 4, requiresChallenging: true,
+    powerCombos: [[7, 6], [7, 12], [7, 8]], threshold: 4, requiresChallenging: true, minAge: 14,
   },
   {
     id: "financial_loss", event: "Financial Caution Period", category: "financial_loss", type: "negative",
     relevantHouses: [12, 6, 8, 2], karakaPlanets: ["Rahu", "Saturn"],
-    powerCombos: [[12, 2], [8, 2], [12, 6]], threshold: 4, requiresChallenging: true,
+    powerCombos: [[12, 2], [8, 2], [12, 6]], threshold: 4, requiresChallenging: true, minAge: 16,
   },
   {
     id: "career_setback", event: "Career Transition / Setback", category: "career_setback", type: "negative",
     relevantHouses: [10, 8, 12], karakaPlanets: ["Saturn", "Rahu"],
-    powerCombos: [[10, 8], [10, 12]], threshold: 4, requiresChallenging: true,
+    powerCombos: [[10, 8], [10, 12]], threshold: 4, requiresChallenging: true, minAge: 18,
   },
 ];
 
@@ -927,8 +929,9 @@ function buildUpcomingHighlights(
         ? RASHI_LORDS[adPlanetData?.rashi || ""] || null : null;
 
       for (const evt of HIGHLIGHT_EVENTS) {
-        // Age cutoff
+        // Age cutoffs
         if (evt.maxAge && adAge > evt.maxAge) continue;
+        if (evt.minAge && adAge < evt.minAge) continue;
 
         // For negative events, only trigger during challenging/mixed periods
         if (evt.requiresChallenging && ad.nature !== "challenging" && ad.nature !== "mixed") continue;
@@ -1192,7 +1195,26 @@ function splitHighlights(
     if (b.score !== a.score) return b.score - a.score;
     return b.startDateRaw.localeCompare(a.startDateRaw);
   });
-  return { past: past.slice(0, 15), upcoming: upcoming.slice(0, 15) };
+
+  // Diversity limit: max 2 per category for past, max 3 for upcoming
+  // This ensures important events from different categories surface
+  const diversifyList = (list: LifeHighlight[], maxPerCategory: number, maxTotal: number): LifeHighlight[] => {
+    const catCount = new Map<string, number>();
+    const result: LifeHighlight[] = [];
+    for (const h of list) {
+      const count = catCount.get(h.category) || 0;
+      if (count >= maxPerCategory) continue;
+      catCount.set(h.category, count + 1);
+      result.push(h);
+      if (result.length >= maxTotal) break;
+    }
+    return result;
+  };
+
+  return {
+    past: diversifyList(past, 2, 15),
+    upcoming: diversifyList(upcoming, 3, 15),
+  };
 }
 
 // ─── Main Export ────────────────────────────────────────────────────────────
