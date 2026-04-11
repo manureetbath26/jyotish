@@ -1036,13 +1036,15 @@ function buildUpcomingHighlights(
             : `${ad.planet} lords the ${ordinal(h)} house`);
         }
 
-        // 2. Occupancy: +1 if MD or AD planet sits in a relevant house
+        // 2. Occupancy: +2 if MD or AD planet sits in a relevant house
+        //    A planet physically placed in an event-relevant house is as
+        //    significant as lording one — e.g., Moon in 7th for marriage.
         if (evt.relevantHouses.includes(mdHouse)) {
-          score += 1;
+          score += 2;
           reasons.push(`${dp.planet} placed in ${ordinal(mdHouse)} house`);
         }
         if (evt.relevantHouses.includes(adHouse)) {
-          score += 1;
+          score += 2;
           reasons.push(`${ad.planet} placed in ${ordinal(adHouse)} house`);
         }
 
@@ -1341,7 +1343,6 @@ function splitHighlights(
   const upcoming: LifeHighlight[] = [];
 
   for (const h of allHighlights) {
-    // Only classify as past if the period has fully ended
     if (h.endDateRaw < now) {
       past.push(h);
     } else {
@@ -1349,30 +1350,59 @@ function splitHighlights(
     }
   }
 
-  // Past: sort by score (strongest first), then by date (most recent first)
-  past.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return b.startDateRaw.localeCompare(a.startDateRaw);
-  });
+  // Score-based diversity: sort by score first, apply per-category caps
+  // to keep top-scoring events, then re-sort chronologically for display.
+  const diversifyByScore = (list: LifeHighlight[], maxPerCategory: number, maxTotal: number): LifeHighlight[] => {
+    // 1. Sort by score descending (highest score = most important)
+    const sorted = [...list].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.startDateRaw.localeCompare(b.startDateRaw);
+    });
 
-  // Diversity limit: max 2 per category for past, max 3 for upcoming
-  // This ensures important events from different categories surface
-  const diversifyList = (list: LifeHighlight[], maxPerCategory: number, maxTotal: number): LifeHighlight[] => {
+    // 2. Pick top events respecting per-category cap (0 = unlimited)
     const catCount = new Map<string, number>();
-    const result: LifeHighlight[] = [];
-    for (const h of list) {
-      const count = catCount.get(h.category) || 0;
-      if (count >= maxPerCategory) continue;
-      catCount.set(h.category, count + 1);
-      result.push(h);
-      if (result.length >= maxTotal) break;
+    const picked: LifeHighlight[] = [];
+    for (const h of sorted) {
+      if (maxPerCategory > 0) {
+        const count = catCount.get(h.category) || 0;
+        if (count >= maxPerCategory) continue;
+        catCount.set(h.category, count + 1);
+      }
+      picked.push(h);
+      if (maxTotal > 0 && picked.length >= maxTotal) break;
     }
-    return result;
+
+    // 3. Re-sort chronologically for display
+    picked.sort((a, b) => a.startDateRaw.localeCompare(b.startDateRaw));
+    return picked;
+  };
+
+  // For upcoming: keep top 3 events per dasha sub-period (by score),
+  // so every sub-period is represented but not flooded with low-scoring events.
+  // Cap at ~40 years into the future (practical prediction horizon).
+  const trimPerPeriod = (list: LifeHighlight[], maxPerPeriod: number): LifeHighlight[] => {
+    const cutoffYear = new Date().getFullYear() + 40;
+    const cutoffDate = `${cutoffYear}-12-31`;
+    // Sort by score descending first
+    const sorted = [...list]
+      .filter(h => h.startDateRaw <= cutoffDate) // only within prediction horizon
+      .sort((a, b) => b.score - a.score);
+    const periodCount = new Map<string, number>();
+    const picked: LifeHighlight[] = [];
+    for (const h of sorted) {
+      const count = periodCount.get(h.dashaContext) || 0;
+      if (count >= maxPerPeriod) continue;
+      periodCount.set(h.dashaContext, count + 1);
+      picked.push(h);
+    }
+    // Re-sort chronologically
+    picked.sort((a, b) => a.startDateRaw.localeCompare(b.startDateRaw));
+    return picked;
   };
 
   return {
-    past: diversifyList(past, 2, 15),
-    upcoming: diversifyList(upcoming, 3, 15),
+    past: diversifyByScore(past, 3, 25),       // top 3 per category, max 25
+    upcoming: trimPerPeriod(upcoming, 3),       // top 3 events per sub-period, ~40yr horizon
   };
 }
 
