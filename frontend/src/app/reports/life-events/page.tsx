@@ -492,52 +492,7 @@ function LifeEventsReportContent() {
               </div>
             </div>
 
-            {/* Past events preview — shown in full to build trust */}
-            {report.pastHighlights && report.pastHighlights.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <span>{"\u{1F550}"}</span>
-                    Key Events Your Chart Indicated for the Past
-                  </h3>
-                  <span className="text-xs text-slate-600">Do these resonate?</span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  See if these past planetary indicators match your actual life experience {"—"}
-                  this can give you a sense of how your chart{"’"}s predictions work for you.
-                </p>
-                <div className="space-y-2">
-                  {report.pastHighlights.slice(0, 4).map((h: { event: string; type: string; window: string; dashaContext: string; reasoning: string }, i: number) => (
-                    <div
-                      key={i}
-                      className={`rounded-lg p-3 border ${
-                        h.type === "positive"
-                          ? "bg-green-500/5 border-green-500/10"
-                          : h.type === "negative"
-                          ? "bg-red-500/5 border-red-500/10"
-                          : "bg-amber-500/5 border-amber-500/10"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-semibold text-slate-200">{h.event}</span>
-                        <span className="text-xs text-slate-600 bg-slate-800/50 px-2 py-0.5 rounded-full">Past</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-slate-500 mb-1.5">
-                        <span>{h.window}</span>
-                        <span className="text-slate-700">|</span>
-                        <span>{h.dashaContext}</span>
-                      </div>
-                      <p className="text-xs text-slate-400 leading-relaxed">{h.reasoning}</p>
-                    </div>
-                  ))}
-                </div>
-                {report.pastHighlights.length > 4 && (
-                  <p className="text-xs text-amber-400/70 text-center">
-                    + {report.pastHighlights.length - 4} more past events in the full report
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Past events removed from preview — admin-only in full report */}
 
             {/* Blurred teaser for future predictions */}
             <div className="relative overflow-hidden rounded-xl">
