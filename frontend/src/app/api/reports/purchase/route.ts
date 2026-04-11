@@ -13,17 +13,19 @@ export async function POST(req: NextRequest) {
 
   // Look up price from catalog
   const catalogEntry = await prisma.reportCatalog.findUnique({ where: { slug: reportType } });
-  if (!catalogEntry || !catalogEntry.active) {
+  if (!catalogEntry) {
     return Response.json({ error: "This report is not currently available" }, { status: 400 });
   }
 
-  // Admin-only reports require admin role
-  if (catalogEntry.adminOnly) {
-    if (!session?.user?.id) {
-      return Response.json({ error: "This report is not currently available" }, { status: 400 });
+  // Check access: admin-only or inactive reports require admin role
+  const needsAdmin = catalogEntry.adminOnly || !catalogEntry.active;
+  if (needsAdmin) {
+    let isAdmin = false;
+    if (session?.user?.id) {
+      const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
+      isAdmin = user?.role === "admin";
     }
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
-    if (user?.role !== "admin") {
+    if (!isAdmin) {
       return Response.json({ error: "This report is not currently available" }, { status: 400 });
     }
   }

@@ -16,11 +16,12 @@ export async function GET(_req: NextRequest) {
     isAdmin = user?.role === "admin";
   }
 
+  // Admins see: all active reports + all adminOnly reports (even if paused)
+  // Public sees: only active, non-adminOnly reports
   const catalog = await prisma.reportCatalog.findMany({
-    where: {
-      active: true,
-      ...(isAdmin ? {} : { adminOnly: false }),
-    },
+    where: isAdmin
+      ? { OR: [{ active: true }, { adminOnly: true }] }
+      : { active: true, adminOnly: false },
     select: {
       slug: true,
       name: true,
