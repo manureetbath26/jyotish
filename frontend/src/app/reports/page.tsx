@@ -50,6 +50,21 @@ const REPORT_META: Record<string, { href: string; icon: string; badge?: string; 
       "Gemstone & Mantra Remedies",
     ],
   },
+  chara_dasha: {
+    href: "/reports/chara-dasha",
+    icon: "\u{1F52E}",
+    badge: "New",
+    features: [
+      "Jaimini Chara Dasha Timeline",
+      "12-Sign Dasha Sequence with Durations",
+      "Visual Timeline with Duration Bars",
+      "Current Period Deep Dive & Progress",
+      "Sign Lord Placement Analysis",
+      "Planets in Each Dasha Sign",
+      "Chronological Table View",
+      "Scalable for Antardasha & Interpretations",
+    ],
+  },
 };
 
 export default function ReportsPage() {
