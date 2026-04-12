@@ -9,9 +9,13 @@
  * 3. Duration counting: each sign counts independently —
  *    odd dasha signs count FORWARD to lord, even signs count BACKWARD
  * 4. Count is exclusive of start sign (distance-based)
- * 5. Dual lordship exception: if lord is in own sign, count to lord's OTHER sign
- *    (Sun/Moon have single lordship → 12 years if in own sign)
- * 6. Sequence: 12 consecutive signs in the determined direction
+ * 5. Dual lordship signs: Scorpio (Mars + Ketu) and Aquarius (Saturn + Rahu)
+ *    - If one lord is in the sign, count to the other lord
+ *    - If both lords are in the sign, 12 years
+ *    - If both lords are outside, count to the stronger lord
+ *    - Strength: associated > alone, then higher degree wins
+ * 6. If any other lord sits in own sign → 12 years
+ * 7. Sequence: 12 consecutive signs in the determined direction
  */
 
 import type { ChartResponse, PlanetPosition } from "./api";
@@ -80,34 +84,98 @@ const SIGN_LORD: Record<Sign, string> = {
 };
 
 /**
- * Dual lordship: planets that rule two signs.
- * When the lord sits in the dasha sign itself, we count to its OTHER sign.
- * Sun (Leo) and Moon (Cancer) rule only one sign → no alternate → 12 years.
+ * Dual lordship signs — only Scorpio and Aquarius have two lords in Jaimini.
+ *
+ * Scorpio (Direct counting): Mars + Ketu
+ * Aquarius (Indirect counting): Saturn + Rahu
+ *
+ * Rules:
+ * 1. If lord1 is in the sign & lord2 elsewhere → count to lord2
+ * 2. If lord2 is in the sign & lord1 elsewhere → count to lord1
+ * 3. If both in the sign → 12 years
+ * 4. If both outside → count to the stronger lord:
+ *    a. Associated (conjunct other planets) beats unassociated
+ *    b. Both associated or both alone → higher degree_in_rashi wins
  */
-const DUAL_LORDSHIP: Record<string, [Sign, Sign]> = {
-  Mars:    ["Aries", "Scorpio"],
-  Venus:   ["Taurus", "Libra"],
-  Mercury: ["Gemini", "Virgo"],
-  Jupiter: ["Sagittarius", "Pisces"],
-  Saturn:  ["Capricorn", "Aquarius"],
-};
+interface DualLordSign {
+  sign: Sign;
+  lord1: string;  // traditional ruler
+  lord2: string;  // shadow planet co-ruler
+}
 
-/** Get the other sign a planet rules (returns null for Sun/Moon) */
-function getOtherSign(planet: string, currentSign: Sign): Sign | null {
-  const pair = DUAL_LORDSHIP[planet];
-  if (!pair) return null; // Sun or Moon — single lordship
-  return pair[0] === currentSign ? pair[1] : pair[0];
+const DUAL_LORD_SIGNS: DualLordSign[] = [
+  { sign: "Scorpio",  lord1: "Mars",   lord2: "Ketu" },
+  { sign: "Aquarius", lord1: "Saturn", lord2: "Rahu" },
+];
+
+/**
+ * Determine which lord to count to for a dual-lordship sign (Scorpio / Aquarius).
+ * Returns the TARGET sign to count to, or null if duration should be 12.
+ */
+function resolveDualLord(
+  cfg: DualLordSign,
+  planetSignMap: Record<string, Sign>,
+  planets: PlanetPosition[],
+): Sign | null {
+  const sign1 = planetSignMap[cfg.lord1] ?? cfg.sign;
+  const sign2 = planetSignMap[cfg.lord2] ?? cfg.sign;
+
+  const lord1InSign = sign1 === cfg.sign;
+  const lord2InSign = sign2 === cfg.sign;
+
+  // Rule 1: lord1 in sign, lord2 elsewhere → count to lord2
+  if (lord1InSign && !lord2InSign) return sign2;
+
+  // Rule 2: lord2 in sign, lord1 elsewhere → count to lord1
+  if (lord2InSign && !lord1InSign) return sign1;
+
+  // Rule 3: both in sign → 12 years
+  if (lord1InSign && lord2InSign) return null;
+
+  // Rule 4: both outside → count to the stronger one
+  return getStrongerPlanetSign(cfg.lord1, cfg.lord2, planetSignMap, planets);
+}
+
+/**
+ * Compare two planets' strength and return the sign of the stronger one.
+ *
+ * Strength hierarchy:
+ * a. Associated with other planets (conjunct) beats unassociated (alone in sign)
+ * b. If tie on association, higher degree_in_rashi wins
+ */
+function getStrongerPlanetSign(
+  name1: string,
+  name2: string,
+  planetSignMap: Record<string, Sign>,
+  planets: PlanetPosition[],
+): Sign {
+  const sign1 = planetSignMap[name1];
+  const sign2 = planetSignMap[name2];
+
+  // Count how many OTHER planets share the same sign (associations)
+  const assoc1 = planets.filter(
+    (p) => p.name !== name1 && (p.rashi as Sign) === sign1,
+  ).length;
+  const assoc2 = planets.filter(
+    (p) => p.name !== name2 && (p.rashi as Sign) === sign2,
+  ).length;
+
+  // Rule 4a: associated beats unassociated
+  if (assoc1 > 0 && assoc2 === 0) return sign1;
+  if (assoc2 > 0 && assoc1 === 0) return sign2;
+
+  // Rule 4b/c/d: higher degree_in_rashi wins
+  const p1 = planets.find((p) => p.name === name1);
+  const p2 = planets.find((p) => p.name === name2);
+  const deg1 = p1?.degree_in_rashi ?? 0;
+  const deg2 = p2?.degree_in_rashi ?? 0;
+
+  return deg1 >= deg2 ? sign1 : sign2;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
-
-/** Get the rashi (sign) a planet occupies from the chart */
-function getPlanetSign(planets: PlanetPosition[], planetName: string): Sign {
-  const p = planets.find((pl) => pl.name === planetName);
-  return (p?.rashi as Sign) ?? "Aries";
-}
 
 /** Build a map of planet → sign from chart data */
 function buildPlanetSignMap(planets: PlanetPosition[]): Record<string, Sign> {
@@ -151,31 +219,34 @@ function getCountDirection(sign: Sign): "forward" | "backward" {
 /**
  * Calculate the dasha duration for a sign.
  *
- * Standard K.N. Rao rules:
+ * Rules:
  * 1. Counting direction is per-sign: odd signs count forward, even backward.
- * 2. Count from dasha sign to lord's sign (exclusive of start).
- * 3. If lord is in the dasha sign itself (same sign):
- *    a. Dual-lordship planets (Mars, Venus, Mercury, Jupiter, Saturn):
- *       count to the lord's OTHER sign instead.
- *    b. Single-lordship planets (Sun, Moon): duration = 12 years.
+ * 2. Scorpio & Aquarius have dual lords — use resolveDualLord() to pick target.
+ * 3. All other signs: count from dasha sign to lord's natal sign.
+ * 4. If lord is in the dasha sign itself → 12 years.
  */
 function getDashaDuration(
   dashaSign: Sign,
-  lord: string,
-  lordSign: Sign,
+  planetSignMap: Record<string, Sign>,
+  planets: PlanetPosition[],
 ): number {
   const countDir = getCountDirection(dashaSign);
 
+  // Check if this is a dual-lordship sign (Scorpio or Aquarius)
+  const dualCfg = DUAL_LORD_SIGNS.find((d) => d.sign === dashaSign);
+  if (dualCfg) {
+    const targetSign = resolveDualLord(dualCfg, planetSignMap, planets);
+    if (targetSign === null) return 12; // both lords in own sign
+    const count = countSigns(dashaSign, targetSign, countDir);
+    return count === 0 ? 12 : count;
+  }
+
+  // Standard single-lord logic
+  const lord = SIGN_LORD[dashaSign];
+  const lordSign = (planetSignMap[lord] ?? dashaSign) as Sign;
+
   if (dashaSign === lordSign) {
-    // Lord is in its own sign — dual lordship exception
-    const otherSign = getOtherSign(lord, dashaSign);
-    if (otherSign) {
-      // Count to the OTHER sign this lord rules
-      const count = countSigns(dashaSign, otherSign, countDir);
-      return count === 0 ? 12 : count;
-    }
-    // Sun or Moon — single lordship → 12 years
-    return 12;
+    return 12; // lord sitting in own sign
   }
 
   const count = countSigns(dashaSign, lordSign, countDir);
@@ -240,7 +311,7 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
   const dashaSequence: DashaPeriod[] = signs.map((sign) => {
     const lord = SIGN_LORD[sign];
     const lordSign = planetSignMap[lord] || sign;
-    const duration = getDashaDuration(sign, lord, lordSign as Sign);
+    const duration = getDashaDuration(sign, planetSignMap, chart.planets);
 
     const startDate = runningDate;
     const endDate = addYearsToDate(startDate, duration);
