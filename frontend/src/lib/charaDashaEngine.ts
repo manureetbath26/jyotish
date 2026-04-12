@@ -3,12 +3,15 @@
  *
  * Computes the 12-sign Chara Dasha sequence from a D1 chart.
  *
- * Rules:
+ * Rules (K.N. Rao method):
  * 1. Start from the Ascendant sign
- * 2. Direction: Odd signs → forward (zodiacal), Even signs → backward
- * 3. Duration: count signs from dasha sign to its lord's sign (inclusive).
- *    If the lord is in its own sign → 12 years.
- * 4. Sequence: 12 consecutive signs in the determined direction
+ * 2. Sequence direction: Odd ascendant → forward, Even ascendant → backward
+ * 3. Duration counting: each sign counts independently —
+ *    odd dasha signs count FORWARD to lord, even signs count BACKWARD
+ * 4. Count is exclusive of start sign (distance-based)
+ * 5. Dual lordship exception: if lord is in own sign, count to lord's OTHER sign
+ *    (Sun/Moon have single lordship → 12 years if in own sign)
+ * 6. Sequence: 12 consecutive signs in the determined direction
  */
 
 import type { ChartResponse, PlanetPosition } from "./api";
@@ -76,6 +79,26 @@ const SIGN_LORD: Record<Sign, string> = {
   Pisces: "Jupiter",
 };
 
+/**
+ * Dual lordship: planets that rule two signs.
+ * When the lord sits in the dasha sign itself, we count to its OTHER sign.
+ * Sun (Leo) and Moon (Cancer) rule only one sign → no alternate → 12 years.
+ */
+const DUAL_LORDSHIP: Record<string, [Sign, Sign]> = {
+  Mars:    ["Aries", "Scorpio"],
+  Venus:   ["Taurus", "Libra"],
+  Mercury: ["Gemini", "Virgo"],
+  Jupiter: ["Sagittarius", "Pisces"],
+  Saturn:  ["Capricorn", "Aquarius"],
+};
+
+/** Get the other sign a planet rules (returns null for Sun/Moon) */
+function getOtherSign(planet: string, currentSign: Sign): Sign | null {
+  const pair = DUAL_LORDSHIP[planet];
+  if (!pair) return null; // Sun or Moon — single lordship
+  return pair[0] === currentSign ? pair[1] : pair[0];
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
@@ -96,24 +119,67 @@ function buildPlanetSignMap(planets: PlanetPosition[]): Record<string, Sign> {
 }
 
 /**
- * Count signs from `from` to `to` in the given direction (inclusive of both).
- * If same sign → return 12 (special Jaimini rule: lord in own sign = 12 years).
+ * Count signs from `from` to `to` in the given direction.
+ * Returns the number of sign-hops (exclusive of start, inclusive of end).
+ * If same sign → return 0 (caller handles via dual lordship exception).
  *
- * Example (forward): Taurus → Aquarius = Taurus, Gemini, Cancer, Leo, Virgo,
- *   Libra, Scorpio, Sagittarius, Capricorn, Aquarius = 10 signs inclusive.
+ * Example (forward): Libra(6) → Aquarius(10) = 4 hops.
+ * Example (backward): Taurus(1) → Leo(4) = (1-4+12)%12 = 9 hops.
  */
 function countSigns(from: Sign, to: Sign, direction: "forward" | "backward"): number {
   const fromIdx = SIGN_INDEX[from];
   const toIdx = SIGN_INDEX[to];
 
-  if (fromIdx === toIdx) return 12;
+  if (fromIdx === toIdx) return 0;
 
   if (direction === "forward") {
-    // Distance (hops) + 1 for inclusive counting of the start sign
-    return ((toIdx - fromIdx + 12) % 12) + 1;
+    return ((toIdx - fromIdx + 12) % 12);
   } else {
-    return ((fromIdx - toIdx + 12) % 12) + 1;
+    return ((fromIdx - toIdx + 12) % 12);
   }
+}
+
+/**
+ * Get the counting direction for a specific dasha sign.
+ * Each sign counts independently: odd signs count forward, even signs backward.
+ * This may differ from the overall sequence direction.
+ */
+function getCountDirection(sign: Sign): "forward" | "backward" {
+  return ODD_SIGNS.has(sign) ? "forward" : "backward";
+}
+
+/**
+ * Calculate the dasha duration for a sign.
+ *
+ * Standard K.N. Rao rules:
+ * 1. Counting direction is per-sign: odd signs count forward, even backward.
+ * 2. Count from dasha sign to lord's sign (exclusive of start).
+ * 3. If lord is in the dasha sign itself (same sign):
+ *    a. Dual-lordship planets (Mars, Venus, Mercury, Jupiter, Saturn):
+ *       count to the lord's OTHER sign instead.
+ *    b. Single-lordship planets (Sun, Moon): duration = 12 years.
+ */
+function getDashaDuration(
+  dashaSign: Sign,
+  lord: string,
+  lordSign: Sign,
+): number {
+  const countDir = getCountDirection(dashaSign);
+
+  if (dashaSign === lordSign) {
+    // Lord is in its own sign — dual lordship exception
+    const otherSign = getOtherSign(lord, dashaSign);
+    if (otherSign) {
+      // Count to the OTHER sign this lord rules
+      const count = countSigns(dashaSign, otherSign, countDir);
+      return count === 0 ? 12 : count;
+    }
+    // Sun or Moon — single lordship → 12 years
+    return 12;
+  }
+
+  const count = countSigns(dashaSign, lordSign, countDir);
+  return count === 0 ? 12 : count;
 }
 
 /**
@@ -174,7 +240,7 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
   const dashaSequence: DashaPeriod[] = signs.map((sign) => {
     const lord = SIGN_LORD[sign];
     const lordSign = planetSignMap[lord] || sign;
-    const duration = countSigns(sign, lordSign as Sign, direction);
+    const duration = getDashaDuration(sign, lord, lordSign as Sign);
 
     const startDate = runningDate;
     const endDate = addYearsToDate(startDate, duration);
