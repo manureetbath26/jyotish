@@ -97,9 +97,8 @@ function LifeEventsReportContent() {
         if (data?.chartData && data.status === "verified") {
           const chartData = data.chartData as ChartResponse;
           setChart(chartData);
-          const rpt = data.reportData
-            ? (data.reportData as LifeEventsReport)
-            : generateLifeEventsReport(chartData);
+          // Always regenerate from chartData to pick up engine improvements
+          const rpt = generateLifeEventsReport(chartData);
           setReport(rpt);
           setName(data.birthName || "");
           setStep("report");
