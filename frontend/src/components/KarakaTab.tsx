@@ -2,12 +2,9 @@
 
 import { useState } from "react";
 import { PlanetPosition } from "@/lib/api";
+import { computeCharaKarakas, KarakaResult } from "@/lib/karakaEngine";
+import { useKarakaInterpretations } from "@/hooks/useKarakaInterpretations";
 import {
-  CHARA_KARAKA_ROLES,
-  CHARA_KARAKA_BY_PLANET,
-  CHARA_KARAKA_LORDSHIP,
-  NAISARGIKA_KARAKAS,
-  NAISARGIKA_KARAKA_IN_HOUSE,
   KARAKA_PLANET_COLORS,
   KARAKA_PLANET_BG,
   type CharaKarakaRole,
@@ -18,9 +15,7 @@ interface Props {
   lagna: string;
 }
 
-// Planets eligible for Chara Karaka assignment (7 planets — exclude Rahu and Ketu)
-const CHARA_ELIGIBLE = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"];
-
+/** Adapter: convert KarakaResult[] to the shape used by the UI below */
 interface CharaAssignment extends CharaKarakaRole {
   planet: string;
   degree: number;
@@ -28,35 +23,6 @@ interface CharaAssignment extends CharaKarakaRole {
   house: number;
   dignity: string | null;
   is_retrograde: boolean;
-}
-
-/**
- * Compute Chara Karakas by sorting eligible planets by degree within rashi (descending).
- * Highest degree_in_rashi = Atmakaraka, 2nd highest = Amatyakaraka, etc.
- * Only the 7 visible planets are used — Rahu and Ketu are excluded.
- */
-function computeCharaKarakas(planets: PlanetPosition[]): CharaAssignment[] {
-  const eligible = planets
-    .filter(p => CHARA_ELIGIBLE.includes(p.name))
-    .map(p => ({
-      ...p,
-      sortDegree: p.degree_in_rashi,
-    }))
-    .sort((a, b) => b.sortDegree - a.sortDegree);
-
-  return CHARA_KARAKA_ROLES.map((role, i) => {
-    const p = eligible[i];
-    if (!p) return null;
-    return {
-      ...role,
-      planet: p.name,
-      degree: p.degree_in_rashi,
-      rashi: p.rashi,
-      house: p.house,
-      dignity: p.dignity,
-      is_retrograde: p.is_retrograde,
-    };
-  }).filter(Boolean) as CharaAssignment[];
 }
 
 function Section({
@@ -100,9 +66,46 @@ const DIGNITY_BADGE: Record<string, { label: string; color: string; bg: string }
 };
 
 export function KarakaTab({ planets, lagna }: Props) {
-  const charaKarakas = computeCharaKarakas(planets);
+  const { data: interp, loading, error } = useKarakaInterpretations();
   const [expandedChara, setExpandedChara] = useState<string | null>("AK");
   const [expandedNaisargika, setExpandedNaisargika] = useState<string | null>(null);
+
+  // Compute karakas from planet data
+  const karakaResults = computeCharaKarakas(planets);
+
+  // Build CharaAssignments only when interpretation data is loaded
+  const charaKarakas: CharaAssignment[] = interp
+    ? karakaResults.map(k => {
+        const role = interp.charaRoles.find(r => r.name === k.role);
+        if (!role) return null;
+        return {
+          ...role,
+          planet: k.planet,
+          degree: k.degree_in_rashi,
+          rashi: k.rashi,
+          house: k.house,
+          dignity: k.dignity,
+          is_retrograde: k.is_retrograde,
+        };
+      }).filter(Boolean) as CharaAssignment[]
+    : [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin h-6 w-6 border-2 border-amber-500 border-t-transparent rounded-full" />
+        <span className="ml-3 text-sm text-slate-400">Loading karaka interpretations…</span>
+      </div>
+    );
+  }
+
+  if (error || !interp) {
+    return (
+      <div className="text-center py-12 text-sm text-red-400">
+        Failed to load karaka interpretations. Please refresh the page.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -162,7 +165,7 @@ export function KarakaTab({ planets, lagna }: Props) {
           if (!ck) return null;
           const color = KARAKA_PLANET_COLORS[ck.planet] || "text-slate-200";
           const dignity = ck.dignity ? DIGNITY_BADGE[ck.dignity] : null;
-          const planetRoleInterp = CHARA_KARAKA_BY_PLANET[ck.id]?.[ck.planet];
+          const planetRoleInterp = interp.charaByPlanet[ck.id]?.[ck.planet];
           const natalP = planets.find(p => p.name === ck.planet);
 
           return (
@@ -200,7 +203,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                 {natalP && natalP.lord_of_houses.length > 0 && (
                   <div className="space-y-2">
                     {natalP.lord_of_houses.map(h => {
-                      const lordInterp = CHARA_KARAKA_LORDSHIP[ck.id]?.[h];
+                      const lordInterp = interp.charaLordship[ck.id]?.[h];
                       return lordInterp ? (
                         <div key={h} className="bg-slate-800/30 border border-slate-700/40 rounded-lg p-3">
                           <p className="text-xs font-semibold text-slate-300 mb-1">
@@ -279,13 +282,13 @@ export function KarakaTab({ planets, lagna }: Props) {
         </p>
 
         <div className="space-y-2">
-          {NAISARGIKA_KARAKAS.map(nk => {
+          {interp.naisargikaKarakas.map(nk => {
             const natalP = planets.find(p => p.name === nk.planet);
             const isExpanded = expandedNaisargika === nk.planet;
             const color = KARAKA_PLANET_COLORS[nk.planet] || "text-slate-200";
             const bg = KARAKA_PLANET_BG[nk.planet] || "bg-slate-800/30 border-slate-700";
             const dignity = natalP?.dignity ? DIGNITY_BADGE[natalP.dignity] : null;
-            const houseInterp = natalP ? NAISARGIKA_KARAKA_IN_HOUSE[nk.planet]?.[natalP.house] : null;
+            const houseInterp = natalP ? interp.naisargikaInHouse[nk.planet]?.[natalP.house] : null;
 
             // Find this planet's chara karaka role, if any
             const charaRole = charaKarakas.find(ck => ck.planet === nk.planet);
@@ -346,7 +349,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                         </p>
                         <p className="text-sm text-slate-300 leading-relaxed">{houseInterp}</p>
 
-                        {/* Lordship context — what houses this planet rules adds another layer */}
+                        {/* Lordship context */}
                         {natalP.lord_of_houses.length > 0 && (
                           <p className="text-xs text-slate-400 mt-2 leading-relaxed">
                             Additionally, {nk.planet} rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
@@ -378,7 +381,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                       </div>
                     )}
 
-                    {/* Retrograde impact on karaka significations */}
+                    {/* Retrograde impact */}
                     {natalP?.is_retrograde && (
                       <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg p-3">
                         <p className="text-xs font-semibold text-amber-400 mb-1">
@@ -393,7 +396,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                       </div>
                     )}
 
-                    {/* General strong/weak — collapsed into a compact row */}
+                    {/* General strong/weak */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="bg-green-950/30 border border-green-900/40 rounded-lg p-3">
                         <p className="text-xs font-semibold text-green-400 mb-1">When Strong</p>

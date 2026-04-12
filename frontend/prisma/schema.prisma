@@ -181,6 +181,22 @@ model ChatMessage {
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
+// ---------------------------------------------------------------------------
+// Reference / interpretation content (admin-editable)
+// ---------------------------------------------------------------------------
+model Interpretation {
+  id        String   @id @default(cuid())
+  category  String   // "chara_role", "chara_by_planet", "chara_lordship", "naisargika", "naisargika_in_house"
+  key1      String   // Primary key (role id like "AK" or planet name like "Sun")
+  key2      String?  // Secondary key (planet name or house number as string)
+  content   Json     // Flexible JSON payload per category
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, key1, key2])
+  @@index([category])
+}
+
 model Coupon {
   id        String    @id @default(cuid())
   code      String    @unique

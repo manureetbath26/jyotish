@@ -464,32 +464,123 @@ function buildCategorySummary(
   lordshipsMap: Record<string, number[]>
 ): string {
   const houses = cat.relevantHouses;
-  const lord1 = getHouseLord(chart, houses[0]);
-  const lord1Planet = getPlanet(chart, lord1);
-  const houseRashi = getHouseRashi(chart, houses[0]);
+  const parts: string[] = [];
 
-  const base = `Your ${houses[0]}th house is in ${houseRashi}, lorded by ${lord1}`;
-  const placement = lord1Planet ? ` placed in house ${lord1Planet.house} (${lord1Planet.rashi})` : "";
-  const dignityNote = lord1Planet?.dignity ? ` in ${lord1Planet.dignity}` : "";
+  // ── Primary house analysis ──
+  const primaryH = houses[0];
+  const lord1 = getHouseLord(chart, primaryH);
+  const lord1P = getPlanet(chart, lord1);
+  const houseRashi = getHouseRashi(chart, primaryH);
+  const occupants = getOccupants(chart, primaryH);
 
-  if (cat.type === "positive") {
-    if (outlook === "very_favorable" || outlook === "favorable") {
-      return `${base}${placement}${dignityNote}. The indicators suggest a supportive foundation for ${cat.name.toLowerCase()}. The planetary alignments in your chart point toward favorable outcomes in this area, though timing through dashas will determine when these potentials are most likely to manifest.`;
-    } else if (outlook === "mixed") {
-      return `${base}${placement}${dignityNote}. The chart shows a mix of supportive and challenging influences for ${cat.name.toLowerCase()}. With awareness and patience, the positive indicators can be cultivated during favorable dasha periods.`;
-    } else {
-      return `${base}${placement}${dignityNote}. This area may require extra attention and effort. The chart suggests some challenges, but remember that planetary indicators show tendencies, not certainties. Favorable dasha periods can still bring positive developments.`;
-    }
-  } else {
-    // Negative categories
-    if (outlook === "favorable" || outlook === "very_favorable") {
-      return `${base}${placement}${dignityNote}. The chart indicates relatively good resilience in this area. While no chart is free from all challenges, your planetary configuration suggests you have protective influences that can help navigate difficulties.`;
-    } else if (outlook === "mixed") {
-      return `${base}${placement}${dignityNote}. The indicators suggest moderate attention is needed in this area. During certain dasha periods, some challenges may surface, but your chart also shows resources to handle them effectively.`;
-    } else {
-      return `${base}${placement}${dignityNote}. This is an area where the chart suggests extra mindfulness would be beneficial. Certain planetary periods may bring challenges here, but being aware and proactive can make a meaningful difference. Remedial measures during difficult transits can be helpful.`;
+  let lordDesc = lord1;
+  if (lord1P) {
+    const dignityStr = lord1P.dignity ? ` (${lord1P.dignity})` : "";
+    const retroStr = lord1P.is_retrograde ? ", retrograde" : "";
+    lordDesc = `${lord1}${dignityStr} in house ${lord1P.house} (${lord1P.rashi}${retroStr})`;
+  }
+  parts.push(`Your ${ordinal(primaryH)} house is in ${houseRashi}, ruled by ${lordDesc}.`);
+
+  // ── Occupants in the primary house ──
+  if (occupants.length > 0) {
+    const beneficOcc = occupants.filter(p => NATURAL_BENEFICS.includes(p));
+    const maleficOcc = occupants.filter(p => NATURAL_MALEFICS.includes(p));
+    const occDetails = occupants.map(p => {
+      const pd = getPlanet(chart, p);
+      return pd?.dignity ? `${p} (${pd.dignity})` : p;
+    });
+    parts.push(`${occDetails.join(" and ")} ${occupants.length === 1 ? "occupies" : "occupy"} this house.`);
+    if (beneficOcc.length > 0 && maleficOcc.length === 0) {
+      parts.push(`The benefic presence strengthens ${cat.name.toLowerCase()} prospects.`);
+    } else if (maleficOcc.length > 0 && beneficOcc.length === 0) {
+      parts.push(`The malefic influence here adds intensity — awareness during their dashas is important.`);
+    } else if (beneficOcc.length > 0 && maleficOcc.length > 0) {
+      parts.push(`The mix of benefic and malefic planets creates a dynamic picture — results fluctuate with planetary periods.`);
     }
   }
+
+  // ── Aspects to the primary house (Jupiter's 5/7/9, Saturn's 3/7/10) ──
+  const aspectingPlanets: string[] = [];
+  for (const planet of chart.planets) {
+    if (occupants.includes(planet.name)) continue; // already counted as occupant
+    const dist = ((primaryH - planet.house + 12) % 12);
+    let aspects = false;
+    if (planet.name === "Jupiter" && [5, 7, 9].includes(dist)) aspects = true;
+    else if (planet.name === "Saturn" && [3, 7, 10].includes(dist)) aspects = true;
+    else if ((planet.name === "Mars") && [4, 7, 8].includes(dist)) aspects = true;
+    else if (dist === 7) aspects = true; // 7th aspect (all planets)
+    if (aspects) aspectingPlanets.push(planet.name);
+  }
+  if (aspectingPlanets.length > 0) {
+    const aspBenefic = aspectingPlanets.filter(p => NATURAL_BENEFICS.includes(p));
+    const aspMalefic = aspectingPlanets.filter(p => NATURAL_MALEFICS.includes(p));
+    if (aspBenefic.length > 0 && aspMalefic.length === 0) {
+      parts.push(`${aspBenefic.join(" and ")} ${aspBenefic.length === 1 ? "aspects" : "aspect"} this house, adding a protective and supportive influence.`);
+    } else if (aspMalefic.length > 0 && aspBenefic.length === 0) {
+      parts.push(`${aspMalefic.join(" and ")} ${aspMalefic.length === 1 ? "aspects" : "aspect"} this house, bringing periodic pressure that calls for patience.`);
+    } else if (aspBenefic.length > 0 && aspMalefic.length > 0) {
+      parts.push(`This house receives aspects from both ${aspBenefic.join(", ")} (supportive) and ${aspMalefic.join(", ")} (challenging), creating a push-pull dynamic.`);
+    }
+  }
+
+  // ── Secondary house(s) if present ──
+  if (houses.length > 1) {
+    const secondaryInsights: string[] = [];
+    for (const h of houses.slice(1, 3)) { // max 2 secondary houses
+      const hLord = getHouseLord(chart, h);
+      const hLordP = getPlanet(chart, hLord);
+      const hOcc = getOccupants(chart, h);
+      if (hLordP) {
+        const dignStr = hLordP.dignity ? ` (${hLordP.dignity})` : "";
+        secondaryInsights.push(`${ordinal(h)} house lord ${hLord}${dignStr} is in house ${hLordP.house}`);
+      }
+      if (hOcc.length > 0) {
+        secondaryInsights.push(`${hOcc.join(", ")} ${hOcc.length === 1 ? "sits" : "sit"} in the ${ordinal(h)} house`);
+      }
+    }
+    if (secondaryInsights.length > 0) {
+      parts.push(`Additionally, ${secondaryInsights.join("; ")}.`);
+    }
+  }
+
+  // ── Karaka planet condition ──
+  if (cat.relevantPlanets.length > 0) {
+    const karakaInsights: string[] = [];
+    for (const kName of cat.relevantPlanets.slice(0, 2)) { // top 2 karakas
+      const kp = getPlanet(chart, kName);
+      if (!kp) continue;
+      const dignStr = kp.dignity ? `${kp.dignity} in ` : "";
+      const houseType = KENDRA_HOUSES.includes(kp.house) ? "kendra" :
+        TRIKONA_HOUSES.includes(kp.house) ? "trikona" :
+        TRIK_HOUSES.includes(kp.house) ? "dusthana" : "";
+      const typeNote = houseType ? ` (a ${houseType} house)` : "";
+      karakaInsights.push(`${kName}, the natural significator, is ${dignStr}${kp.rashi} in house ${kp.house}${typeNote}`);
+    }
+    if (karakaInsights.length > 0) {
+      parts.push(`${karakaInsights.join(". ")}.`);
+    }
+  }
+
+  // ── Outlook-specific closing ──
+  if (cat.type === "positive") {
+    if (outlook === "very_favorable" || outlook === "favorable") {
+      parts.push(`Overall, the planetary configuration strongly supports ${cat.name.toLowerCase()} — the best results manifest during favorable dasha periods of the involved planets.`);
+    } else if (outlook === "mixed") {
+      parts.push(`The overall picture is mixed — positive potential exists but needs the right planetary period to fully activate. ${lord1} dasha/antardasha periods are key timing windows.`);
+    } else {
+      parts.push(`This area faces some headwinds, but specific dasha periods (especially of benefics aspecting or occupying these houses) can still bring meaningful progress.`);
+    }
+  } else {
+    if (outlook === "favorable" || outlook === "very_favorable") {
+      parts.push(`The chart shows good resilience here — protective planetary influences help buffer against difficulties in this area.`);
+    } else if (outlook === "mixed") {
+      parts.push(`Moderate caution is warranted. Certain planetary periods may intensify these themes, but awareness and proactive steps make a real difference.`);
+    } else {
+      parts.push(`Extra mindfulness is recommended in this area. Remedial measures during challenging dasha periods — especially of ${lord1} — can help significantly.`);
+    }
+  }
+
+  return parts.join(" ");
 }
 
 // ─── Dasha Predictions ──────────────────────────────────────────────────────
@@ -1752,7 +1843,58 @@ export function generateLifeEventsReport(
     sunSign: sunPlanet?.rashi || "Unknown",
     currentDasha: currentDasha?.planet || "Unknown",
     currentAntardasha: currentAD?.planet || "Unknown",
-    description: `You have a ${lagna} ascendant with ${lagnaLord} as your chart ruler, placed in ${lagnaLordPlanet?.rashi || "its sign"} (house ${lagnaLordPlanet?.house || "?"}${lagnaLordPlanet?.dignity ? `, ${lagnaLordPlanet.dignity}` : ""}). Your Moon is in ${moonPlanet?.rashi || "?"} (house ${moonPlanet?.house || "?"}), shaping your emotional nature and public interactions. ${yogakaraka ? `${yogakaraka} serves as your Yogakaraka \u2014 the most auspicious planet \u2014 whose periods tend to bring the most positive life developments.` : ""} You are currently running ${currentDasha?.planet || "?"} Mahadasha with ${currentAD?.planet || "?"} antardasha, which colors your present life themes.`,
+    description: (() => {
+      const parts: string[] = [];
+
+      // Lagna & chart ruler
+      const llDignity = lagnaLordPlanet?.dignity ? ` (${lagnaLordPlanet.dignity})` : "";
+      const llHouseType = lagnaLordPlanet ? (
+        KENDRA_HOUSES.includes(lagnaLordPlanet.house) ? " — a kendra placement giving strong vitality" :
+        TRIKONA_HOUSES.includes(lagnaLordPlanet.house) ? " — a trikona placement blessing fortune and dharma" :
+        TRIK_HOUSES.includes(lagnaLordPlanet.house) ? " — a challenging placement that builds resilience through obstacles" :
+        ""
+      ) : "";
+      parts.push(`You have a ${lagna} ascendant with ${lagnaLord} as your chart ruler, placed in ${lagnaLordPlanet?.rashi || "its sign"} in house ${lagnaLordPlanet?.house || "?"}${llDignity}${llHouseType}.`);
+
+      // Moon sign — emotional nature
+      if (moonPlanet) {
+        const moonDig = moonPlanet.dignity ? ` (${moonPlanet.dignity})` : "";
+        parts.push(`Your Moon in ${moonPlanet.rashi}${moonDig} (house ${moonPlanet.house}) reveals your inner emotional world and how you process experiences.`);
+      }
+
+      // Sun — identity and purpose
+      if (sunPlanet) {
+        parts.push(`Sun in ${sunPlanet.rashi} (house ${sunPlanet.house}) shapes your sense of identity, authority, and life purpose.`);
+      }
+
+      // Key planet dignities — highlight exalted/debilitated planets
+      const exaltedPlanets = chart.planets.filter(p => p.dignity === "exalted" && !["Rahu", "Ketu"].includes(p.name));
+      const debilitatedPlanets = chart.planets.filter(p => p.dignity === "debilitated" && !["Rahu", "Ketu"].includes(p.name));
+      if (exaltedPlanets.length > 0) {
+        parts.push(`${exaltedPlanets.map(p => p.name).join(" and ")} ${exaltedPlanets.length === 1 ? "is" : "are"} exalted in your chart — ${exaltedPlanets.length === 1 ? "a" : ""} powerful asset${exaltedPlanets.length > 1 ? "s" : ""} that ${exaltedPlanets.length === 1 ? "delivers" : "deliver"} strong results during ${exaltedPlanets.length === 1 ? "its" : "their"} periods.`);
+      }
+      if (debilitatedPlanets.length > 0) {
+        parts.push(`${debilitatedPlanets.map(p => p.name).join(" and ")} ${debilitatedPlanets.length === 1 ? "is" : "are"} debilitated — ${debilitatedPlanets.length === 1 ? "its themes" : "their themes"} may face obstacles, but remedial measures and supportive antardasha periods provide relief.`);
+      }
+
+      // Yogakaraka
+      if (yogakaraka) {
+        const ykPlanet = getPlanet(chart, yogakaraka);
+        const ykDig = ykPlanet?.dignity ? `, ${ykPlanet.dignity} in ${ykPlanet.rashi}` : "";
+        parts.push(`${yogakaraka} is your Yogakaraka${ykDig} — the single most auspicious planet — whose dasha periods are pivotal life chapters that tend to bring advancement and fulfilment.`);
+      }
+
+      // Key yogas present
+      const yogaNames = (chart.yogas || []).slice(0, 3).map(y => y.name);
+      if (yogaNames.length > 0) {
+        parts.push(`Your chart features ${yogaNames.join(", ")}${yogaNames.length >= 3 ? " among other yogas" : ""}, adding distinctive strengths to your planetary picture.`);
+      }
+
+      // Current period
+      parts.push(`You are currently running ${currentDasha?.planet || "?"} Mahadasha with ${currentAD?.planet || "?"} Antardasha, setting the tone for your present life themes.`);
+
+      return parts.join(" ");
+    })(),
   };
 
   // ── House Analysis
@@ -1803,19 +1945,77 @@ export function generateLifeEventsReport(
     const pLordships = lordshipsMap[pName] || [];
     const strength = assessPlanetStrength(pName, p.dignity, p.house, p.is_retrograde, pLordships, lagna);
 
-    let interpretation = `${pName} in ${p.rashi} (house ${p.house})`;
-    if (p.dignity) interpretation += ` is ${p.dignity}`;
-    if (p.is_retrograde) interpretation += `, retrograde`;
-    interpretation += `. `;
+    const interpParts: string[] = [];
+
+    // Position & dignity
+    const dignityStr = p.dignity ? ` in ${p.dignity}` : "";
+    const retroStr = p.is_retrograde ? " (retrograde)" : "";
+    const houseType = KENDRA_HOUSES.includes(p.house) ? "kendra" :
+      TRIKONA_HOUSES.includes(p.house) ? "trikona" :
+      TRIK_HOUSES.includes(p.house) ? "dusthana" :
+      UPACHAYA_HOUSES.includes(p.house) ? "upachaya" : "";
+    const houseNote = houseType ? `, a ${houseType} house` : "";
+    interpParts.push(`${pName} is placed in ${p.rashi}${dignityStr} in house ${p.house}${houseNote}${retroStr}.`);
+
+    // Lordships with life area context
     if (pLordships.length > 0) {
-      interpretation += `As lord of house(s) ${pLordships.join(" and ")}, ${pName} governs ${pLordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase() || "").filter(Boolean).join(" and ")} in your life. `;
+      const areas = pLordships.map((h) => {
+        const area = HOUSE_LIFE_AREAS[h]?.[0] || "";
+        return `${ordinal(h)} (${area.toLowerCase()})`;
+      }).join(" and ");
+      interpParts.push(`As lord of the ${areas} house${pLordships.length > 1 ? "s" : ""}, ${pName}'s condition directly shapes these life areas.`);
     }
+
+    // Conjunctions
+    const conjuncts = chart.planets.filter(cp =>
+      cp.name !== pName && cp.house === p.house && !["Rahu", "Ketu"].includes(cp.name)
+    );
+    if (conjuncts.length > 0) {
+      const conjDescs = conjuncts.map(cp => {
+        const bn = NATURAL_BENEFICS.includes(cp.name) ? "benefic" : "malefic";
+        return `${cp.name} (${bn}${cp.dignity ? `, ${cp.dignity}` : ""})`;
+      });
+      interpParts.push(`Conjunct with ${conjDescs.join(" and ")} — ${
+        conjuncts.every(cp => NATURAL_BENEFICS.includes(cp.name))
+          ? "this benefic company amplifies positive results."
+          : conjuncts.every(cp => NATURAL_MALEFICS.includes(cp.name))
+          ? "this adds intensity and can create fluctuating results."
+          : "the mixed company means results depend heavily on the active dasha period."
+      }`);
+    }
+
+    // Key aspects this planet casts
+    if (pName === "Jupiter" || pName === "Saturn") {
+      const aspectedHouses: number[] = [];
+      const specialAspects = pName === "Jupiter" ? [5, 7, 9] : [3, 7, 10];
+      for (const asp of specialAspects) {
+        const targetH = ((p.house - 1 + asp) % 12) + 1;
+        const targetAreas = HOUSE_LIFE_AREAS[targetH];
+        if (targetAreas) aspectedHouses.push(targetH);
+      }
+      if (aspectedHouses.length > 0) {
+        const aspDesc = aspectedHouses.map(h => `${ordinal(h)} (${HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase() || ""})`).join(", ");
+        interpParts.push(`${pName}'s special aspects reach houses ${aspDesc}, ${
+          pName === "Jupiter" ? "spreading wisdom and protection" : "bringing discipline and structure"
+        } to these areas.`);
+      }
+    }
+
+    // Yogakaraka
     if (pName === yogakaraka) {
-      interpretation += `As your Yogakaraka, ${pName}'s periods are among the most auspicious for you. `;
+      interpParts.push(`As your Yogakaraka (ruling both a kendra and a trikona), ${pName}'s dasha and antardasha periods are among the most transformative and auspicious windows in your life.`);
     }
-    if (strength === "strong") interpretation += "This planet is well-positioned to deliver positive results.";
-    else if (strength === "moderate") interpretation += "Results are mixed but can be enhanced during favorable sub-periods.";
-    else interpretation += "This planet may underdeliver or bring challenges \u2014 but awareness and remedies can help.";
+
+    // Strength-based closing with specificity
+    if (strength === "strong") {
+      interpParts.push(`${pName} is one of the stronger planets in your chart — expect it to deliver well during its periods, especially for ${pLordships.length > 0 ? pLordships.map(h => HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase() || "").filter(Boolean).join(" and ") : "its natural significations"}.`);
+    } else if (strength === "moderate") {
+      interpParts.push(`${pName} has moderate strength — results come but may need patience. Favorable antardasha lords paired with ${pName} can unlock its potential.`);
+    } else {
+      interpParts.push(`${pName} is weakly placed — its themes may face delays or obstacles. Strengthening remedies (mantra, gemstone after consultation) can help, and supportive antardasha periods provide relief windows.`);
+    }
+
+    const interpretation = interpParts.join(" ");
 
     planetaryStrengths.push({
       planet: pName,
