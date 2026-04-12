@@ -211,8 +211,8 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
         <h3 className="text-lg font-semibold text-amber-400">Compatibility Analysis</h3>
         <p className="text-xs text-slate-500 mt-1">
           {chart
-            ? <>Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using the traditional <strong className="text-slate-400">Ashtakoot Guna Milan</strong> system (36 points) and planetary synastry.</>
-            : <>Select or enter your chart, then add people to compare using the traditional <strong className="text-slate-400">Ashtakoot Guna Milan</strong> system (36 points) and planetary synastry.</>
+            ? <>Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Sibling analysis includes dedicated 3rd/11th house and Mars karaka scoring.</>
+            : <>Select or enter your chart, then add people to compare using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Sibling analysis includes dedicated 3rd/11th house and Mars karaka scoring.</>
           }
         </p>
       </div>
@@ -519,7 +519,7 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
             {/* Score breakdown */}
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                Ashtakoot Score Breakdown ({result.percentage}%)
+                {result.relationship === "sibling" ? "Sibling Compatibility" : "Ashtakoot"} Score Breakdown ({result.percentage}%)
               </p>
               <div className="space-y-2.5">
                 {result.koots.map(k => (
