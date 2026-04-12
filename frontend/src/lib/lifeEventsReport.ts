@@ -1898,12 +1898,14 @@ export function generateLifeEventsReport(
   const currentADPlanet = currentAD?.planet || "Unknown";
   const mdPlanet = getPlanet(chart, currentMD);
   const adPlanet = getPlanet(chart, currentADPlanet);
-  const mdLordships = lordshipsMap[currentMD] || [];
-  const adLordships = lordshipsMap[currentADPlanet] || [];
+  const mdLordshipsRaw = lordshipsMap[currentMD] || [];
+  const adLordshipsRaw = lordshipsMap[currentADPlanet] || [];
+  const mdLordships = getEffectiveLordships(currentMD, mdLordshipsRaw, chart, lordshipsMap);
+  const adLordships = getEffectiveLordships(currentADPlanet, adLordshipsRaw, chart, lordshipsMap);
 
   const currentNature = dashaOverallNature(
     currentADPlanet,
-    adLordships,
+    adLordshipsRaw,
     adPlanet?.dignity || null,
     adPlanet?.house || 1,
     lagna,
@@ -1913,6 +1915,16 @@ export function generateLifeEventsReport(
 
   const mdThemes = mdLordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase()).filter(Boolean);
   const adThemes = adLordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0]?.toLowerCase()).filter(Boolean);
+
+  // Build descriptive labels for MD and AD planets (handle Rahu/Ketu dispositor)
+  const mdIsRahuKetu = currentMD === "Rahu" || currentMD === "Ketu";
+  const adIsRahuKetu = currentADPlanet === "Rahu" || currentADPlanet === "Ketu";
+  const mdDispositorName = mdIsRahuKetu ? RASHI_LORDS[mdPlanet?.rashi || ""] : null;
+  const adDispositorName = adIsRahuKetu ? RASHI_LORDS[adPlanet?.rashi || ""] : null;
+
+  const mdLordDesc = mdIsRahuKetu && mdDispositorName
+    ? `${currentMD}, placed in ${mdPlanet?.rashi || "its sign"} (ruled by ${mdDispositorName}), activates houses ${mdLordships.join(" & ")} and brings focus to ${mdThemes.length ? mdThemes.join(", ") : "transformation"}`
+    : `${currentMD} as lord of houses ${mdLordships.join(" & ")} brings focus to ${mdThemes.length ? mdThemes.join(", ") : "key life"}`;
 
   const opportunities: string[] = [];
   const cautions: string[] = [];
@@ -1955,7 +1967,18 @@ export function generateLifeEventsReport(
     startDate: currentAD?.start_date || "",
     endDate: currentAD?.end_date || "",
     overallNature: currentNature,
-    detailedAnalysis: `You are currently in ${currentMD} Mahadasha and ${currentADPlanet} Antardasha (${currentAD ? `${formatDate(currentAD.start_date)} to ${formatDate(currentAD.end_date)}` : "dates unknown"}). ${currentMD} as lord of houses ${mdLordships.join(" and ")} brings focus to ${mdThemes.join(", ")} themes in your life. The ${currentADPlanet} sub-period, ruling houses ${adLordships.join(" and ")}, channels this energy through ${adThemes.join(", ")} matters. ${currentNature === "very_favorable" || currentNature === "favorable" ? "The overall energy of this period is supportive \u2014 a good time to pursue your goals with confidence while remaining grounded." : currentNature === "mixed" ? "This period carries both opportunities and challenges \u2014 staying balanced and making thoughtful decisions will help you make the most of this time." : "This period calls for patience and mindfulness. Challenges that arise are opportunities for growth \u2014 focus on what you can control and let go of what you cannot."}`,
+    detailedAnalysis: (() => {
+      const dateRange = currentAD ? `${formatDate(currentAD.start_date)} to ${formatDate(currentAD.end_date)}` : "dates unknown";
+      const adDesc = adIsRahuKetu && adDispositorName
+        ? `The ${currentADPlanet} sub-period (through ${adDispositorName}, activating houses ${adLordships.join(" & ")}) channels this energy through ${adThemes.length ? adThemes.join(", ") : "transformative"} matters.`
+        : `The ${currentADPlanet} sub-period, ruling houses ${adLordships.join(" & ")}, channels this energy through ${adThemes.length ? adThemes.join(", ") : "key life"} matters.`;
+      const outlook = currentNature === "very_favorable" || currentNature === "favorable"
+        ? "The overall energy of this period is supportive \u2014 a good time to pursue your goals with confidence while remaining grounded."
+        : currentNature === "mixed"
+        ? "This period carries both opportunities and challenges \u2014 staying balanced and making thoughtful decisions will help you make the most of this time."
+        : "This period calls for patience and mindfulness. Challenges that arise are opportunities for growth \u2014 focus on what you can control and let go of what you cannot.";
+      return `You are currently in ${currentMD} Mahadasha and ${currentADPlanet} Antardasha (${dateRange}). ${mdLordDesc} themes in your life. ${adDesc} ${outlook}`;
+    })(),
     opportunities: [...new Set(opportunities)].slice(0, 4),
     cautions: [...new Set(cautions)].slice(0, 4),
     remedialSuggestions: [...new Set(remedialSuggestions)].slice(0, 4),
