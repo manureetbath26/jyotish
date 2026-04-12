@@ -470,18 +470,18 @@ function LifeEventsReportContent() {
               </div>
             </div>
 
-            {/* Upcoming highlights teaser */}
+            {/* Report features teaser */}
             <div className="space-y-2">
               <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Full report includes:</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   "Complete 12-House Analysis",
                   "Planetary Strength Assessment",
-                  "20+ Event Category Predictions",
+                  "Life Area Outlook & Insights",
                   "Full Dasha Timeline with Events",
-                  "Top 15 Life Event Highlights",
+                  "Current Period Deep Dive",
                   "Key Yoga Influences",
-                  "Personalized Remedial Suggestions",
+                  "Empathetic Guidance & Cautions",
                   "Downloadable PDF Report",
                 ].map((f) => (
                   <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
@@ -494,18 +494,18 @@ function LifeEventsReportContent() {
 
             {/* Past events removed from preview — admin-only in full report */}
 
-            {/* Blurred teaser for future predictions */}
+            {/* Blurred teaser */}
             <div className="relative overflow-hidden rounded-xl">
               <div className="blur-sm pointer-events-none select-none opacity-40 space-y-2 p-4 bg-slate-800/30">
-                <p className="text-sm text-slate-300 font-medium">Upcoming Life Highlights</p>
+                <p className="text-sm text-slate-300 font-medium">Current Period Analysis</p>
                 <p className="text-xs text-slate-400">
-                  Based on your planetary periods and house lordships,
-                  the indicators suggest significant developments in career and relationships...
+                  Your current planetary period reveals key themes around career, relationships,
+                  and personal growth — with specific guidance for this phase of life...
                 </p>
-                <p className="text-sm text-slate-300 font-medium mt-3">Dasha-by-Dasha Predictions</p>
+                <p className="text-sm text-slate-300 font-medium mt-3">Dasha Timeline &amp; Yoga Influences</p>
                 <p className="text-xs text-slate-400">
                   Your planetary periods activate houses related to wealth, partnerships, career,
-                  and more — with specific timing windows for each...
+                  and more — with yoga influences shaping your life path...
                 </p>
               </div>
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 rounded-xl">

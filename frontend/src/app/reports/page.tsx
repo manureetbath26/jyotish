@@ -28,11 +28,11 @@ const REPORT_META: Record<string, { href: string; icon: string; badge?: string; 
     features: [
       "Complete 12-House Life Area Analysis",
       "Planetary Strength & Dignity Assessment",
-      "20+ Life Event Category Predictions",
+      "Life Area Outlook with Category Insights",
       "Full Dasha Timeline with Event Mapping",
       "Current Period Deep Dive & Remedies",
-      "Top 15 Upcoming Life Highlights",
       "Key Yoga Influences (Raja, Dhana, etc.)",
+      "Downloadable PDF Report",
       "Empathetic Guidance & Cautions",
     ],
   },
