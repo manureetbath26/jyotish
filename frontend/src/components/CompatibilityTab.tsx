@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ChartResponse, BirthDataInput, calculateChart } from "@/lib/api";
 import { calculateCompatibility, type CompatibilityResult } from "@/lib/compatibilityEngine";
+import jsPDF from "jspdf";
 
 interface Props {
   /** The primary chart (the user's own chart currently displayed). Optional for standalone page. */
@@ -135,6 +136,173 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
       else setActiveSuggestions(null);
     }, 350);
   };
+
+  const downloadPdf = useCallback((result: CompatibilityResult) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const W = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    const maxW = W - margin * 2;
+    let y = 20;
+
+    const colors = {
+      bg: [15, 23, 42] as [number, number, number],
+      text: [226, 232, 240] as [number, number, number],
+      amber: [245, 158, 11] as [number, number, number],
+      gray: [148, 163, 184] as [number, number, number],
+      green: [74, 222, 128] as [number, number, number],
+      red: [248, 113, 113] as [number, number, number],
+    };
+
+    const addPage = () => { doc.addPage(); y = 20; };
+    const checkPage = (needed: number) => { if (y + needed > 275) addPage(); };
+
+    const bodyText = (text: string) => {
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...colors.gray);
+      const lines = doc.splitTextToSize(text, maxW - 4);
+      for (const line of lines) {
+        checkPage(4);
+        doc.text(line, margin + 2, y);
+        y += 3.5;
+      }
+    };
+
+    // Background
+    doc.setFillColor(...colors.bg);
+    doc.rect(0, 0, W, doc.internal.pageSize.getHeight(), "F");
+
+    // Title
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.amber);
+    doc.text("Compatibility Report", margin, y);
+    y += 8;
+
+    // Subtitle
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.text);
+    const relLabel = RELATIONSHIPS.find(r => r.id === result.relationship)?.label ?? result.relationship;
+    doc.text(`${result.person1.name} & ${result.person2.name}  (${relLabel})`, margin, y);
+    y += 5;
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.gray);
+    doc.text(
+      `${result.person1.lagna} Lagna · ${result.person1.moonRashi} Moon  ↔  ${result.person2.lagna} Lagna · ${result.person2.moonRashi} Moon`,
+      margin, y,
+    );
+    y += 8;
+
+    // Score & Verdict
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.amber);
+    doc.text(`${result.totalScore} / ${result.maxScore}  (${result.percentage}%)`, margin, y);
+    y += 5;
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.text);
+    doc.text(result.verdict, margin, y);
+    y += 8;
+
+    // Divider
+    doc.setDrawColor(100, 116, 139);
+    doc.line(margin, y, W - margin, y);
+    y += 6;
+
+    // Score Breakdown
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.amber);
+    doc.text(`${result.relationship === "sibling" ? "Sibling Compatibility" : "Ashtakoot"} Score Breakdown`, margin, y);
+    y += 6;
+
+    for (const k of result.koots) {
+      checkPage(14);
+      const pct = k.maxPoints > 0 ? k.score / k.maxPoints : 0;
+      const barColor = pct >= 0.7 ? colors.green : pct >= 0.3 ? colors.amber : colors.red;
+      const strength = pct >= 0.7 ? "Strong" : pct >= 0.3 ? "Moderate" : "Weak";
+
+      // Label + score
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...colors.text);
+      doc.text(k.name, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...colors.gray);
+      doc.text(`${k.score}/${k.maxPoints} — ${strength}`, margin + 45, y);
+      y += 3.5;
+
+      // Bar background
+      const barX = margin;
+      const barW = maxW;
+      const barH = 2.5;
+      doc.setFillColor(51, 65, 85);
+      doc.roundedRect(barX, y, barW, barH, 1, 1, "F");
+      // Bar fill
+      doc.setFillColor(...barColor);
+      const fillW = Math.max(2, barW * pct);
+      doc.roundedRect(barX, y, fillW, barH, 1, 1, "F");
+      y += 4.5;
+
+      // Description
+      bodyText(k.description);
+      y += 2;
+    }
+
+    // Synastry
+    if (result.synastry.length > 0) {
+      y += 3;
+      checkPage(10);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...colors.amber);
+      doc.text("Planetary Synastry", margin, y);
+      y += 6;
+
+      for (const s of result.synastry) {
+        checkPage(14);
+        const sColor = s.nature === "harmonious" ? colors.green : s.nature === "challenging" ? colors.red : colors.gray;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...sColor);
+        doc.text(`${s.planet1} ↔ ${s.planet2}`, margin, y);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...colors.gray);
+        doc.text(`(${s.aspect} — ${s.nature})`, margin + 55, y);
+        y += 4;
+        bodyText(s.description);
+        y += 2;
+      }
+    }
+
+    // Summary
+    y += 3;
+    checkPage(15);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...colors.amber);
+    doc.text("Summary", margin, y);
+    y += 5;
+    bodyText(result.summary);
+
+    // Footer on each page
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      // Background for added pages
+      if (i > 1) {
+        doc.setFillColor(...colors.bg);
+        doc.rect(0, 0, W, doc.internal.pageSize.getHeight(), "F");
+      }
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Generated by Jyotish — Vedic Astrology", margin, 290);
+      doc.text(`Page ${i} of ${totalPages}`, W - margin - 20, 290);
+    }
+
+    const safeName = `${result.person1.name}_${result.person2.name}`.replace(/[^a-zA-Z0-9]/g, "_");
+    doc.save(`Compatibility_${safeName}.pdf`);
+  }, []);
 
   const handleCalculate = async () => {
     setError(null);
@@ -596,6 +764,28 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
             <div className="bg-slate-800/30 border border-slate-700/50 rounded-lg p-4">
               <p className="text-xs font-semibold text-amber-400 mb-1">Summary</p>
               <p className="text-sm text-slate-300 leading-relaxed">{result.summary}</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => downloadPdf(result)}
+                className="flex items-center gap-1.5 text-xs bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" />
+                </svg>
+                Save PDF
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 text-xs bg-slate-700/50 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium px-4 py-2 rounded-lg transition-colors print:hidden"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2z" />
+                </svg>
+                Print
+              </button>
             </div>
           </div>
         </div>
