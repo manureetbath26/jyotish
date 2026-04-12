@@ -175,7 +175,7 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
   doc.setFontSize(22);
   doc.setTextColor(...colors.gold);
   doc.setFont("helvetica", "bold");
-  doc.text("Life Events Prediction Report", pageW / 2, 16, { align: "center" });
+  doc.text("Life Report", pageW / 2, 16, { align: "center" });
   doc.setFontSize(10);
   doc.setTextColor(200, 200, 220);
   doc.setFont("helvetica", "normal");
@@ -198,11 +198,12 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.text);
-    doc.text(`${cat.icon} ${cat.name}`, margin, y);
+    doc.text(cat.name, margin, y);
     const outlookColor = cat.overallOutlook.includes("favorable") ? colors.green : cat.overallOutlook === "mixed" ? colors.amber : colors.red;
     doc.setTextColor(...outlookColor);
     doc.setFontSize(8);
-    doc.text(`[${cat.overallOutlook.replace(/_/g, " ").toUpperCase()}]`, margin + 60, y);
+    const nameWidth = doc.getTextWidth(cat.name);
+    doc.text(`[${cat.overallOutlook.replace(/_/g, " ").toUpperCase()}]`, margin + nameWidth + 4, y);
     y += 4.5;
     bodyText(cat.summary);
     y += 2;
