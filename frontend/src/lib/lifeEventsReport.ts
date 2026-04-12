@@ -538,7 +538,7 @@ function buildDashaEventPredictions(
     if (isWeak && likelihood === "very_likely") likelihood = "likely";
     if (isWeak && likelihood === "likely") likelihood = "possible";
 
-    const houseNames = lordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0] || `House ${h}`).join(" and ");
+    const houseNames = effectiveLordships.map((h) => HOUSE_LIFE_AREAS[h]?.[0] || `House ${h}`).join(" and ");
     const isPositiveExpression = cat.type === "positive" ? (isStrong || isYogakaraka) : isWeak;
 
     let description = "";
