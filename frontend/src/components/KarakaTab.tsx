@@ -18,8 +18,8 @@ interface Props {
   lagna: string;
 }
 
-// Planets eligible for Chara Karaka assignment (Jaimini system: 7 planets, exclude Ketu)
-const CHARA_ELIGIBLE = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu"];
+// Planets eligible for Chara Karaka assignment (7 planets — exclude Rahu and Ketu)
+const CHARA_ELIGIBLE = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"];
 
 interface CharaAssignment extends CharaKarakaRole {
   planet: string;
@@ -33,14 +33,14 @@ interface CharaAssignment extends CharaKarakaRole {
 /**
  * Compute Chara Karakas by sorting eligible planets by degree within rashi (descending).
  * Highest degree_in_rashi = Atmakaraka, 2nd highest = Amatyakaraka, etc.
- * Rahu uses (30 - degree) per Jaimini convention.
+ * Only the 7 visible planets are used — Rahu and Ketu are excluded.
  */
 function computeCharaKarakas(planets: PlanetPosition[]): CharaAssignment[] {
   const eligible = planets
     .filter(p => CHARA_ELIGIBLE.includes(p.name))
     .map(p => ({
       ...p,
-      sortDegree: p.name === "Rahu" ? 30 - p.degree_in_rashi : p.degree_in_rashi,
+      sortDegree: p.degree_in_rashi,
     }))
     .sort((a, b) => b.sortDegree - a.sortDegree);
 
