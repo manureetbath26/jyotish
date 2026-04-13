@@ -301,29 +301,54 @@ function getNextSign(current: Sign, direction: "forward" | "backward"): Sign {
   }
 }
 
-/**
- * Add fractional years to a date string, returning a new date string.
- */
-function addYearsToDate(dateStr: string, years: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const totalDays = Math.round(years * 365.25);
-  d.setDate(d.getDate() + totalDays);
-  return d.toISOString().split("T")[0];
+/** Format a Date as YYYY-MM-DD using local time (avoids UTC shift from toISOString). */
+function formatDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /**
- * Compute the i-th boundary date within a parent period.
- * Uses direct offset from parent start to avoid cumulative rounding errors.
- *
- * boundary(0) = parentStart, boundary(12) = parentEnd
+ * Add whole years to a date using calendar addition (preserves day-of-month).
+ * e.g. Jan 26, 1988 + 4 years = Jan 26, 1992
  */
-function getBoundaryDate(parentStart: string, parentDurationYears: number, i: number, total: number = 12): string {
-  const d = new Date(parentStart + "T00:00:00");
-  const totalDays = parentDurationYears * 365.25;
-  const offsetDays = Math.round((i / total) * totalDays);
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().split("T")[0];
+function addCalendarYears(dateStr: string, years: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setFullYear(d.getFullYear() + years);
+  return formatDate(d);
 }
+
+/**
+ * Add whole months to a date using calendar addition (preserves day-of-month).
+ * e.g. Jan 26, 2017 + 12 months = Jan 26, 2018
+ */
+function addCalendarMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setMonth(d.getMonth() + months);
+  return formatDate(d);
+}
+
+/**
+ * Add a precise number of days (including fractional) to a date string.
+ * Used for sub-sub-period boundaries from the Vedic table.
+ */
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const wholeDays = Math.floor(days);
+  const fractionalHours = (days - wholeDays) * 24;
+  d.setDate(d.getDate() + wholeDays);
+  d.setHours(d.getHours() + Math.round(fractionalHours));
+  return formatDate(d);
+}
+
+/**
+ * Sub-period duration from the table: N months where N = major period years.
+ */
+const SUB_PERIOD_MONTHS: Record<number, number> = {
+  12: 12, 11: 11, 10: 10, 9: 9, 8: 8, 7: 7,
+   6: 6,  5: 5,  4: 4,  3: 3, 2: 2, 1: 1,
+};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Sub-Period & Sub-Sub-Period Calculation
@@ -348,32 +373,30 @@ function buildSubOrder(sign: Sign): Sign[] {
 }
 
 /**
- * Sub-sub-period duration uses the Vedic 360-day year convention.
- * Formula: major_period_years × 2.5 days per sub-sub-period.
- *
- * Table reference:
- *   Major 12y → 30d 0h   | Major 6y → 15d 0h
- *   Major 11y → 27d 12h  | Major 5y → 12d 12h
- *   Major 10y → 25d 0h   | Major 4y → 10d 0h
- *   Major  9y → 22d 12h  | Major 3y →  7d 12h
- *   Major  8y → 20d 0h   | Major 2y →  5d 0h
- *   Major  7y → 17d 12h  | Major 1y →  2d 12h
+ * Sub-sub-period durations from the standard Chara Dasha table.
+ * Key = major period years, Value = [days, hours] per sub-sub-period.
  */
-function getSubSubDurationDays(majorYears: number): number {
-  return majorYears * 2.5;
-}
+const SUB_SUB_DURATION: Record<number, [number, number]> = {
+  12: [30, 0],
+  11: [27, 12],
+  10: [25, 0],
+   9: [22, 12],
+   8: [20, 0],
+   7: [17, 12],
+   6: [15, 0],
+   5: [12, 12],
+   4: [10, 0],
+   3: [7, 12],
+   2: [5, 0],
+   1: [2, 12],
+};
 
-/**
- * Add a precise number of days (including fractional) to a date string.
- */
-function addDaysToDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  // Split into whole days and fractional hours for precision
-  const wholeDays = Math.floor(days);
-  const fractionalHours = (days - wholeDays) * 24;
-  d.setDate(d.getDate() + wholeDays);
-  d.setHours(d.getHours() + Math.round(fractionalHours));
-  return d.toISOString().split("T")[0];
+/** Get sub-sub-period duration in fractional days from the lookup table. */
+function getSubSubDurationDays(majorYears: number): number {
+  const entry = SUB_SUB_DURATION[majorYears];
+  if (entry) return entry[0] + entry[1] / 24;
+  // Fallback for non-integer major years (shouldn't happen in standard Chara Dasha)
+  return majorYears * 2.5;
 }
 
 /**
@@ -413,8 +436,7 @@ function calculateSubSubPeriods(
 
 /**
  * Calculate sub-periods (antardashas) for a major dasha sign.
- * Each sub-period = major period duration / 12.
- * Uses getBoundaryDate to avoid cumulative rounding errors.
+ * Each sub-period = N calendar months (from table: N = major period years).
  */
 function calculateSubPeriods(
   dashaSign: Sign,
@@ -423,24 +445,25 @@ function calculateSubPeriods(
   planetSignMap: Record<string, Sign>,
   today: string,
 ): SubPeriod[] {
-  const subDuration = majorDuration / 12;
+  const subMonths = SUB_PERIOD_MONTHS[majorDuration] ?? majorDuration;
   const signs = buildSubOrder(dashaSign);
 
   return signs.map((sign, i) => {
     const lord = SIGN_LORD[sign];
     const lordSign = (planetSignMap[lord] ?? sign) as Sign;
-    const startDate = getBoundaryDate(majorStartDate, majorDuration, i);
-    const endDate = getBoundaryDate(majorStartDate, majorDuration, i + 1);
+    // Each sub-period = N calendar months from major start
+    const startDate = addCalendarMonths(majorStartDate, i * subMonths);
+    const endDate = addCalendarMonths(majorStartDate, (i + 1) * subMonths);
     const isCurrentPeriod = startDate <= today && today < endDate;
 
-    // Calculate sub-sub-periods (needs major duration for Vedic 2.5-day formula)
+    // Calculate sub-sub-periods (needs major duration for table lookup)
     const subSubPeriods = calculateSubSubPeriods(sign, startDate, majorDuration, planetSignMap, today);
 
     return {
       sign,
       lord,
       lordSign,
-      duration: subDuration,
+      duration: majorDuration / 12,
       startDate,
       endDate,
       isCurrentPeriod,
@@ -494,9 +517,9 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
     const lordSign = planetSignMap[lord] || sign;
     const duration = durations[i];
 
-    // Compute dates directly from birth date to avoid cumulative rounding
-    const startDate = addYearsToDate(birthDate, cumulativeYears[i]);
-    const endDate = addYearsToDate(birthDate, cumulativeYears[i + 1]);
+    // Use calendar year addition to preserve day-of-month (e.g. Jan 26 stays Jan 26)
+    const startDate = addCalendarYears(birthDate, cumulativeYears[i]);
+    const endDate = addCalendarYears(birthDate, cumulativeYears[i + 1]);
     const startYear = new Date(startDate + "T00:00:00").getFullYear();
     const endYear = new Date(endDate + "T00:00:00").getFullYear();
 
