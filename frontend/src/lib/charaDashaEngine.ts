@@ -31,6 +31,16 @@ export type Sign =
   | "Leo" | "Virgo" | "Libra" | "Scorpio"
   | "Sagittarius" | "Capricorn" | "Aquarius" | "Pisces";
 
+export interface SubPeriod {
+  sign: Sign;
+  lord: string;
+  lordSign: Sign;
+  duration: number;       // years (fraction of major period)
+  startDate: string;      // YYYY-MM-DD
+  endDate: string;        // YYYY-MM-DD
+  isCurrentPeriod: boolean;
+}
+
 export interface DashaPeriod {
   sign: Sign;
   lord: string;
@@ -41,6 +51,7 @@ export interface DashaPeriod {
   startYear: number;
   endYear: number;
   isCurrentPeriod: boolean;
+  subPeriods: SubPeriod[];
 }
 
 export interface CharaDashaResult {
@@ -290,6 +301,60 @@ function addYearsToDate(dateStr: string, years: number): string {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Sub-Period Calculation
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Calculate sub-periods (antardashas) for a major dasha sign.
+ *
+ * Rules:
+ * 1. Order follows the same Direct/Indirect principle as major periods,
+ *    based on whether the major dasha sign is Direct or Indirect.
+ * 2. The major dasha sign takes its own sub-period LAST (not first).
+ * 3. Each sub-period = major period duration / 12.
+ */
+function calculateSubPeriods(
+  dashaSign: Sign,
+  majorStartDate: string,
+  majorDuration: number,
+  planetSignMap: Record<string, Sign>,
+  today: string,
+): SubPeriod[] {
+  const direction = getCountDirection(dashaSign); // Direct signs → forward, Indirect → backward
+  const subDuration = majorDuration / 12;
+
+  // Build order: start from NEXT sign (skip own), then append own sign last
+  const subSigns: Sign[] = [];
+  let current = dashaSign;
+  for (let i = 0; i < 11; i++) {
+    current = getNextSign(current, direction);
+    subSigns.push(current);
+  }
+  subSigns.push(dashaSign); // own sign last
+
+  let runningDate = majorStartDate;
+  return subSigns.map((sign) => {
+    const lord = SIGN_LORD[sign];
+    const lordSign = (planetSignMap[lord] ?? sign) as Sign;
+    const startDate = runningDate;
+    const endDate = addYearsToDate(startDate, subDuration);
+    const isCurrentPeriod = startDate <= today && today < endDate;
+
+    runningDate = endDate;
+
+    return {
+      sign,
+      lord,
+      lordSign,
+      duration: subDuration,
+      startDate,
+      endDate,
+      isCurrentPeriod,
+    };
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Core Engine
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -333,6 +398,9 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
     // Is this the current period?
     const isCurrentPeriod = startDate <= today && today < endDate;
 
+    // Calculate sub-periods
+    const subPeriods = calculateSubPeriods(sign, startDate, duration, planetSignMap, today);
+
     totalYears += duration;
     runningDate = endDate;
 
@@ -346,6 +414,7 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
       startYear,
       endYear,
       isCurrentPeriod,
+      subPeriods,
     };
   });
 
