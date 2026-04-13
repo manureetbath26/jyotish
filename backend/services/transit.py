@@ -559,6 +559,7 @@ def get_current_transit_positions(
 
 
 SLOW_PLANETS = {
+    swe.MARS: "Mars",
     swe.JUPITER: "Jupiter",
     swe.SATURN: "Saturn",
     swe.MEAN_NODE: "Rahu",

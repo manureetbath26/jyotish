@@ -1190,13 +1190,28 @@ export function scanMarriageWindows(
   // ── Score each month ──
   const months: MarriageWindowMonth[] = [];
 
+  // Mars projection fallback: the lifetime transit API only includes slow
+  // planets (Saturn, Jupiter, Rahu, Ketu) — Mars is absent.  We project
+  // Mars from its natal position using average orbital speed (~57 days/sign).
+  const natalMarsIdx = SIGN_INDEX[natalMars];
+  const scanBaseDate = new Date(startDate + "T00:00:00").getTime();
+
   for (const snap of relevantSnapshots) {
     // Convert house numbers to signs
     const saturnHouse = snap.planets["Saturn"];
-    const marsHouse = snap.planets["Mars"];
     const jupiterHouse = snap.planets["Jupiter"];
 
-    if (!saturnHouse || !marsHouse || !jupiterHouse) continue;
+    if (!saturnHouse || !jupiterHouse) continue;
+
+    // Mars: use snapshot value if present, otherwise project from natal
+    let marsHouse = snap.planets["Mars"];
+    if (!marsHouse) {
+      const snapDateMs = new Date(snap.date + "T00:00:00").getTime();
+      const daysDiff = (snapDateMs - scanBaseDate) / 86400000;
+      const signsAdvanced = Math.floor(daysDiff / DAYS_PER_SIGN_MARS);
+      const projectedMarsSign = ZODIAC_ORDER[(natalMarsIdx + signsAdvanced) % 12];
+      marsHouse = ((SIGN_INDEX[projectedMarsSign] - SIGN_INDEX[lagna] + 12) % 12) + 1;
+    }
 
     const transit: TransitPositions = {
       saturn: houseToSign(lagna, saturnHouse),

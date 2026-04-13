@@ -92,48 +92,82 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
         // Build prediction input once (shared between current + 5-year scan)
         const predInput = preparePredictionInput(chart);
 
-        // Fetch current transits + lifetime transits in parallel
+        // ── Fetch transit data (resilient — fallbacks if API unavailable) ──
         const birthDate = new Date(chart.date + "T00:00:00");
-        const [transits, lifetimeData] = await Promise.all([
-          calculateCurrentTransits(chart.ayanamsha_value, chart.lagna_degree),
-          fetchLifetimeTransits(
+
+        // Helper: get natal sign of a planet from the chart
+        const getNatalSign = (name: string): Sign => {
+          const p = chart.planets.find((pl) => pl.name === name);
+          return (p?.rashi || "Aries") as Sign;
+        };
+
+        let transitPositions: TransitPositions;
+        let transitApiWorked = false;
+
+        // Try fetching current transits from the backend
+        try {
+          const transits = await calculateCurrentTransits(
             chart.ayanamsha_value,
             chart.lagna_degree,
-            birthDate.getFullYear(),
-            birthDate.getMonth() + 1,
-          ).catch(() => ({ snapshots: [] })),
-        ]);
+          );
+          const findSign = (name: string): Sign => {
+            const p = transits.planets.find((pl) => pl.name === name);
+            return (p?.rashi || "Aries") as Sign;
+          };
+          transitPositions = {
+            saturn: findSign("Saturn"),
+            mars: findSign("Mars"),
+            jupiter: findSign("Jupiter"),
+          };
+          transitApiWorked = true;
+        } catch {
+          // Fallback: use natal planet positions as starting estimate
+          // (not ideal but allows the 5-year scan to still run)
+          console.warn("[Marriage] Current transit API failed, using natal positions as fallback");
+          transitPositions = {
+            saturn: getNatalSign("Saturn"),
+            mars: getNatalSign("Mars"),
+            jupiter: getNatalSign("Jupiter"),
+          };
+        }
 
         if (cancelled) return;
 
         // ── Current marriage prediction ──
-        const findSign = (name: string): Sign => {
-          const p = transits.planets.find((pl) => pl.name === name);
-          return (p?.rashi || "Aries") as Sign;
-        };
-        const transitPositions: TransitPositions = {
-          saturn: findSign("Saturn"),
-          mars: findSign("Mars"),
-          jupiter: findSign("Jupiter"),
-        };
         const mReport = predictMarriage(predInput, chart, transitPositions);
         if (!cancelled) setMarriageReport(mReport);
 
         // ── 5-year window scan ──
-        // Use lifetime snapshots if they cover the future, otherwise generate
-        // approximate future transits from current positions
-        const today = new Date();
-        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-        const futureSnapshots = lifetimeData.snapshots.filter(
-          (s) => s.date >= todayStr,
-        );
-
+        // Try lifetime snapshots first, then generate future estimates
         let scanSnapshots: { date: string; planets: Record<string, number> }[];
-        if (futureSnapshots.length >= 12) {
-          // Backend provided enough future data
-          scanSnapshots = futureSnapshots;
-        } else {
-          // Generate approximate future snapshots from current transit positions
+
+        try {
+          const lifetimeData = await fetchLifetimeTransits(
+            chart.ayanamsha_value,
+            chart.lagna_degree,
+            birthDate.getFullYear(),
+            birthDate.getMonth() + 1,
+          );
+
+          const today = new Date();
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+          const futureSnapshots = lifetimeData.snapshots.filter(
+            (s) => s.date >= todayStr,
+          );
+
+          if (futureSnapshots.length >= 12) {
+            scanSnapshots = futureSnapshots;
+          } else {
+            // Backend didn't provide future data — generate from current positions
+            scanSnapshots = generateFutureTransitSnapshots(
+              transitPositions,
+              chart.lagna as Sign,
+              5,
+            );
+          }
+        } catch {
+          // Lifetime transit API failed entirely — always generate estimates
+          console.warn("[Marriage] Lifetime transit API failed, generating future estimates");
           scanSnapshots = generateFutureTransitSnapshots(
             transitPositions,
             chart.lagna as Sign,
@@ -141,11 +175,15 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
           );
         }
 
+        console.log(`[Marriage] Scan: ${scanSnapshots.length} snapshots generated, transit API: ${transitApiWorked}`);
+
         if (scanSnapshots.length > 0) {
           const scan = scanMarriageWindows(predInput, chart, scanSnapshots, 5);
+          console.log(`[Marriage] Scan results: ${scan.months.length} months, ${scan.windows.length} windows, peak: ${scan.peakMonth?.rulesSatisfied ?? 0}/6 at ${scan.peakMonth?.month ?? "N/A"}`);
           if (!cancelled) setWindowScan(scan);
         }
       } catch (err) {
+        console.error("[Marriage] Unexpected error:", err);
         if (!cancelled) {
           setMarriageError(
             err instanceof Error ? err.message : "Failed to calculate marriage prediction",
@@ -338,7 +376,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
       </Section>
 
       {/* Section 4: Marriage Prediction */}
-      <Section title="Life Event: Marriage Prediction" badge="Jaimini">
+      <Section title="Life Event: Marriage Prediction" badge="Jaimini" defaultOpen>
         {marriageLoading && (
           <div className="flex items-center justify-center py-8 gap-2">
             <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -548,6 +586,17 @@ function MarriageWindowTimeline({ scan }: { scan: MarriageWindowScan }) {
         </span>
       </div>
 
+      {/* Scan statistics */}
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <span>Months scanned: <strong className="text-slate-200">{scan.months.length}</strong></span>
+        {scan.peakMonth && (
+          <span>
+            Best month: <strong className="text-amber-300">{scan.peakMonth.month}</strong> ({scan.peakMonth.rulesSatisfied}/6)
+          </span>
+        )}
+        <span>Windows found: <strong className="text-slate-200">{scan.windows.length}</strong></span>
+      </div>
+
       {/* Favorable windows summary */}
       {scan.windows.length > 0 ? (
         <div>
@@ -617,10 +666,11 @@ function MarriageWindowTimeline({ scan }: { scan: MarriageWindowScan }) {
       ) : (
         <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
           <p className="text-sm text-slate-500">
-            No strong marriage windows found in the next 5 years.
+            No months with 3+ simultaneous rules found in the scan period.
           </p>
           <p className="text-xs text-slate-600 mt-1">
-            This means fewer than 3 rules are simultaneously satisfied in any given month.
+            The best alignment is {scan.peakMonth?.rulesSatisfied ?? 0}/6 rules in {scan.peakMonth?.month ?? "N/A"}.
+            Marriage windows require at least 3 of 6 rules to align simultaneously.
           </p>
         </div>
       )}
