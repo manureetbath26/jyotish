@@ -348,32 +348,62 @@ function buildSubOrder(sign: Sign): Sign[] {
 }
 
 /**
+ * Sub-sub-period duration uses the Vedic 360-day year convention.
+ * Formula: major_period_years × 2.5 days per sub-sub-period.
+ *
+ * Table reference:
+ *   Major 12y → 30d 0h   | Major 6y → 15d 0h
+ *   Major 11y → 27d 12h  | Major 5y → 12d 12h
+ *   Major 10y → 25d 0h   | Major 4y → 10d 0h
+ *   Major  9y → 22d 12h  | Major 3y →  7d 12h
+ *   Major  8y → 20d 0h   | Major 2y →  5d 0h
+ *   Major  7y → 17d 12h  | Major 1y →  2d 12h
+ */
+function getSubSubDurationDays(majorYears: number): number {
+  return majorYears * 2.5;
+}
+
+/**
+ * Add a precise number of days (including fractional) to a date string.
+ */
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  // Split into whole days and fractional hours for precision
+  const wholeDays = Math.floor(days);
+  const fractionalHours = (days - wholeDays) * 24;
+  d.setDate(d.getDate() + wholeDays);
+  d.setHours(d.getHours() + Math.round(fractionalHours));
+  return d.toISOString().split("T")[0];
+}
+
+/**
  * Calculate sub-sub-periods (pratyantardashas) for a sub-period sign.
- * Each sub-sub-period = sub-period duration / 12.
- * Uses getBoundaryDate to avoid cumulative rounding errors.
+ * Duration per Vedic convention: major_years × 2.5 days each.
+ * Dates computed as direct offsets from sub-period start to avoid rounding drift.
  */
 function calculateSubSubPeriods(
   subSign: Sign,
   subStartDate: string,
-  subDuration: number,
+  majorDuration: number,
   planetSignMap: Record<string, Sign>,
   today: string,
 ): SubSubPeriod[] {
   const signs = buildSubOrder(subSign);
+  const durationDays = getSubSubDurationDays(majorDuration);
 
   return signs.map((sign, i) => {
     const lord = SIGN_LORD[sign];
     const lordSign = (planetSignMap[lord] ?? sign) as Sign;
-    const startDate = getBoundaryDate(subStartDate, subDuration, i);
-    const endDate = getBoundaryDate(subStartDate, subDuration, i + 1);
-    const duration = subDuration / 12;
+    // Compute each boundary as offset from sub start to avoid cumulative rounding
+    const startDate = addDaysToDate(subStartDate, i * durationDays);
+    const endDate = addDaysToDate(subStartDate, (i + 1) * durationDays);
     const isCurrentPeriod = startDate <= today && today < endDate;
 
     return {
       sign,
       lord,
       lordSign,
-      duration,
+      duration: durationDays / 365.25, // store as years for consistency
       startDate,
       endDate,
       isCurrentPeriod,
@@ -403,8 +433,8 @@ function calculateSubPeriods(
     const endDate = getBoundaryDate(majorStartDate, majorDuration, i + 1);
     const isCurrentPeriod = startDate <= today && today < endDate;
 
-    // Calculate sub-sub-periods
-    const subSubPeriods = calculateSubSubPeriods(sign, startDate, subDuration, planetSignMap, today);
+    // Calculate sub-sub-periods (needs major duration for Vedic 2.5-day formula)
+    const subSubPeriods = calculateSubSubPeriods(sign, startDate, majorDuration, planetSignMap, today);
 
     return {
       sign,
