@@ -147,6 +147,115 @@ export function getAspectingJaimini(targetSign: Sign): Sign[] {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Pada (Arudha) Calculation
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface PadaResult {
+  house: number;           // house number (1-12)
+  houseSign: Sign;         // sign of the house
+  lord: string;            // lord of the house
+  lordPlacedIn: Sign;      // sign where lord is placed
+  lordDistance: number;     // how far lord has gone from own house (direct count)
+  padaSign: Sign;          // the resulting pada sign
+  label: string;           // e.g. "A1" / "Arudha Pada" / "Upa-Pada"
+}
+
+/**
+ * Count houses forward (direct) from one sign to another.
+ * Returns 1 if same sign, 2 if next sign, etc.
+ * Always counts in zodiacal (direct/forward) order.
+ */
+function countForward(from: Sign, to: Sign): number {
+  const diff = (SIGN_INDEX[to] - SIGN_INDEX[from] + 12) % 12;
+  return diff === 0 ? 1 : diff + 1; // inclusive: same sign = 1
+}
+
+/**
+ * Get the sign that is N positions forward from a given sign.
+ * N=1 returns the same sign, N=2 returns next sign, etc.
+ */
+function signAtOffset(from: Sign, offset: number): Sign {
+  return ZODIAC_ORDER[(SIGN_INDEX[from] + offset - 1) % 12];
+}
+
+/**
+ * Calculate the pada (arudha) for a single house.
+ *
+ * Steps:
+ * 1. Find how far (direct/forward count) the lord has travelled from its own house.
+ * 2. Count that same distance forward from the lord's position.
+ * 3. The sign arrived at is the pada.
+ */
+function calculateSinglePada(
+  houseSign: Sign,
+  lordPlacedIn: Sign,
+): Sign {
+  const distance = countForward(houseSign, lordPlacedIn);
+  const padaSign = signAtOffset(lordPlacedIn, distance);
+  return padaSign;
+}
+
+/**
+ * Calculate padas for all 12 houses.
+ *
+ * - Pada of the 1st house (lagna) = Arudha Pada (Arudha Lagna / AL)
+ * - Pada of the 12th house = Upa-Pada (UL)
+ * - All others labelled A1-A12
+ *
+ * @param houses - The 12 houses from the chart (with rashi, lord)
+ * @param planets - Planet positions (to find where each lord is placed)
+ */
+export function calculatePadas(
+  houses: { house_num: number; rashi: string; lord: string }[],
+  planets: { name: string; rashi: string }[],
+): PadaResult[] {
+  const planetSignMap: Record<string, Sign> = {};
+  for (const p of planets) {
+    planetSignMap[p.name] = p.rashi as Sign;
+  }
+
+  return houses.map((house) => {
+    const houseSign = house.rashi as Sign;
+    const lord = house.lord;
+    const lordPlacedIn = (planetSignMap[lord] ?? houseSign) as Sign;
+    const distance = countForward(houseSign, lordPlacedIn);
+    const padaSign = calculateSinglePada(houseSign, lordPlacedIn);
+
+    let label = `A${house.house_num}`;
+    if (house.house_num === 1) label = "Arudha Pada (AL)";
+    if (house.house_num === 12) label = "Upa-Pada (UL)";
+
+    return {
+      house: house.house_num,
+      houseSign,
+      lord,
+      lordPlacedIn,
+      lordDistance: distance,
+      padaSign,
+      label,
+    };
+  });
+}
+
+/**
+ * Calculate pada for a specific planet.
+ * Same logic: see how far the planet's sign lord has gone from the planet's sign,
+ * then count that distance from the lord.
+ */
+export function calculatePlanetPada(
+  planetSign: Sign,
+  planets: { name: string; rashi: string }[],
+): Sign {
+  const lord = SIGN_LORD[planetSign];
+  const planetSignMap: Record<string, Sign> = {};
+  for (const p of planets) {
+    planetSignMap[p.name] = p.rashi as Sign;
+  }
+  const lordPlacedIn = (planetSignMap[lord] ?? planetSign) as Sign;
+  return calculateSinglePada(planetSign, lordPlacedIn);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Dasha Direction Constants
 // ────────────────────────────────────────────────────────────────────────────
 
