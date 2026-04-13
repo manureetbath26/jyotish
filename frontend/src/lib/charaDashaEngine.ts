@@ -320,7 +320,8 @@ function calculateSubPeriods(
   planetSignMap: Record<string, Sign>,
   today: string,
 ): SubPeriod[] {
-  const direction = getCountDirection(dashaSign); // Direct signs → forward, Indirect → backward
+  // Sub-period direction uses 9th-house rule applied to the dasha sign itself
+  const direction = getSequenceDirection(dashaSign);
   const subDuration = majorDuration / 12;
 
   // Build order: start from NEXT sign (skip own), then append own sign last
