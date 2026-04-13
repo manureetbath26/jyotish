@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import type { CharaDashaReport, DashaPeriod } from "@/lib/charaDashaEngine";
+import { useState, useEffect } from "react";
+import type { CharaDashaReport, DashaPeriod, Sign } from "@/lib/charaDashaEngine";
 import type { ChartResponse } from "@/lib/api";
+import { calculateCurrentTransits } from "@/lib/api";
+import { preparePredictionInput } from "@/lib/jaiminiPredictiveEngine";
+import {
+  predictMarriage,
+  type MarriagePredictionReport,
+  type TransitPositions,
+  type RuleResult,
+} from "@/lib/jaiminiMarriagePrediction";
 
 interface Props {
   report: CharaDashaReport;
@@ -65,6 +73,53 @@ function Section({
 }
 
 export function CharaDashaReportView({ report, chart, onBack }: Props) {
+  const [marriageReport, setMarriageReport] = useState<MarriagePredictionReport | null>(null);
+  const [marriageLoading, setMarriageLoading] = useState(false);
+  const [marriageError, setMarriageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setMarriageLoading(true);
+      setMarriageError(null);
+      try {
+        // Fetch current transits
+        const transits = await calculateCurrentTransits(
+          chart.ayanamsha_value,
+          chart.lagna_degree,
+        );
+
+        // Extract Saturn, Mars, Jupiter transit signs
+        const findSign = (name: string): Sign => {
+          const p = transits.planets.find((pl) => pl.name === name);
+          return (p?.rashi || "Aries") as Sign;
+        };
+
+        const transitPositions: TransitPositions = {
+          saturn: findSign("Saturn"),
+          mars: findSign("Mars"),
+          jupiter: findSign("Jupiter"),
+        };
+
+        // Build prediction input and run marriage prediction
+        const predInput = preparePredictionInput(chart);
+        const mReport = predictMarriage(predInput, chart, transitPositions);
+
+        if (!cancelled) setMarriageReport(mReport);
+      } catch (err) {
+        if (!cancelled) {
+          setMarriageError(
+            err instanceof Error ? err.message : "Failed to calculate marriage prediction",
+          );
+        }
+      } finally {
+        if (!cancelled) setMarriageLoading(false);
+      }
+    }
+    run();
+    return () => { cancelled = true; };
+  }, [chart]);
+
   return (
     <div className="space-y-5">
       {/* Back button */}
@@ -243,7 +298,23 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
         </div>
       </Section>
 
-      {/* Section 4: Interpretation placeholder */}
+      {/* Section 4: Marriage Prediction */}
+      <Section title="Life Event: Marriage Prediction" badge="Jaimini">
+        {marriageLoading && (
+          <div className="flex items-center justify-center py-8 gap-2">
+            <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-slate-400">Calculating transit-based prediction...</span>
+          </div>
+        )}
+        {marriageError && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
+            {marriageError}
+          </div>
+        )}
+        {marriageReport && <MarriagePredictionSection report={marriageReport} />}
+      </Section>
+
+      {/* Section 5: Interpretation placeholder */}
       <Section title="Interpretations" badge="Coming Soon">
         <div className="text-center py-8 space-y-3">
           <p className="text-slate-500 text-sm">
@@ -262,6 +333,172 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 
 // ────────────────────────────────────────────────────────────────────────────
 // Sub-components
+// ────────────────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────────────────
+// Marriage Prediction Section
+// ────────────────────────────────────────────────────────────────────────────
+
+function MarriagePredictionSection({ report }: { report: MarriagePredictionReport }) {
+  const strengthColors: Record<string, string> = {
+    strong: "text-green-400 bg-green-500/10 border-green-500/30",
+    moderate: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+    weak: "text-orange-400 bg-orange-500/10 border-orange-500/30",
+    "not indicated": "text-slate-400 bg-slate-800/60 border-slate-700",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Overall assessment banner */}
+      <div className={`border rounded-xl p-4 ${strengthColors[report.strength] || strengthColors["not indicated"]}`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">
+              Marriage Indication: {report.isMarriageIndicated ? "Yes" : "No"}
+            </p>
+            <p className="text-xs mt-0.5 opacity-80">
+              {report.rulesSatisfied} of {report.totalRules} rules satisfied — Strength: {report.strength.toUpperCase()}
+            </p>
+          </div>
+          <div className="text-2xl">
+            {report.strength === "strong" ? "\u2714" : report.strength === "moderate" ? "\u26A0" : "\u2012"}
+          </div>
+        </div>
+      </div>
+
+      {/* Key reference points */}
+      <div>
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Key Reference Points</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <ReferenceChip label="UL (Upa-Pada)" value={report.ulSign} />
+          <ReferenceChip label="AL (Arudha Lagna)" value={report.alSign} />
+          <ReferenceChip label="7th House" value={report.seventhHouseSign} />
+          <ReferenceChip label={`DK (${report.darakaraka})`} value={report.darakarakaSign} />
+        </div>
+      </div>
+
+      {/* Current transits */}
+      <div>
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Current Transits</p>
+        <div className="flex flex-wrap gap-2">
+          <TransitChip planet="Saturn" sign={report.transit.saturn} natal={report.natalSaturnSign} />
+          <TransitChip planet="Mars" sign={report.transit.mars} natal={report.natalMarsSign} />
+          <TransitChip planet="Jupiter" sign={report.transit.jupiter} natal={report.natalJupiterSign} />
+        </div>
+      </div>
+
+      {/* Current Dasha */}
+      {(report.currentMD || report.currentAD) && (
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Current Chara Dasha</p>
+          <div className="flex gap-2">
+            {report.currentMD && <ReferenceChip label="Maha Dasha" value={report.currentMD} />}
+            {report.currentAD && <ReferenceChip label="Antar Dasha" value={report.currentAD} />}
+          </div>
+        </div>
+      )}
+
+      {/* Rule-by-rule evaluation */}
+      <div>
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Rule Evaluation</p>
+        <div className="space-y-2">
+          {report.rules.map((rule) => (
+            <RuleCard key={rule.ruleNumber} rule={rule} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReferenceChip({ label, value }: { label: string; value: string }) {
+  const style = SIGN_STYLE[value];
+  return (
+    <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5">
+      <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
+      <p className={`text-sm font-semibold ${style?.color || "text-slate-200"}`}>
+        {style?.icon || ""} {value}
+      </p>
+    </div>
+  );
+}
+
+function TransitChip({
+  planet,
+  sign,
+  natal,
+}: {
+  planet: string;
+  sign: string;
+  natal: string;
+}) {
+  const style = SIGN_STYLE[sign];
+  return (
+    <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5 flex-1 min-w-[120px]">
+      <p className="text-[10px] text-slate-500">Transit {planet}</p>
+      <p className={`text-sm font-semibold ${style?.color || "text-slate-200"}`}>
+        {style?.icon || ""} {sign}
+      </p>
+      <p className="text-[10px] text-slate-600">Natal: {natal}</p>
+    </div>
+  );
+}
+
+function RuleCard({ rule }: { rule: RuleResult }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden ${
+        rule.isSatisfied
+          ? "border-green-500/20 bg-green-500/5"
+          : "border-slate-800 bg-slate-800/20"
+      }`}
+    >
+      <button
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800/30 transition-colors"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <span
+          className={`text-sm font-bold w-5 text-center ${
+            rule.isSatisfied ? "text-green-400" : "text-slate-600"
+          }`}
+        >
+          {rule.isSatisfied ? "\u2713" : "\u2717"}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-semibold ${rule.isSatisfied ? "text-green-300" : "text-slate-400"}`}>
+            Rule {rule.ruleNumber}: {rule.ruleName}
+          </p>
+          <p className="text-[11px] text-slate-500 truncate">{rule.explanation}</p>
+        </div>
+        <span className="text-slate-600 text-xs flex-shrink-0">{expanded ? "\u25B2" : "\u25BC"}</span>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 pt-1 border-t border-slate-800/50">
+          <p className="text-[11px] text-slate-500 mb-2">{rule.description}</p>
+          <div className="space-y-1">
+            {rule.checks.map((check, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[11px]">
+                <span className={check.met ? "text-green-500" : "text-slate-700"}>
+                  {check.met ? "\u25CF" : "\u25CB"}
+                </span>
+                <div>
+                  <span className={check.met ? "text-slate-300" : "text-slate-600"}>
+                    {check.condition}
+                  </span>
+                  <p className="text-slate-600 text-[10px]">{check.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 function CurrentDashaCard({
