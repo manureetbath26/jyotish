@@ -86,6 +86,70 @@ const SIGN_INDEX: Record<Sign, number> = Object.fromEntries(
   ZODIAC_ORDER.map((s, i) => [s, i])
 ) as Record<Sign, number>;
 
+// ────────────────────────────────────────────────────────────────────────────
+// Jaimini Sign Aspects
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Sign classification: Movable (Chara), Fixed (Sthira), Dual (Dvisvabhava) */
+const MOVABLE_SIGNS = new Set<Sign>(["Aries", "Cancer", "Libra", "Capricorn"]);
+const FIXED_SIGNS   = new Set<Sign>(["Taurus", "Leo", "Scorpio", "Aquarius"]);
+const DUAL_SIGNS    = new Set<Sign>(["Gemini", "Virgo", "Sagittarius", "Pisces"]);
+
+/**
+ * Jaimini sign aspects (rashi drishti).
+ * Hard-coded from the standard rules — no formula, exact values only.
+ *
+ * 1. Movable signs aspect all Fixed signs except the adjacent one.
+ * 2. Fixed signs aspect all Movable signs except the adjacent one.
+ * 3. Dual signs aspect all other Dual signs.
+ */
+const JAIMINI_ASPECTS: Record<Sign, Sign[]> = {
+  // Movable → Fixed (skip adjacent)
+  Aries:       ["Leo", "Scorpio", "Aquarius"],       // not Taurus
+  Cancer:      ["Scorpio", "Aquarius", "Taurus"],     // not Leo
+  Libra:       ["Aquarius", "Taurus", "Leo"],         // not Scorpio
+  Capricorn:   ["Taurus", "Leo", "Scorpio"],          // not Aquarius
+
+  // Fixed → Movable (skip adjacent)
+  Taurus:      ["Cancer", "Libra", "Capricorn"],      // not Aries
+  Leo:         ["Libra", "Capricorn", "Aries"],       // not Cancer
+  Scorpio:     ["Capricorn", "Aries", "Cancer"],      // not Libra
+  Aquarius:    ["Aries", "Cancer", "Libra"],           // not Capricorn
+
+  // Dual → all other Duals
+  Gemini:      ["Virgo", "Sagittarius", "Pisces"],
+  Virgo:       ["Sagittarius", "Pisces", "Gemini"],
+  Sagittarius: ["Pisces", "Gemini", "Virgo"],
+  Pisces:      ["Gemini", "Virgo", "Sagittarius"],
+};
+
+/**
+ * Get the signs that a given sign aspects (Jaimini rashi drishti).
+ */
+export function getJaiminiAspects(sign: Sign): Sign[] {
+  return JAIMINI_ASPECTS[sign] ?? [];
+}
+
+/**
+ * Check if sign1 aspects sign2 (Jaimini rashi drishti).
+ */
+export function hasJaiminiAspect(from: Sign, to: Sign): boolean {
+  return JAIMINI_ASPECTS[from]?.includes(to) ?? false;
+}
+
+/**
+ * Get all signs that aspect a given sign (reverse lookup).
+ */
+export function getAspectingJaimini(targetSign: Sign): Sign[] {
+  return ZODIAC_ORDER.filter(
+    (sign) => sign !== targetSign && hasJaiminiAspect(sign, targetSign),
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Dasha Direction Constants
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
  * Direct signs: when the 9th house falls on one of these, dasha order is forward.
  * Also used for per-sign counting direction: direct signs count forward to lord.
