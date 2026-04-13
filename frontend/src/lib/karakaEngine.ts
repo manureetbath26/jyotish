@@ -16,7 +16,7 @@
  * - 7th = Darakaraka (spouse)
  */
 
-import { PlanetPosition, BirthDataInput, ChartResponse, calculateChart } from "./api";
+import { PlanetPosition, NavamsaPosition, BirthDataInput, ChartResponse, calculateChart } from "./api";
 
 // Only visible planets — Rahu/Ketu excluded per Jaimini system
 export const CHARA_ELIGIBLE_PLANETS = [
@@ -109,6 +109,57 @@ export function computeCharaKarakas(planets: PlanetPosition[]): KarakaResult[] {
       lord_of_houses: p.lord_of_houses,
     };
   }).filter(Boolean) as KarakaResult[];
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Karakamsha
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface KarakamshaResult {
+  /** The Atmakaraka planet (highest degree) */
+  atmakaraka: string;
+  /** Sign the Atmakaraka occupies in D1 (Rashi chart) */
+  atmakaraka_rashi: string;
+  /** Sign the Atmakaraka occupies in Navamsa (D9) — this IS the Karakamsha */
+  karakamsha: string;
+  /** Degree of the AK in its rashi */
+  degree_in_rashi: number;
+}
+
+/**
+ * Calculate Karakamsha — the Navamsa sign occupied by the Atmakaraka.
+ *
+ * The Atmakaraka is the planet with the highest degree_in_rashi among the
+ * 7 visible planets (Sun–Saturn). Its Navamsa placement is the Karakamsha,
+ * a key reference point in Jaimini astrology for determining career, status,
+ * and spiritual inclination.
+ *
+ * @param planets    D1 planet positions (used to identify the Atmakaraka)
+ * @param navamsaPlanets  Navamsa planet positions (used to find AK's Navamsa sign)
+ * @returns KarakamshaResult or null if data is missing
+ */
+export function calculateKarakamsha(
+  planets: PlanetPosition[],
+  navamsaPlanets: NavamsaPosition[],
+): KarakamshaResult | null {
+  // Identify Atmakaraka: highest degree_in_rashi among eligible planets
+  const eligible = planets
+    .filter(p => (CHARA_ELIGIBLE_PLANETS as readonly string[]).includes(p.name))
+    .sort((a, b) => b.degree_in_rashi - a.degree_in_rashi);
+
+  const ak = eligible[0];
+  if (!ak) return null;
+
+  // Find the AK in Navamsa chart
+  const akNavamsa = navamsaPlanets.find(np => np.name === ak.name);
+  if (!akNavamsa) return null;
+
+  return {
+    atmakaraka: ak.name,
+    atmakaraka_rashi: ak.rashi,
+    karakamsha: akNavamsa.rashi,
+    degree_in_rashi: ak.degree_in_rashi,
+  };
 }
 
 /**

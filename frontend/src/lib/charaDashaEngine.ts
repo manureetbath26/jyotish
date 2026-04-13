@@ -76,13 +76,13 @@ export interface CharaDashaResult {
 // Constants
 // ────────────────────────────────────────────────────────────────────────────
 
-const ZODIAC_ORDER: Sign[] = [
+export const ZODIAC_ORDER: Sign[] = [
   "Aries", "Taurus", "Gemini", "Cancer",
   "Leo", "Virgo", "Libra", "Scorpio",
   "Sagittarius", "Capricorn", "Aquarius", "Pisces",
 ];
 
-const SIGN_INDEX: Record<Sign, number> = Object.fromEntries(
+export const SIGN_INDEX: Record<Sign, number> = Object.fromEntries(
   ZODIAC_ORDER.map((s, i) => [s, i])
 ) as Record<Sign, number>;
 
@@ -278,7 +278,7 @@ function getSequenceDirection(ascendant: Sign): "forward" | "backward" {
 }
 
 /** Sign → Lord mapping */
-const SIGN_LORD: Record<Sign, string> = {
+export const SIGN_LORD: Record<Sign, string> = {
   Aries: "Mars",
   Taurus: "Venus",
   Gemini: "Mercury",
