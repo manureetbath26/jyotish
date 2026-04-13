@@ -1276,3 +1276,81 @@ function buildWindow(months: MarriageWindowMonth[]): MarriageWindow {
     months,
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Future Transit Snapshot Generator
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Average days each planet spends per sign.
+ * Saturn: ~29.5 year orbit / 12 = ~2.46 years = ~900 days per sign
+ * Jupiter: ~11.86 year orbit / 12 = ~0.99 years = ~361 days per sign
+ * Mars: ~1.88 year orbit / 12 = ~57 days per sign (average, varies widely)
+ */
+const DAYS_PER_SIGN_SATURN = 900;
+const DAYS_PER_SIGN_JUPITER = 361;
+const DAYS_PER_SIGN_MARS = 57;
+
+/**
+ * Project a planet's sign at a future date given its current sign and
+ * the average days-per-sign transit speed.
+ */
+function projectSign(
+  currentSign: Sign,
+  baseDateMs: number,
+  targetDateMs: number,
+  daysPerSign: number,
+): Sign {
+  const daysDiff = (targetDateMs - baseDateMs) / 86400000;
+  const signsAdvanced = Math.floor(daysDiff / daysPerSign);
+  return ZODIAC_ORDER[(SIGN_INDEX[currentSign] + signsAdvanced) % 12];
+}
+
+/**
+ * Generate approximate future transit snapshots for the next N years,
+ * based on current transit positions of Saturn, Mars, and Jupiter.
+ *
+ * This is used as a fallback when the backend doesn't provide future
+ * transit data. The positions are approximate (based on average orbital
+ * speeds) but sufficient for window scanning since we only need sign-level
+ * accuracy and slow planets stay in signs for long periods.
+ *
+ * @param currentTransit  Today's transit positions (Saturn, Mars, Jupiter signs)
+ * @param lagna           Birth lagna sign (for house number conversion)
+ * @param years           Number of years to project (default 5)
+ * @returns               Monthly snapshots with house-number format (same as lifetime API)
+ */
+export function generateFutureTransitSnapshots(
+  currentTransit: TransitPositions,
+  lagna: Sign,
+  years: number = 5,
+): { date: string; planets: Record<string, number> }[] {
+  const now = new Date();
+  const baseDateMs = now.getTime();
+  const snapshots: { date: string; planets: Record<string, number> }[] = [];
+
+  for (let m = 0; m < years * 12; m++) {
+    const targetDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
+    const targetMs = targetDate.getTime();
+    const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const saturnSign = projectSign(currentTransit.saturn, baseDateMs, targetMs, DAYS_PER_SIGN_SATURN);
+    const jupiterSign = projectSign(currentTransit.jupiter, baseDateMs, targetMs, DAYS_PER_SIGN_JUPITER);
+    const marsSign = projectSign(currentTransit.mars, baseDateMs, targetMs, DAYS_PER_SIGN_MARS);
+
+    // Convert signs to house numbers from lagna
+    const houseFrom = (sign: Sign): number =>
+      ((SIGN_INDEX[sign] - SIGN_INDEX[lagna] + 12) % 12) + 1;
+
+    snapshots.push({
+      date: dateStr,
+      planets: {
+        Saturn: houseFrom(saturnSign),
+        Jupiter: houseFrom(jupiterSign),
+        Mars: houseFrom(marsSign),
+      },
+    });
+  }
+
+  return snapshots;
+}

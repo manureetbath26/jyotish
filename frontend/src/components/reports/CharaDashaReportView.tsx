@@ -8,6 +8,7 @@ import { preparePredictionInput, type JaiminiPredictionInput } from "@/lib/jaimi
 import {
   predictMarriage,
   scanMarriageWindows,
+  generateFutureTransitSnapshots,
   type MarriagePredictionReport,
   type MarriageWindowScan,
   type MarriageWindowMonth,
@@ -119,8 +120,29 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
         if (!cancelled) setMarriageReport(mReport);
 
         // ── 5-year window scan ──
-        if (lifetimeData.snapshots.length > 0) {
-          const scan = scanMarriageWindows(predInput, chart, lifetimeData.snapshots, 5);
+        // Use lifetime snapshots if they cover the future, otherwise generate
+        // approximate future transits from current positions
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+        const futureSnapshots = lifetimeData.snapshots.filter(
+          (s) => s.date >= todayStr,
+        );
+
+        let scanSnapshots: { date: string; planets: Record<string, number> }[];
+        if (futureSnapshots.length >= 12) {
+          // Backend provided enough future data
+          scanSnapshots = futureSnapshots;
+        } else {
+          // Generate approximate future snapshots from current transit positions
+          scanSnapshots = generateFutureTransitSnapshots(
+            transitPositions,
+            chart.lagna as Sign,
+            5,
+          );
+        }
+
+        if (scanSnapshots.length > 0) {
+          const scan = scanMarriageWindows(predInput, chart, scanSnapshots, 5);
           if (!cancelled) setWindowScan(scan);
         }
       } catch (err) {
