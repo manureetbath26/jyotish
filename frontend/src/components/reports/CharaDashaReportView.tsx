@@ -3,11 +3,15 @@
 import { useState, useEffect } from "react";
 import type { CharaDashaReport, DashaPeriod, Sign } from "@/lib/charaDashaEngine";
 import type { ChartResponse } from "@/lib/api";
-import { calculateCurrentTransits } from "@/lib/api";
-import { preparePredictionInput } from "@/lib/jaiminiPredictiveEngine";
+import { calculateCurrentTransits, fetchLifetimeTransits } from "@/lib/api";
+import { preparePredictionInput, type JaiminiPredictionInput } from "@/lib/jaiminiPredictiveEngine";
 import {
   predictMarriage,
+  scanMarriageWindows,
   type MarriagePredictionReport,
+  type MarriageWindowScan,
+  type MarriageWindowMonth,
+  type MarriageWindow,
   type TransitPositions,
   type RuleResult,
 } from "@/lib/jaiminiMarriagePrediction";
@@ -74,6 +78,7 @@ function Section({
 
 export function CharaDashaReportView({ report, chart, onBack }: Props) {
   const [marriageReport, setMarriageReport] = useState<MarriagePredictionReport | null>(null);
+  const [windowScan, setWindowScan] = useState<MarriageWindowScan | null>(null);
   const [marriageLoading, setMarriageLoading] = useState(false);
   const [marriageError, setMarriageError] = useState<string | null>(null);
 
@@ -83,29 +88,41 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
       setMarriageLoading(true);
       setMarriageError(null);
       try {
-        // Fetch current transits
-        const transits = await calculateCurrentTransits(
-          chart.ayanamsha_value,
-          chart.lagna_degree,
-        );
+        // Build prediction input once (shared between current + 5-year scan)
+        const predInput = preparePredictionInput(chart);
 
-        // Extract Saturn, Mars, Jupiter transit signs
+        // Fetch current transits + lifetime transits in parallel
+        const birthDate = new Date(chart.date + "T00:00:00");
+        const [transits, lifetimeData] = await Promise.all([
+          calculateCurrentTransits(chart.ayanamsha_value, chart.lagna_degree),
+          fetchLifetimeTransits(
+            chart.ayanamsha_value,
+            chart.lagna_degree,
+            birthDate.getFullYear(),
+            birthDate.getMonth() + 1,
+          ).catch(() => ({ snapshots: [] })),
+        ]);
+
+        if (cancelled) return;
+
+        // ── Current marriage prediction ──
         const findSign = (name: string): Sign => {
           const p = transits.planets.find((pl) => pl.name === name);
           return (p?.rashi || "Aries") as Sign;
         };
-
         const transitPositions: TransitPositions = {
           saturn: findSign("Saturn"),
           mars: findSign("Mars"),
           jupiter: findSign("Jupiter"),
         };
-
-        // Build prediction input and run marriage prediction
-        const predInput = preparePredictionInput(chart);
         const mReport = predictMarriage(predInput, chart, transitPositions);
-
         if (!cancelled) setMarriageReport(mReport);
+
+        // ── 5-year window scan ──
+        if (lifetimeData.snapshots.length > 0) {
+          const scan = scanMarriageWindows(predInput, chart, lifetimeData.snapshots, 5);
+          if (!cancelled) setWindowScan(scan);
+        }
       } catch (err) {
         if (!cancelled) {
           setMarriageError(
@@ -312,6 +329,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
           </div>
         )}
         {marriageReport && <MarriagePredictionSection report={marriageReport} />}
+        {windowScan && <MarriageWindowTimeline scan={windowScan} />}
       </Section>
 
       {/* Section 5: Interpretation placeholder */}
@@ -407,6 +425,183 @@ function MarriagePredictionSection({ report }: { report: MarriagePredictionRepor
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5-Year Marriage Window Timeline
+// ────────────────────────────────────────────────────────────────────────────
+
+function MarriageWindowTimeline({ scan }: { scan: MarriageWindowScan }) {
+  const [showAllMonths, setShowAllMonths] = useState(false);
+
+  const strengthBarColor: Record<string, string> = {
+    strong: "bg-green-500",
+    moderate: "bg-amber-500",
+    weak: "bg-slate-600",
+    "not indicated": "bg-slate-800",
+  };
+
+  return (
+    <div className="space-y-4 mt-6 pt-4 border-t border-slate-800">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-200">
+          5-Year Marriage Window Scan
+        </h3>
+        {scan.peakMonth && (
+          <span className="text-xs text-amber-400">
+            Peak: {scan.peakMonth.month} ({scan.peakMonth.rulesSatisfied}/6 rules)
+          </span>
+        )}
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Monthly evaluation of all 6 marriage rules using transit positions of Saturn, Mars, and Jupiter.
+        Green bars indicate months where 3 or more rules are satisfied simultaneously.
+      </p>
+
+      {/* Visual bar chart — one bar per month */}
+      <div className="space-y-0.5">
+        {scan.months.map((m) => {
+          const widthPct = Math.max(4, (m.rulesSatisfied / 6) * 100);
+          const isFavorable = m.rulesSatisfied >= 3;
+          return (
+            <div key={m.date} className="flex items-center gap-2 group">
+              <span className="text-[10px] text-slate-600 w-16 text-right font-mono flex-shrink-0">
+                {m.month}
+              </span>
+              <div className="flex-1 relative h-4">
+                <div
+                  className={`h-full rounded-sm transition-all ${
+                    isFavorable
+                      ? m.rulesSatisfied >= 5
+                        ? "bg-green-500/80"
+                        : "bg-amber-500/60"
+                      : "bg-slate-800/60"
+                  }`}
+                  style={{ width: `${widthPct}%` }}
+                />
+                {/* Tooltip on hover */}
+                <div className="absolute left-0 top-0 h-full w-full flex items-center">
+                  <span className={`text-[9px] ml-1 font-medium ${
+                    isFavorable ? "text-slate-100" : "text-slate-700"
+                  }`}>
+                    {m.rulesSatisfied > 0 ? `${m.rulesSatisfied}/6` : ""}
+                  </span>
+                </div>
+              </div>
+              {/* Rules met indicators */}
+              <div className="flex gap-px flex-shrink-0">
+                {[1, 2, 3, 4, 5, 6].map((r) => (
+                  <div
+                    key={r}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      m.rulesMetList.includes(r)
+                        ? r <= 3 ? "bg-cyan-400" : "bg-purple-400"
+                        : "bg-slate-800"
+                    }`}
+                    title={`Rule ${r}`}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-green-500/80 inline-block" /> 5-6 rules (strong)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-amber-500/60 inline-block" /> 3-4 rules (moderate)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> Rules 1-3 (transit)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> Rules 4-6 (natal/dasha)
+        </span>
+      </div>
+
+      {/* Favorable windows summary */}
+      {scan.windows.length > 0 ? (
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">
+            Favorable Windows ({scan.windows.length})
+          </p>
+          <div className="space-y-2">
+            {scan.windows.map((w, i) => (
+              <div
+                key={i}
+                className={`border rounded-lg p-3 ${
+                  w.peakScore >= 5
+                    ? "border-green-500/30 bg-green-500/5"
+                    : "border-amber-500/20 bg-amber-500/5"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-sm font-semibold ${
+                      w.peakScore >= 5 ? "text-green-300" : "text-amber-300"
+                    }`}>
+                      {w.startMonth} {w.startMonth !== w.endMonth ? `\u2013 ${w.endMonth}` : ""}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {w.months.length} month{w.months.length > 1 ? "s" : ""} — Peak: {w.peakScore}/6 rules — Avg: {w.avgScore.toFixed(1)}/6
+                    </p>
+                  </div>
+                  <div className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    w.peakScore >= 5
+                      ? "bg-green-500/20 text-green-400"
+                      : "bg-amber-500/20 text-amber-400"
+                  }`}>
+                    {w.peakScore >= 5 ? "Strong" : "Moderate"}
+                  </div>
+                </div>
+
+                {/* Expand to show months */}
+                {showAllMonths && (
+                  <div className="mt-2 pt-2 border-t border-slate-800/50 space-y-1">
+                    {w.months.map((m) => (
+                      <div key={m.date} className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">{m.month}</span>
+                        <span className="text-slate-500">
+                          MD: {m.md || "—"} / AD: {m.ad || "—"}
+                        </span>
+                        <span className="text-slate-500">
+                          Sa:{m.transit.saturn} Ju:{m.transit.jupiter} Ma:{m.transit.mars}
+                        </span>
+                        <span className={m.rulesSatisfied >= 5 ? "text-green-400" : "text-amber-400"}>
+                          {m.rulesSatisfied}/6
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setShowAllMonths((v) => !v)}
+            className="mt-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {showAllMonths ? "\u25B2 Hide month details" : "\u25BC Show month details"}
+          </button>
+        </div>
+      ) : (
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
+          <p className="text-sm text-slate-500">
+            No strong marriage windows found in the next 5 years.
+          </p>
+          <p className="text-xs text-slate-600 mt-1">
+            This means fewer than 3 rules are simultaneously satisfied in any given month.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

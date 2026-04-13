@@ -955,3 +955,324 @@ export function summarizeMarriagePrediction(
 ): string {
   return report.summary;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5-Year Marriage Window Scanner
+// ────────────────────────────────────────────────────────────────────────────
+
+/** A monthly snapshot of transit positions */
+export interface TransitSnapshot {
+  date: string;           // YYYY-MM-DD (1st of each month)
+  saturn: Sign;
+  mars: Sign;
+  jupiter: Sign;
+}
+
+/** A scored month in the 5-year scan */
+export interface MarriageWindowMonth {
+  date: string;           // YYYY-MM-DD
+  month: string;          // "Jan 2026"
+  rulesSatisfied: number;
+  rulesMetList: number[]; // which rule numbers are met (e.g. [1,3,4,5])
+  strength: "strong" | "moderate" | "weak" | "not indicated";
+  /** MD/AD active during this month */
+  md: string | null;
+  ad: string | null;
+  transit: TransitPositions;
+}
+
+/** Result of the 5-year scan */
+export interface MarriageWindowScan {
+  /** All months scanned (60 months) */
+  months: MarriageWindowMonth[];
+  /** Only months with 3+ rules met, grouped into continuous windows */
+  windows: MarriageWindow[];
+  /** Best single month */
+  peakMonth: MarriageWindowMonth | null;
+  /** Reference data used */
+  ulSign: Sign;
+  alSign: Sign;
+  seventhHouseSign: Sign;
+  darakaraka: string;
+  darakarakaSign: Sign;
+}
+
+/** A continuous window of favorable months */
+export interface MarriageWindow {
+  startDate: string;
+  endDate: string;
+  startMonth: string;
+  endMonth: string;
+  peakScore: number;
+  avgScore: number;
+  months: MarriageWindowMonth[];
+}
+
+/**
+ * Convert a house number (1-12) to its sign, given the lagna sign.
+ * House 1 = lagna sign, House 2 = next sign, etc.
+ */
+function houseToSign(lagna: Sign, house: number): Sign {
+  return ZODIAC_ORDER[(SIGN_INDEX[lagna] + house - 1) % 12];
+}
+
+/**
+ * Find the Chara Dasha MD and AD signs active on a given date.
+ */
+function findDashaForDate(
+  dateStr: string,
+  dashaSequence: JaiminiPredictionInput["dashaSequence"],
+): { md: Sign | null; ad: Sign | null } {
+  for (const dasha of dashaSequence) {
+    if (dateStr >= dasha.startDate && dateStr < dasha.endDate) {
+      let adSign: Sign | null = null;
+      for (const sub of dasha.subPeriods) {
+        if (dateStr >= sub.startDate && dateStr < sub.endDate) {
+          adSign = sub.sign;
+          break;
+        }
+      }
+      return { md: dasha.sign, ad: adSign };
+    }
+  }
+  return { md: null, ad: null };
+}
+
+/**
+ * Lightweight rule scorer — evaluates rules 1-6 and returns count + list.
+ * Much faster than full `predictMarriage` since it skips building verbose results.
+ */
+function scoreRulesQuick(
+  transit: TransitPositions,
+  ulSign: Sign,
+  ulLordSign: Sign,
+  alSign: Sign,
+  alLordSign: Sign,
+  seventhSign: Sign,
+  seventhLordSign: Sign,
+  dkName: string,
+  dkSign: Sign,
+  natalSaturn: Sign,
+  natalMars: Sign,
+  natalJupiter: Sign,
+  mdSign: Sign | null,
+  adSign: Sign | null,
+  natalPlanets: PlanetPosition[],
+): { count: number; met: number[] } {
+  const met: number[] = [];
+
+  // Rule 1: Transit Saturn ↔ UL + natal
+  const ulTrines = getTrines(ulSign);
+  const r1PartA =
+    hasConnection(transit.saturn, ulSign) ||
+    hasConnection(transit.saturn, ulLordSign) ||
+    ulTrines.some((t) => transit.saturn === t);
+  const r1PartB =
+    hasConnection(transit.saturn, natalSaturn) ||
+    hasConnection(transit.saturn, natalJupiter) ||
+    hasConnection(transit.saturn, natalMars);
+  if (r1PartA && r1PartB) met.push(1);
+
+  // Rule 2: Transit Mars ↔ UL + natal
+  const r2PartA =
+    hasConnection(transit.mars, ulSign) ||
+    hasConnection(transit.mars, ulLordSign) ||
+    ulTrines.some((t) => transit.mars === t);
+  const r2PartB =
+    hasConnection(transit.mars, natalSaturn) ||
+    hasConnection(transit.mars, natalJupiter) ||
+    hasConnection(transit.mars, natalMars);
+  if (r2PartA && r2PartB) met.push(2);
+
+  // Rule 3: Transit Jupiter ↔ AL + 7H
+  const r3PartA =
+    hasConnection(transit.jupiter, alSign) ||
+    hasConnection(transit.jupiter, alLordSign);
+  const r3PartB =
+    hasConnection(transit.jupiter, seventhSign) ||
+    hasConnection(transit.jupiter, seventhLordSign);
+  if (r3PartA && r3PartB) met.push(3);
+
+  // Rule 4: DK connection (natal — same every month)
+  const r4 =
+    hasConnection(dkSign, ulSign) ||
+    hasConnection(dkSign, ulLordSign) ||
+    hasConnection(dkSign, alSign) ||
+    hasConnection(dkSign, alLordSign) ||
+    hasConnection(dkSign, seventhSign) ||
+    hasConnection(dkSign, seventhLordSign);
+  if (r4) met.push(4);
+
+  // Rule 5: Dasha ↔ marriage factors
+  if (mdSign || adSign) {
+    const targets = [ulSign, ulLordSign, alSign, alLordSign, seventhSign, seventhLordSign, dkSign];
+    let r5 = false;
+    if (mdSign) r5 = r5 || targets.some((t) => hasConnection(mdSign, t));
+    if (adSign) r5 = r5 || targets.some((t) => hasConnection(adSign, t));
+    if (r5) met.push(5);
+  }
+
+  // Rule 6: Argala on MD/AD from DK or their lords
+  let r6 = false;
+  if (mdSign) {
+    const mdArgala = getEffectiveArgalaOnSign(mdSign, natalPlanets);
+    const mdArgalaPlanets = mdArgala.map((a) => a.planet);
+    r6 = mdArgalaPlanets.includes(dkName) || mdArgalaPlanets.includes(SIGN_LORD[mdSign]);
+  }
+  if (!r6 && adSign) {
+    const adArgala = getEffectiveArgalaOnSign(adSign, natalPlanets);
+    const adArgalaPlanets = adArgala.map((a) => a.planet);
+    r6 = adArgalaPlanets.includes(dkName) || adArgalaPlanets.includes(SIGN_LORD[adSign]);
+  }
+  if (r6) met.push(6);
+
+  return { count: met.length, met };
+}
+
+function strengthFromCount(count: number): "strong" | "moderate" | "weak" | "not indicated" {
+  if (count >= 5) return "strong";
+  if (count >= 3) return "moderate";
+  if (count >= 1) return "weak";
+  return "not indicated";
+}
+
+function formatMonthLabel(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+}
+
+/**
+ * Scan the next N years for marriage windows.
+ *
+ * Takes lifetime transit snapshots (house-number based) and converts them
+ * to sign-based positions using the lagna. Evaluates all 6 marriage rules
+ * for each month and identifies favorable windows.
+ *
+ * @param input          JaiminiPredictionInput (natal chart data)
+ * @param chart          ChartResponse (for natal planet positions)
+ * @param snapshots      Lifetime transit snapshots (date → planet → house)
+ * @param yearsToScan    How many years to scan (default: 5)
+ * @returns              MarriageWindowScan with monthly scores and grouped windows
+ */
+export function scanMarriageWindows(
+  input: JaiminiPredictionInput,
+  chart: ChartResponse,
+  snapshots: { date: string; planets: Record<string, number> }[],
+  yearsToScan: number = 5,
+): MarriageWindowScan {
+  const lagna = input.lagna as Sign;
+
+  // ── Resolve natal reference points (same as predictMarriage) ──
+  const ulSign = input.upaPada?.padaSign || signAtOffset(lagna, 12);
+  const { lord: ulLord, lordSign: ulLordSign } = getLordAndPlacement(ulSign, chart.planets);
+  const alSign = input.arudhaLagna?.padaSign || lagna;
+  const { lord: alLord, lordSign: alLordSign } = getLordAndPlacement(alSign, chart.planets);
+  const seventhSign = getSeventhHouse(lagna);
+  const { lord: seventhLord, lordSign: seventhLordSign } = getLordAndPlacement(seventhSign, chart.planets);
+  const dk = input.karakas.find((k) => k.role === "Darakaraka");
+  const dkName = dk?.planet || "Unknown";
+  const dkSign = (dk?.rashi as Sign) || lagna;
+  const natalSaturn = getNatalSign(chart.planets, "Saturn") || lagna;
+  const natalMars = getNatalSign(chart.planets, "Mars") || lagna;
+  const natalJupiter = getNatalSign(chart.planets, "Jupiter") || lagna;
+
+  // ── Build date range ──
+  const today = new Date();
+  const startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+  const endYear = today.getFullYear() + yearsToScan;
+  const endDate = `${endYear}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+
+  // ── Filter snapshots to our scan window ──
+  const relevantSnapshots = snapshots.filter(
+    (s) => s.date >= startDate && s.date <= endDate,
+  );
+
+  // ── Score each month ──
+  const months: MarriageWindowMonth[] = [];
+
+  for (const snap of relevantSnapshots) {
+    // Convert house numbers to signs
+    const saturnHouse = snap.planets["Saturn"];
+    const marsHouse = snap.planets["Mars"];
+    const jupiterHouse = snap.planets["Jupiter"];
+
+    if (!saturnHouse || !marsHouse || !jupiterHouse) continue;
+
+    const transit: TransitPositions = {
+      saturn: houseToSign(lagna, saturnHouse),
+      mars: houseToSign(lagna, marsHouse),
+      jupiter: houseToSign(lagna, jupiterHouse),
+    };
+
+    // Find dasha active on this date
+    const { md, ad } = findDashaForDate(snap.date, input.dashaSequence);
+
+    const { count, met } = scoreRulesQuick(
+      transit, ulSign, ulLordSign, alSign, alLordSign,
+      seventhSign, seventhLordSign, dkName, dkSign,
+      natalSaturn, natalMars, natalJupiter,
+      md, ad, chart.planets,
+    );
+
+    months.push({
+      date: snap.date,
+      month: formatMonthLabel(snap.date),
+      rulesSatisfied: count,
+      rulesMetList: met,
+      strength: strengthFromCount(count),
+      md: md || null,
+      ad: ad || null,
+      transit,
+    });
+  }
+
+  // ── Group favorable months (3+ rules) into continuous windows ──
+  const windows: MarriageWindow[] = [];
+  let currentWindow: MarriageWindowMonth[] = [];
+
+  for (const m of months) {
+    if (m.rulesSatisfied >= 3) {
+      currentWindow.push(m);
+    } else {
+      if (currentWindow.length > 0) {
+        windows.push(buildWindow(currentWindow));
+        currentWindow = [];
+      }
+    }
+  }
+  if (currentWindow.length > 0) {
+    windows.push(buildWindow(currentWindow));
+  }
+
+  // ── Find peak month ──
+  let peakMonth: MarriageWindowMonth | null = null;
+  for (const m of months) {
+    if (!peakMonth || m.rulesSatisfied > peakMonth.rulesSatisfied) {
+      peakMonth = m;
+    }
+  }
+
+  return {
+    months,
+    windows,
+    peakMonth,
+    ulSign,
+    alSign,
+    seventhHouseSign: seventhSign,
+    darakaraka: dkName,
+    darakarakaSign: dkSign,
+  };
+}
+
+function buildWindow(months: MarriageWindowMonth[]): MarriageWindow {
+  const scores = months.map((m) => m.rulesSatisfied);
+  return {
+    startDate: months[0].date,
+    endDate: months[months.length - 1].date,
+    startMonth: months[0].month,
+    endMonth: months[months.length - 1].month,
+    peakScore: Math.max(...scores),
+    avgScore: scores.reduce((a, b) => a + b, 0) / scores.length,
+    months,
+  };
+}
