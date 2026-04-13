@@ -5,9 +5,11 @@
  *
  * Rules (K.N. Rao method):
  * 1. Start from the Ascendant sign
- * 2. Sequence direction: Odd ascendant → forward, Even ascendant → backward
+ * 2. Sequence direction based on 9th house from lagna:
+ *    - 9th in Aries/Taurus/Gemini/Libra/Scorpio/Sagittarius → Direct (forward)
+ *    - 9th in Cancer/Leo/Virgo/Capricorn/Aquarius/Pisces → Indirect (backward)
  * 3. Duration counting: each sign counts independently —
- *    odd dasha signs count FORWARD to lord, even signs count BACKWARD
+ *    Direct signs count FORWARD to lord, Indirect signs count BACKWARD
  * 4. Count is exclusive of start sign (distance-based)
  * 5. Dual lordship signs: Scorpio (Mars + Ketu) and Aquarius (Saturn + Rahu)
  *    - If one lord is in the sign, count to the other lord
@@ -62,10 +64,23 @@ const SIGN_INDEX: Record<Sign, number> = Object.fromEntries(
   ZODIAC_ORDER.map((s, i) => [s, i])
 ) as Record<Sign, number>;
 
-/** Odd signs (1-indexed: 1,3,5,7,9,11) go forward; even go backward */
-const ODD_SIGNS = new Set<Sign>([
-  "Aries", "Gemini", "Leo", "Libra", "Sagittarius", "Aquarius",
+/**
+ * Direct signs: when the 9th house falls on one of these, dasha order is forward.
+ * Also used for per-sign counting direction: direct signs count forward to lord.
+ */
+const DIRECT_SIGNS = new Set<Sign>([
+  "Aries", "Taurus", "Gemini", "Libra", "Scorpio", "Sagittarius",
 ]);
+
+/**
+ * Determine dasha sequence direction based on 9th house from lagna.
+ * 9th house = lagna index + 8 (since lagna is house 1).
+ */
+function getSequenceDirection(ascendant: Sign): "forward" | "backward" {
+  const ninthIdx = (SIGN_INDEX[ascendant] + 8) % 12;
+  const ninthSign = ZODIAC_ORDER[ninthIdx];
+  return DIRECT_SIGNS.has(ninthSign) ? "forward" : "backward";
+}
 
 /** Sign → Lord mapping */
 const SIGN_LORD: Record<Sign, string> = {
@@ -209,11 +224,10 @@ function countSigns(from: Sign, to: Sign, direction: "forward" | "backward"): nu
 
 /**
  * Get the counting direction for a specific dasha sign.
- * Each sign counts independently: odd signs count forward, even signs backward.
- * This may differ from the overall sequence direction.
+ * Direct signs count forward to lord, Indirect signs count backward.
  */
 function getCountDirection(sign: Sign): "forward" | "backward" {
-  return ODD_SIGNS.has(sign) ? "forward" : "backward";
+  return DIRECT_SIGNS.has(sign) ? "forward" : "backward";
 }
 
 /**
@@ -289,10 +303,8 @@ export function calculateCharaDasha(chart: ChartResponse): CharaDashaResult {
   const ascendant = chart.lagna as Sign;
   const planetSignMap = buildPlanetSignMap(chart.planets);
 
-  // Determine direction based on ascendant
-  const direction: "forward" | "backward" = ODD_SIGNS.has(ascendant)
-    ? "forward"
-    : "backward";
+  // Determine direction based on 9th house from ascendant
+  const direction: "forward" | "backward" = getSequenceDirection(ascendant);
 
   // Build 12-sign dasha sequence
   const signs: Sign[] = [ascendant];
