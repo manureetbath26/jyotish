@@ -65,6 +65,21 @@ const REPORT_META: Record<string, { href: string; icon: string; badge?: string; 
       "Scalable for Antardasha & Interpretations",
     ],
   },
+  career: {
+    href: "/reports/career",
+    icon: "\u{1F4BC}",
+    badge: "New",
+    features: [
+      "Career Verdict & Confidence Rating",
+      "Career Nature: Job vs Business vs Independent",
+      "Sector & Industry Suggestions",
+      "Career Growth Timeline (Past & Future)",
+      "Promotion & Recognition Windows",
+      "Current Dasha Career Theme",
+      "Growth Indicators & Stagnation Risks",
+      "Natal Career Profile (10H, AmK, A10, Karakamsha)",
+    ],
+  },
 };
 
 export default function ReportsPage() {
