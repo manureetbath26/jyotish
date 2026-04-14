@@ -3,19 +3,19 @@
 import { useState, useEffect } from "react";
 import type { CharaDashaReport, DashaPeriod, Sign } from "@/lib/charaDashaEngine";
 import type { ChartResponse } from "@/lib/api";
-import { calculateCurrentTransits, fetchLifetimeTransits } from "@/lib/api";
-import { preparePredictionInput, type JaiminiPredictionInput } from "@/lib/jaiminiPredictiveEngine";
+import { fetchLifetimeTransits } from "@/lib/api";
+import { preparePredictionInput } from "@/lib/jaiminiPredictiveEngine";
 import {
-  predictMarriage,
   scanMarriageWindows,
   generateFutureTransitSnapshots,
-  type MarriagePredictionReport,
-  type MarriageWindowScan,
-  type MarriageWindowMonth,
-  type MarriageWindow,
   type TransitPositions,
-  type RuleResult,
 } from "@/lib/jaiminiMarriagePrediction";
+import {
+  generateMarriageReport,
+  type MarriageReport,
+  type KeyPeriod,
+  type DetailedWindow,
+} from "@/lib/jaiminiMarriageReport";
 
 interface Props {
   report: CharaDashaReport;
@@ -78,8 +78,7 @@ function Section({
 }
 
 export function CharaDashaReportView({ report, chart, onBack }: Props) {
-  const [marriageReport, setMarriageReport] = useState<MarriagePredictionReport | null>(null);
-  const [windowScan, setWindowScan] = useState<MarriageWindowScan | null>(null);
+  const [marriageReport, setMarriageReport] = useState<MarriageReport | null>(null);
   const [marriageLoading, setMarriageLoading] = useState(false);
   const [marriageError, setMarriageError] = useState<string | null>(null);
 
@@ -89,11 +88,9 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
       setMarriageLoading(true);
       setMarriageError(null);
       try {
-        // Build prediction input once (shared between current + 5-year scan)
         const predInput = preparePredictionInput(chart);
-
-        // ── Fetch transit data (resilient — fallbacks if API unavailable) ──
         const birthDate = new Date(chart.date + "T00:00:00");
+        const birthYear = birthDate.getFullYear();
 
         // Helper: get natal sign of a planet from the chart
         const getNatalSign = (name: string): Sign => {
@@ -101,87 +98,52 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
           return (p?.rashi || "Aries") as Sign;
         };
 
-        let transitPositions: TransitPositions;
-        let transitApiWorked = false;
-
-        // Try fetching current transits from the backend
-        try {
-          const transits = await calculateCurrentTransits(
-            chart.ayanamsha_value,
-            chart.lagna_degree,
-          );
-          const findSign = (name: string): Sign => {
-            const p = transits.planets.find((pl) => pl.name === name);
-            return (p?.rashi || "Aries") as Sign;
-          };
-          transitPositions = {
-            saturn: findSign("Saturn"),
-            mars: findSign("Mars"),
-            jupiter: findSign("Jupiter"),
-          };
-          transitApiWorked = true;
-        } catch {
-          // Fallback: use natal planet positions as starting estimate
-          // (not ideal but allows the 5-year scan to still run)
-          console.warn("[Marriage] Current transit API failed, using natal positions as fallback");
-          transitPositions = {
-            saturn: getNatalSign("Saturn"),
-            mars: getNatalSign("Mars"),
-            jupiter: getNatalSign("Jupiter"),
-          };
-        }
-
-        if (cancelled) return;
-
-        // ── Current marriage prediction ──
-        const mReport = predictMarriage(predInput, chart, transitPositions);
-        if (!cancelled) setMarriageReport(mReport);
-
-        // ── 5-year window scan ──
-        // Try lifetime snapshots first, then generate future estimates
-        let scanSnapshots: { date: string; planets: Record<string, number> }[];
+        // ── Fetch lifetime transit snapshots ──
+        let allSnapshots: { date: string; planets: Record<string, number> }[];
 
         try {
           const lifetimeData = await fetchLifetimeTransits(
             chart.ayanamsha_value,
             chart.lagna_degree,
-            birthDate.getFullYear(),
+            birthYear,
             birthDate.getMonth() + 1,
           );
-
-          const today = new Date();
-          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-          const futureSnapshots = lifetimeData.snapshots.filter(
-            (s) => s.date >= todayStr,
-          );
-
-          if (futureSnapshots.length >= 12) {
-            scanSnapshots = futureSnapshots;
-          } else {
-            // Backend didn't provide future data — generate from current positions
-            scanSnapshots = generateFutureTransitSnapshots(
-              transitPositions,
-              chart.lagna as Sign,
-              5,
-            );
-          }
+          allSnapshots = lifetimeData.snapshots;
         } catch {
-          // Lifetime transit API failed entirely — always generate estimates
-          console.warn("[Marriage] Lifetime transit API failed, generating future estimates");
-          scanSnapshots = generateFutureTransitSnapshots(
+          // Fallback: generate approximate future snapshots
+          console.warn("[Marriage] Lifetime transit API failed, generating estimates");
+          const transitPositions: TransitPositions = {
+            saturn: getNatalSign("Saturn"),
+            mars: getNatalSign("Mars"),
+            jupiter: getNatalSign("Jupiter"),
+          };
+          allSnapshots = generateFutureTransitSnapshots(
             transitPositions,
             chart.lagna as Sign,
-            5,
+            20,
           );
         }
 
-        console.log(`[Marriage] Scan: ${scanSnapshots.length} snapshots generated, transit API: ${transitApiWorked}`);
+        if (cancelled) return;
 
-        if (scanSnapshots.length > 0) {
-          const scan = scanMarriageWindows(predInput, chart, scanSnapshots, 5);
-          console.log(`[Marriage] Scan results: ${scan.months.length} months, ${scan.windows.length} windows, peak: ${scan.peakMonth?.rulesSatisfied ?? 0}/6 at ${scan.peakMonth?.month ?? "N/A"}`);
-          if (!cancelled) setWindowScan(scan);
-        }
+        // ── Full lifetime scan (birth to 80 years) ──
+        const scan = scanMarriageWindows(
+          predInput,
+          chart,
+          allSnapshots,
+          80,
+          chart.date,
+        );
+
+        if (cancelled) return;
+
+        // ── Generate structured report ──
+        const report = generateMarriageReport(predInput, chart, scan, {
+          futureOnly: true,
+          birthYear,
+        });
+
+        if (!cancelled) setMarriageReport(report);
       } catch (err) {
         console.error("[Marriage] Unexpected error:", err);
         if (!cancelled) {
@@ -376,7 +338,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
       </Section>
 
       {/* Section 4: Marriage Prediction */}
-      <Section title="Life Event: Marriage Prediction" badge="Jaimini" defaultOpen>
+      <Section title="Life Events (Marriage): Jaimini Chara Dasha" badge="Jaimini" defaultOpen>
         {marriageLoading && (
           <div className="flex items-center justify-center py-8 gap-2">
             <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -388,8 +350,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
             {marriageError}
           </div>
         )}
-        {marriageReport && <MarriagePredictionSection report={marriageReport} />}
-        {windowScan && <MarriageWindowTimeline scan={windowScan} />}
+        {marriageReport && <MarriageReportSection report={marriageReport} />}
       </Section>
 
       {/* Section 5: Interpretation placeholder */}
@@ -414,76 +375,135 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 // ────────────────────────────────────────────────────────────────────────────
 
 // ────────────────────────────────────────────────────────────────────────────
-// Marriage Prediction Section
+// Marriage Report Section (structured narrative)
 // ────────────────────────────────────────────────────────────────────────────
 
-function MarriagePredictionSection({ report }: { report: MarriagePredictionReport }) {
-  const strengthColors: Record<string, string> = {
-    strong: "text-green-400 bg-green-500/10 border-green-500/30",
-    moderate: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-    weak: "text-orange-400 bg-orange-500/10 border-orange-500/30",
-    "not indicated": "text-slate-400 bg-slate-800/60 border-slate-700",
-  };
+function MarriageReportSection({ report }: { report: MarriageReport }) {
+  const [showDetailed, setShowDetailed] = useState(false);
 
   return (
-    <div className="space-y-4">
-      {/* Overall assessment banner */}
-      <div className={`border rounded-xl p-4 ${strengthColors[report.strength] || strengthColors["not indicated"]}`}>
-        <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* ── A. Summary ── */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-5">
+        <p className="text-sm text-slate-200 leading-relaxed">{report.summary.text}</p>
+        {report.summary.mostLikelyPeriod && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-slate-500 uppercase tracking-wide">Most likely:</span>
+            <span className="text-sm font-semibold text-amber-400">{report.summary.mostLikelyPeriod}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Marriage count ── */}
+      <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg font-bold text-purple-400">
+            {report.marriageCount.expected}
+          </div>
           <div>
-            <p className="text-sm font-semibold">
-              Marriage Indication: {report.isMarriageIndicated ? "Yes" : "No"}
-            </p>
-            <p className="text-xs mt-0.5 opacity-80">
-              {report.rulesSatisfied} of {report.totalRules} rules satisfied — Strength: {report.strength.toUpperCase()}
-            </p>
-          </div>
-          <div className="text-2xl">
-            {report.strength === "strong" ? "\u2714" : report.strength === "moderate" ? "\u26A0" : "\u2012"}
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Expected marriages</p>
+            <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{report.marriageCount.explanation}</p>
           </div>
         </div>
       </div>
 
-      {/* Key reference points */}
+      {/* ── Natal reference chips ── */}
       <div>
-        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Key Reference Points</p>
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Chart Reference Points</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <ReferenceChip label="UL (Upa-Pada)" value={report.ulSign} />
-          <ReferenceChip label="AL (Arudha Lagna)" value={report.alSign} />
-          <ReferenceChip label="7th House" value={report.seventhHouseSign} />
-          <ReferenceChip label={`DK (${report.darakaraka})`} value={report.darakarakaSign} />
+          <NatalChip label="Upa-Pada (UL)" value={report.natalProfile.ulSign} />
+          <NatalChip label="Arudha Lagna" value={report.natalProfile.alSign} />
+          <NatalChip label="7th House" value={report.natalProfile.seventhSign} />
+          <NatalChip label={`DK (${report.natalProfile.dk})`} value={report.natalProfile.dkSign} />
         </div>
       </div>
 
-      {/* Current transits */}
-      <div>
-        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Current Transits</p>
-        <div className="flex flex-wrap gap-2">
-          <TransitChip planet="Saturn" sign={report.transit.saturn} natal={report.natalSaturnSign} />
-          <TransitChip planet="Mars" sign={report.transit.mars} natal={report.natalMarsSign} />
-          <TransitChip planet="Jupiter" sign={report.transit.jupiter} natal={report.natalJupiterSign} />
-        </div>
-      </div>
-
-      {/* Current Dasha */}
-      {(report.currentMD || report.currentAD) && (
+      {/* ── B. Key Marriage Periods ── */}
+      {report.keyPeriods.length > 0 && (
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Current Chara Dasha</p>
-          <div className="flex gap-2">
-            {report.currentMD && <ReferenceChip label="Maha Dasha" value={report.currentMD} />}
-            {report.currentAD && <ReferenceChip label="Antar Dasha" value={report.currentAD} />}
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-3">Key Marriage Periods</p>
+          <div className="space-y-3">
+            {report.keyPeriods.map((period, i) => (
+              <KeyPeriodCard key={i} period={period} />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Rule-by-rule evaluation */}
-      <div>
-        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Rule Evaluation</p>
-        <div className="space-y-2">
-          {report.rules.map((rule) => (
-            <RuleCard key={rule.ruleNumber} rule={rule} />
-          ))}
+      {/* ── C. Detailed Analysis ── */}
+      {report.detailedAnalysis.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowDetailed((v) => !v)}
+            className="flex items-center gap-2 text-xs text-slate-500 uppercase tracking-wide font-medium mb-3 hover:text-slate-300 transition-colors"
+          >
+            <span>{showDetailed ? "\u25B2" : "\u25BC"}</span>
+            Detailed Analysis ({report.detailedAnalysis.length} period{report.detailedAnalysis.length > 1 ? "s" : ""})
+          </button>
+          {showDetailed && (
+            <div className="space-y-4">
+              {report.detailedAnalysis.map((dw, i) => (
+                <DetailedWindowCard key={i} window={dw} />
+              ))}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* ── D. Supporting Indicators ── */}
+      {report.strongIndicators.length > 0 && (
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Supporting Indicators</p>
+          <div className="space-y-2">
+            {report.strongIndicators.map((ind, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="text-green-400 mt-0.5 flex-shrink-0">{"\u25CF"}</span>
+                <span className="text-slate-300 leading-relaxed">{ind}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── E. Challenges / Delays ── */}
+      {report.challenges.length > 0 && (
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Challenges &amp; Considerations</p>
+          <div className="space-y-2">
+            {report.challenges.map((ch, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="text-amber-400 mt-0.5 flex-shrink-0">{"\u25B3"}</span>
+                <span className="text-slate-400 leading-relaxed">{ch}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── F. Final Verdict ── */}
+      <div className="bg-gradient-to-r from-green-500/10 via-green-500/5 to-transparent border border-green-500/20 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Final Verdict</p>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            report.verdict.confidence === "High"
+              ? "bg-green-500/20 text-green-400"
+              : report.verdict.confidence === "Medium"
+                ? "bg-amber-500/20 text-amber-400"
+                : "bg-slate-700 text-slate-400"
+          }`}>
+            {report.verdict.confidence} Confidence
+          </span>
+        </div>
+        <p className="text-sm text-slate-200 leading-relaxed">{report.verdict.narrative}</p>
+        {report.verdict.topPeriods.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {report.verdict.topPeriods.map((p, i) => (
+              <span key={i} className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
+                {i === 0 ? "\u2605 " : ""}{p}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -493,192 +513,7 @@ function MarriagePredictionSection({ report }: { report: MarriagePredictionRepor
 // 5-Year Marriage Window Timeline
 // ────────────────────────────────────────────────────────────────────────────
 
-function MarriageWindowTimeline({ scan }: { scan: MarriageWindowScan }) {
-  const [showAllMonths, setShowAllMonths] = useState(false);
-
-  const strengthBarColor: Record<string, string> = {
-    strong: "bg-green-500",
-    moderate: "bg-amber-500",
-    weak: "bg-slate-600",
-    "not indicated": "bg-slate-800",
-  };
-
-  return (
-    <div className="space-y-4 mt-6 pt-4 border-t border-slate-800">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-200">
-          5-Year Marriage Window Scan
-        </h3>
-        {scan.peakMonth && (
-          <span className="text-xs text-amber-400">
-            Peak: {scan.peakMonth.month} ({scan.peakMonth.rulesSatisfied}/6 rules)
-          </span>
-        )}
-      </div>
-
-      <p className="text-xs text-slate-500">
-        Monthly evaluation of all 6 marriage rules using transit positions of Saturn, Mars, and Jupiter.
-        Green bars indicate months where 3 or more rules are satisfied simultaneously.
-      </p>
-
-      {/* Visual bar chart — one bar per month */}
-      <div className="space-y-0.5">
-        {scan.months.map((m) => {
-          const widthPct = Math.max(4, (m.rulesSatisfied / 6) * 100);
-          const isFavorable = m.rulesSatisfied >= 3;
-          return (
-            <div key={m.date} className="flex items-center gap-2 group">
-              <span className="text-[10px] text-slate-600 w-16 text-right font-mono flex-shrink-0">
-                {m.month}
-              </span>
-              <div className="flex-1 relative h-4">
-                <div
-                  className={`h-full rounded-sm transition-all ${
-                    isFavorable
-                      ? m.rulesSatisfied >= 5
-                        ? "bg-green-500/80"
-                        : "bg-amber-500/60"
-                      : "bg-slate-800/60"
-                  }`}
-                  style={{ width: `${widthPct}%` }}
-                />
-                {/* Tooltip on hover */}
-                <div className="absolute left-0 top-0 h-full w-full flex items-center">
-                  <span className={`text-[9px] ml-1 font-medium ${
-                    isFavorable ? "text-slate-100" : "text-slate-700"
-                  }`}>
-                    {m.rulesSatisfied > 0 ? `${m.rulesSatisfied}/6` : ""}
-                  </span>
-                </div>
-              </div>
-              {/* Rules met indicators */}
-              <div className="flex gap-px flex-shrink-0">
-                {[1, 2, 3, 4, 5, 6].map((r) => (
-                  <div
-                    key={r}
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      m.rulesMetList.includes(r)
-                        ? r <= 3 ? "bg-cyan-400" : "bg-purple-400"
-                        : "bg-slate-800"
-                    }`}
-                    title={`Rule ${r}`}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-green-500/80 inline-block" /> 5-6 rules (strong)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-amber-500/60 inline-block" /> 3-4 rules (moderate)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> Rules 1-3 (transit)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> Rules 4-6 (natal/dasha)
-        </span>
-      </div>
-
-      {/* Scan statistics */}
-      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
-        <span>Months scanned: <strong className="text-slate-200">{scan.months.length}</strong></span>
-        {scan.peakMonth && (
-          <span>
-            Best month: <strong className="text-amber-300">{scan.peakMonth.month}</strong> ({scan.peakMonth.rulesSatisfied}/6)
-          </span>
-        )}
-        <span>Windows found: <strong className="text-slate-200">{scan.windows.length}</strong></span>
-      </div>
-
-      {/* Favorable windows summary */}
-      {scan.windows.length > 0 ? (
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">
-            Favorable Windows ({scan.windows.length})
-          </p>
-          <div className="space-y-2">
-            {scan.windows.map((w, i) => (
-              <div
-                key={i}
-                className={`border rounded-lg p-3 ${
-                  w.peakScore >= 5
-                    ? "border-green-500/30 bg-green-500/5"
-                    : "border-amber-500/20 bg-amber-500/5"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className={`text-sm font-semibold ${
-                      w.peakScore >= 5 ? "text-green-300" : "text-amber-300"
-                    }`}>
-                      {w.startMonth} {w.startMonth !== w.endMonth ? `\u2013 ${w.endMonth}` : ""}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      {w.months.length} month{w.months.length > 1 ? "s" : ""} — Peak: {w.peakScore}/6 rules — Avg: {w.avgScore.toFixed(1)}/6
-                    </p>
-                  </div>
-                  <div className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                    w.peakScore >= 5
-                      ? "bg-green-500/20 text-green-400"
-                      : "bg-amber-500/20 text-amber-400"
-                  }`}>
-                    {w.peakScore >= 5 ? "Strong" : "Moderate"}
-                  </div>
-                </div>
-
-                {/* Expand to show months */}
-                {showAllMonths && (
-                  <div className="mt-2 pt-2 border-t border-slate-800/50 space-y-1">
-                    {w.months.map((m) => (
-                      <div key={m.date} className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-400">{m.month}</span>
-                        <span className="text-slate-500">
-                          MD: {m.md || "—"} / AD: {m.ad || "—"}
-                        </span>
-                        <span className="text-slate-500">
-                          Sa:{m.transit.saturn} Ju:{m.transit.jupiter} Ma:{m.transit.mars}
-                        </span>
-                        <span className={m.rulesSatisfied >= 5 ? "text-green-400" : "text-amber-400"}>
-                          {m.rulesSatisfied}/6
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => setShowAllMonths((v) => !v)}
-            className="mt-2 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            {showAllMonths ? "\u25B2 Hide month details" : "\u25BC Show month details"}
-          </button>
-        </div>
-      ) : (
-        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
-          <p className="text-sm text-slate-500">
-            No months with 3+ simultaneous rules found in the scan period.
-          </p>
-          <p className="text-xs text-slate-600 mt-1">
-            The best alignment is {scan.peakMonth?.rulesSatisfied ?? 0}/6 rules in {scan.peakMonth?.month ?? "N/A"}.
-            Marriage windows require at least 3 of 6 rules to align simultaneously.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReferenceChip({ label, value }: { label: string; value: string }) {
+function NatalChip({ label, value }: { label: string; value: string }) {
   const style = SIGN_STYLE[value];
   return (
     <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5">
@@ -690,79 +525,67 @@ function ReferenceChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TransitChip({
-  planet,
-  sign,
-  natal,
-}: {
-  planet: string;
-  sign: string;
-  natal: string;
-}) {
-  const style = SIGN_STYLE[sign];
+function KeyPeriodCard({ period }: { period: KeyPeriod }) {
+  const isStrong = period.strength === "Strong";
   return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5 flex-1 min-w-[120px]">
-      <p className="text-[10px] text-slate-500">Transit {planet}</p>
-      <p className={`text-sm font-semibold ${style?.color || "text-slate-200"}`}>
-        {style?.icon || ""} {sign}
-      </p>
-      <p className="text-[10px] text-slate-600">Natal: {natal}</p>
+    <div className={`border rounded-xl p-4 ${
+      isStrong
+        ? "border-green-500/20 bg-green-500/5"
+        : "border-amber-500/20 bg-amber-500/5"
+    }`}>
+      <div className="flex items-center justify-between mb-2">
+        <p className={`text-sm font-semibold ${isStrong ? "text-green-300" : "text-amber-300"}`}>
+          {period.timeRange}
+        </p>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+          isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"
+        }`}>
+          {period.strength}
+        </span>
+      </div>
+      <p className="text-xs text-slate-500 mb-1">{period.dasha}</p>
+      <p className="text-xs text-slate-300 leading-relaxed">{period.explanation}</p>
     </div>
   );
 }
 
-function RuleCard({ rule }: { rule: RuleResult }) {
-  const [expanded, setExpanded] = useState(false);
-
+function DetailedWindowCard({ window: dw }: { window: DetailedWindow }) {
   return (
-    <div
-      className={`border rounded-lg overflow-hidden ${
-        rule.isSatisfied
-          ? "border-green-500/20 bg-green-500/5"
-          : "border-slate-800 bg-slate-800/20"
-      }`}
-    >
-      <button
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800/30 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <span
-          className={`text-sm font-bold w-5 text-center ${
-            rule.isSatisfied ? "text-green-400" : "text-slate-600"
-          }`}
-        >
-          {rule.isSatisfied ? "\u2713" : "\u2717"}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className={`text-xs font-semibold ${rule.isSatisfied ? "text-green-300" : "text-slate-400"}`}>
-            Rule {rule.ruleNumber}: {rule.ruleName}
-          </p>
-          <p className="text-[11px] text-slate-500 truncate">{rule.explanation}</p>
+    <div className="border border-slate-700 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 bg-slate-800/40 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-200">{dw.windowLabel}</p>
+          <p className="text-xs text-slate-500">{dw.dasha} — Peak: {dw.peakScore}/6 in {dw.peakMonth}</p>
         </div>
-        <span className="text-slate-600 text-xs flex-shrink-0">{expanded ? "\u25B2" : "\u25BC"}</span>
-      </button>
-
-      {expanded && (
-        <div className="px-3 pb-3 pt-1 border-t border-slate-800/50">
-          <p className="text-[11px] text-slate-500 mb-2">{rule.description}</p>
-          <div className="space-y-1">
-            {rule.checks.map((check, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[11px]">
-                <span className={check.met ? "text-green-500" : "text-slate-700"}>
-                  {check.met ? "\u25CF" : "\u25CB"}
-                </span>
-                <div>
-                  <span className={check.met ? "text-slate-300" : "text-slate-600"}>
-                    {check.condition}
-                  </span>
-                  <p className="text-slate-600 text-[10px]">{check.detail}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">What&apos;s happening</p>
+          <p className="text-xs text-slate-300 leading-relaxed">{dw.astrologicalNarrative}</p>
         </div>
-      )}
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">Why it supports marriage</p>
+          <p className="text-xs text-slate-300 leading-relaxed">{dw.whyMarriage}</p>
+        </div>
+        <div className="flex gap-3">
+          <IndicationBadge label="Meeting partner" active={dw.indicates.meetingPartner} />
+          <IndicationBadge label="Engagement" active={dw.indicates.engagement} />
+          <IndicationBadge label="Marriage" active={dw.indicates.marriageFinalization} />
+        </div>
+      </div>
     </div>
+  );
+}
+
+function IndicationBadge({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+      active
+        ? "bg-green-500/10 border-green-500/20 text-green-400"
+        : "bg-slate-800/60 border-slate-700 text-slate-600"
+    }`}>
+      {active ? "\u2713 " : ""}{label}
+    </span>
   );
 }
 

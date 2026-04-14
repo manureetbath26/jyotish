@@ -1159,6 +1159,7 @@ export function scanMarriageWindows(
   chart: ChartResponse,
   snapshots: { date: string; planets: Record<string, number> }[],
   yearsToScan: number = 5,
+  fromDate?: string, // "YYYY-MM-DD" — defaults to today
 ): MarriageWindowScan {
   const lagna = input.lagna as Sign;
 
@@ -1177,10 +1178,17 @@ export function scanMarriageWindows(
   const natalJupiter = getNatalSign(chart.planets, "Jupiter") || lagna;
 
   // ── Build date range ──
-  const today = new Date();
-  const startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-  const endYear = today.getFullYear() + yearsToScan;
-  const endDate = `${endYear}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+  let startDate: string;
+  if (fromDate) {
+    const fd = new Date(fromDate + "T00:00:00");
+    startDate = `${fd.getFullYear()}-${String(fd.getMonth() + 1).padStart(2, "0")}-01`;
+  } else {
+    const today = new Date();
+    startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+  const startD = new Date(startDate + "T00:00:00");
+  const endYear = startD.getFullYear() + yearsToScan;
+  const endDate = `${endYear}-${String(startD.getMonth() + 1).padStart(2, "0")}-01`;
 
   // ── Filter snapshots to our scan window ──
   const relevantSnapshots = snapshots.filter(
