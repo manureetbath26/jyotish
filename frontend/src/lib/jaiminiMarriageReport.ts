@@ -313,7 +313,7 @@ function buildRuleInterpretations(
   return interps;
 }
 
-/** Build a 1-2 sentence plain-English summary for a window. */
+/** Build a 1-2 sentence plain-English summary unique to each window. */
 function buildWindowSummary(
   w: MarriageWindow,
   profile: NatalMarriageProfile,
@@ -323,24 +323,84 @@ function buildWindowSummary(
   const peak = w.months.reduce((best, m) =>
     m.rulesSatisfied > best.rulesSatisfied ? m : best, w.months[0]);
   const rules = peak.rulesMetList;
+  const duration = w.months.length;
+  const dasha = describeDasha(peak.md, peak.ad);
 
-  const hasTransits = rules.some((r) => r <= 3);
-  const hasDasha = rules.includes(5) || rules.includes(6);
+  // Specific transit planets active in this window
+  const hasSaturn = rules.includes(1);
+  const hasMars = rules.includes(2);
+  const hasJupiter = rules.includes(3);
   const hasDK = rules.includes(4);
+  const hasDashaLink = rules.includes(5);
+  const hasArgala = rules.includes(6);
 
-  if (w.peakScore >= 5) {
-    return `Around age ${age}, a rare and powerful alignment occurs — planetary transits, your current life period, and your birth chart's marriage factors all converge, creating one of the strongest windows for marriage in your lifetime.`;
+  // Build transit clause (which specific planets are active)
+  const transitPlanets: string[] = [];
+  if (hasSaturn) transitPlanets.push("Saturn");
+  if (hasMars) transitPlanets.push("Mars");
+  if (hasJupiter) transitPlanets.push("Jupiter");
+
+  // Build the specific dasha reference
+  const dashaClause = hasDashaLink
+    ? `the ${dasha} period activates marriage-connected signs`
+    : hasArgala
+      ? `the ${dasha} period receives strong planetary intervention (Argala) from your spouse-significator`
+      : null;
+
+  // Build the DK clause
+  const dkClause = hasDK
+    ? `your Darakaraka (${profile.dk}) links natively to key marriage houses`
+    : null;
+
+  // ── Assemble unique description ──
+
+  // All three transits present
+  if (transitPlanets.length === 3 && dashaClause) {
+    const durNote = duration >= 4 ? ` This alignment sustains across ${duration} months, which is unusually long.` : "";
+    return `During the ${dasha} around age ${age}, Saturn, Mars, and Jupiter all simultaneously activate your marriage house (${profile.ulSign}) and partnership factors.${dkClause ? ` Additionally, ${dkClause}.` : ""}${durNote}`;
   }
-  if (hasTransits && hasDasha) {
-    return `Around age ${age}, favorable planetary transits align with an active marriage-supportive life period, creating a meaningful opportunity for committed partnership.`;
+
+  if (transitPlanets.length === 3) {
+    return `Around age ${age}, all three key transit planets — Saturn, Mars, and Jupiter — converge on your marriage and partnership houses at once, a rare triple activation of ${profile.ulSign} and ${profile.seventhSign}.`;
   }
-  if (hasTransits && hasDK) {
-    return `Around age ${age}, planetary transits activate your spouse-significator and marriage house, opening a window where relationship developments can progress naturally.`;
+
+  // Two transits + dasha
+  if (transitPlanets.length === 2 && dashaClause) {
+    return `Around age ${age}, ${transitPlanets.join(" and ")} both transit marriage-sensitive positions while ${dashaClause}, creating a focused window for commitment during a ${duration}-month span.`;
   }
-  if (hasDasha) {
-    return `Around age ${age}, your Jaimini Dasha period directly supports marriage themes, making this a time when relationship milestones are more likely to unfold.`;
+
+  // Two transits + DK
+  if (transitPlanets.length === 2 && dkClause) {
+    return `At age ${age}, ${transitPlanets.join(" and ")} activate your Upa-Pada (${profile.ulSign}) and 7th house, and ${dkClause} — transit energy meets natal promise.`;
   }
-  return `Around age ${age}, several astrological factors align to support marriage and partnership development.`;
+
+  // Two transits alone
+  if (transitPlanets.length === 2) {
+    return `Around age ${age}, ${transitPlanets.join(" and ")} simultaneously connect with your marriage house (${profile.ulSign}), providing both ${transitPlanets[0] === "Saturn" ? "commitment readiness" : "initiative"} and ${transitPlanets[1] === "Jupiter" ? "auspicious expansion" : "decisive energy"}.`;
+  }
+
+  // Single transit + dasha + DK/Argala
+  if (transitPlanets.length === 1 && dashaClause) {
+    const transitRole = transitPlanets[0] === "Saturn" ? "karmic maturity" : transitPlanets[0] === "Jupiter" ? "auspicious blessing" : "active drive";
+    return `At age ${age}, ${transitPlanets[0]} brings ${transitRole} to your marriage factors while ${dashaClause}${hasArgala ? ", reinforced by Argala from your spouse-significator" : ""}.`;
+  }
+
+  // Dasha + DK + Argala (no transits)
+  if (dashaClause && dkClause) {
+    return `Around age ${age}, ${dashaClause}, and ${dkClause} — the dasha period and natal chart factors together emphasize partnership themes even without strong transit triggers.`;
+  }
+
+  // Dasha-centric
+  if (dashaClause) {
+    return `At age ${age}, ${dashaClause}. This ${duration >= 3 ? `extended ${duration}-month` : "focused"} period channels life energy toward relationship growth and commitment.`;
+  }
+
+  // Fallback with whatever specifics we have
+  if (transitPlanets.length > 0) {
+    return `Around age ${age}, ${transitPlanets.join(" and ")} activate${transitPlanets.length === 1 ? "s" : ""} marriage-related positions in your chart, opening a ${duration}-month window for relationship developments.`;
+  }
+
+  return `Around age ${age}, your chart's marriage factors align through the ${dasha} period, supporting partnership and commitment themes.`;
 }
 
 function determineIndications(
