@@ -366,6 +366,18 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 
 function MarriageReportSection({ report }: { report: MarriageReport }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [showPast, setShowPast] = useState(false);
+  const [appendixOpen, setAppendixOpen] = useState(false);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Split into strong (main timeline) and moderate (appendix)
+  const strongPeriods = report.keyPeriods.filter((p) => p.strength === "Strong");
+  const moderatePeriods = report.keyPeriods.filter((p) => p.strength === "Moderate");
+
+  // Further split strong into past/future
+  const pastStrong = strongPeriods.filter((p) => p.startDate < todayStr);
+  const futureStrong = strongPeriods.filter((p) => p.startDate >= todayStr);
 
   return (
     <div className="space-y-6">
@@ -393,8 +405,8 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         </div>
       </div>
 
-      {/* ── B. Vertical Timeline ── */}
-      {report.keyPeriods.length > 0 ? (
+      {/* ── B. Strong Periods – Vertical Timeline (chronological) ── */}
+      {strongPeriods.length > 0 ? (
         <div>
           <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-4">Marriage Timeline</p>
           <div className="relative">
@@ -402,67 +414,163 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
             <div className="absolute left-[28px] sm:left-1/2 sm:-translate-x-px top-0 bottom-0 w-0.5 bg-slate-700" />
 
             <div className="space-y-8">
-              {report.keyPeriods.map((period, i) => {
-                const isRight = i % 2 === 0;
-                const isStrong = period.strength === "Strong";
-                const isExpanded = expandedIdx === i;
-                const accentColor = isStrong ? "green" : "amber";
-                const dotBg = isStrong ? "bg-green-500" : "bg-amber-500";
-                const borderColor = isStrong ? "border-green-500/30" : "border-amber-500/30";
-                const bgColor = isStrong ? "bg-green-500/5" : "bg-amber-500/5";
-                const textColor = isStrong ? "text-green-400" : "text-amber-400";
+              {/* ── Past strong periods (collapsed by default, greyed out) ── */}
+              {pastStrong.length > 0 && (
+                <div className="relative">
+                  {/* Collapse toggle for past events */}
+                  <div className="flex items-start gap-3 sm:hidden">
+                    <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
+                      <div className="w-[14px] h-[14px] rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg" />
+                    </div>
+                    <button
+                      onClick={() => setShowPast((v) => !v)}
+                      className="flex-1 border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
+                    >
+                      <span className="text-xs text-slate-500">
+                        {showPast ? "\u25B2" : "\u25BC"} {pastStrong.length} past period{pastStrong.length > 1 ? "s" : ""} (already elapsed)
+                      </span>
+                    </button>
+                  </div>
+                  <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
+                    <div />
+                    <div className="flex justify-center pt-1">
+                      <div className="w-4 h-4 rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg z-10" />
+                    </div>
+                    <button
+                      onClick={() => setShowPast((v) => !v)}
+                      className="border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
+                    >
+                      <span className="text-xs text-slate-500">
+                        {showPast ? "\u25B2" : "\u25BC"} {pastStrong.length} past period{pastStrong.length > 1 ? "s" : ""} (already elapsed)
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Expanded past events — greyed out */}
+                  {showPast && pastStrong.map((period, i) => {
+                    const globalIdx = strongPeriods.indexOf(period);
+                    const isRight = globalIdx % 2 === 0;
+                    const isExpanded = expandedIdx === globalIdx;
+
+                    return (
+                      <div key={`past-${i}`} className="relative mt-8 opacity-50">
+                        {/* Mobile */}
+                        <div className="flex items-start gap-3 sm:hidden">
+                          <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
+                            <div className="w-[14px] h-[14px] rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg" />
+                          </div>
+                          <div className="flex-1 border border-slate-700 bg-slate-800/20 rounded-xl p-4">
+                            <TimelineContent
+                              period={period}
+                              isPast
+                              isExpanded={isExpanded}
+                              onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
+                            />
+                          </div>
+                        </div>
+                        {/* Desktop */}
+                        <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
+                          {isRight ? <div /> : (
+                            <div className="border border-slate-700 bg-slate-800/20 rounded-xl p-4 text-right">
+                              <TimelineContent
+                                period={period}
+                                isPast
+                                isExpanded={isExpanded}
+                                onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
+                                alignRight
+                              />
+                            </div>
+                          )}
+                          <div className="flex justify-center pt-1">
+                            <div className="w-4 h-4 rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg z-10" />
+                          </div>
+                          {isRight ? (
+                            <div className="border border-slate-700 bg-slate-800/20 rounded-xl p-4">
+                              <TimelineContent
+                                period={period}
+                                isPast
+                                isExpanded={isExpanded}
+                                onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
+                              />
+                            </div>
+                          ) : <div />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── "Now" marker between past & future ── */}
+              {pastStrong.length > 0 && futureStrong.length > 0 && (
+                <div className="relative">
+                  <div className="flex items-center gap-3 sm:hidden">
+                    <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
+                      <div className="w-[14px] h-[14px] rounded-full bg-amber-500 border-2 border-slate-900 shadow-lg ring-2 ring-amber-500/30 animate-pulse" />
+                    </div>
+                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Now</span>
+                  </div>
+                  <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-center">
+                    <div className="border-t border-dashed border-amber-500/30" />
+                    <div className="flex justify-center">
+                      <div className="w-5 h-5 rounded-full bg-amber-500 border-2 border-slate-900 shadow-lg ring-2 ring-amber-500/30 animate-pulse z-10" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="border-t border-dashed border-amber-500/30 flex-1" />
+                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest flex-shrink-0">Present</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Future strong periods (full color, expanded) ── */}
+              {futureStrong.map((period, i) => {
+                const globalIdx = strongPeriods.indexOf(period);
+                const isRight = globalIdx % 2 === 0;
+                const isExpanded = expandedIdx === globalIdx;
+                const dotBg = "bg-green-500";
+                const borderColor = "border-green-500/30";
+                const bgColor = "bg-green-500/5";
 
                 return (
-                  <div key={i} className="relative">
-                    {/* ── Mobile layout: always left-aligned ── */}
+                  <div key={`future-${i}`} className="relative">
+                    {/* Mobile */}
                     <div className="flex items-start gap-3 sm:hidden">
-                      {/* Dot on line */}
                       <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
                         <div className={`w-[14px] h-[14px] rounded-full ${dotBg} border-2 border-slate-900 shadow-lg`} />
                       </div>
-                      {/* Content */}
                       <div className={`flex-1 border ${borderColor} ${bgColor} rounded-xl p-4`}>
                         <TimelineContent
                           period={period}
                           isExpanded={isExpanded}
-                          onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                          onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
                         />
                       </div>
                     </div>
-
-                    {/* ── Desktop layout: alternating left/right ── */}
+                    {/* Desktop */}
                     <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
-                      {/* Left column */}
-                      {isRight ? (
-                        <div />
-                      ) : (
+                      {isRight ? <div /> : (
                         <div className={`border ${borderColor} ${bgColor} rounded-xl p-4 text-right`}>
                           <TimelineContent
                             period={period}
                             isExpanded={isExpanded}
-                            onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                            onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
                             alignRight
                           />
                         </div>
                       )}
-
-                      {/* Center dot */}
                       <div className="flex justify-center pt-1">
                         <div className={`w-4 h-4 rounded-full ${dotBg} border-2 border-slate-900 shadow-lg z-10`} />
                       </div>
-
-                      {/* Right column */}
                       {isRight ? (
                         <div className={`border ${borderColor} ${bgColor} rounded-xl p-4`}>
                           <TimelineContent
                             period={period}
                             isExpanded={isExpanded}
-                            onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                            onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
                           />
                         </div>
-                      ) : (
-                        <div />
-                      )}
+                      ) : <div />}
                     </div>
                   </div>
                 );
@@ -531,6 +639,59 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
           </div>
         )}
       </div>
+
+      {/* ── Appendix: Moderate periods ── */}
+      {moderatePeriods.length > 0 && (
+        <div className="border border-slate-800 rounded-xl overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/30 hover:bg-slate-800/50 transition-colors text-left"
+            onClick={() => setAppendixOpen((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                Appendix: Additional Supportive Timeframes for Relationships
+              </span>
+              <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/20 rounded-full px-1.5 py-0.5 leading-none">
+                {moderatePeriods.length}
+              </span>
+            </div>
+            <span className="text-slate-600 text-xs">{appendixOpen ? "\u25B2" : "\u25BC"}</span>
+          </button>
+
+          {appendixOpen && (
+            <div className="px-4 py-4 space-y-3">
+              <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                These periods show partial alignment of marriage indicators. While not as definitive as the strong periods above,
+                they may coincide with meaningful relationship developments, deepening of bonds, or preparatory phases leading to commitment.
+              </p>
+              {moderatePeriods.map((period, i) => {
+                const isPast = period.startDate < todayStr;
+                return (
+                  <div
+                    key={`mod-${i}`}
+                    className={`border border-amber-500/20 bg-amber-500/5 rounded-lg p-3 ${isPast ? "opacity-40" : ""}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-sm font-bold ${isPast ? "text-slate-500" : "text-amber-400"}`}>
+                        Age {period.age}
+                      </span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                        Moderate
+                      </span>
+                      {isPast && (
+                        <span className="text-[10px] text-slate-600 italic">Past</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">{period.timeRange}</p>
+                    <p className="text-[10px] text-slate-600 mb-1">{period.dasha}</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">{period.summary}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -541,58 +702,61 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
 
 function TimelineContent({
   period,
+  isPast,
   isExpanded,
   onToggle,
   alignRight,
 }: {
   period: KeyPeriod;
+  isPast?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   alignRight?: boolean;
 }) {
-  const isStrong = period.strength === "Strong";
+  const accentText = isPast ? "text-slate-500" : "text-green-400";
+  const badgeBg = isPast ? "bg-slate-700/50 text-slate-500" : "bg-green-500/20 text-green-400";
 
   return (
     <div>
       {/* Age + strength */}
       <div className={`flex items-center gap-2 mb-1 ${alignRight ? "justify-end" : ""}`}>
-        <span className={`text-lg font-bold ${isStrong ? "text-green-400" : "text-amber-400"}`}>
+        <span className={`text-lg font-bold ${accentText}`}>
           Age {period.age}
         </span>
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-          isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"
-        }`}>
-          {period.strength}
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeBg}`}>
+          {isPast ? "Elapsed" : period.strength}
         </span>
       </div>
 
       {/* Time range + dasha */}
-      <p className="text-xs text-slate-500">{period.timeRange}</p>
-      <p className="text-[10px] text-slate-600 mb-2">{period.dasha}</p>
+      <p className={`text-xs ${isPast ? "text-slate-600" : "text-slate-500"}`}>{period.timeRange}</p>
+      <p className={`text-[10px] ${isPast ? "text-slate-700" : "text-slate-600"} mb-2`}>{period.dasha}</p>
 
       {/* Summary */}
-      <p className={`text-xs text-slate-300 leading-relaxed ${alignRight ? "text-right" : ""}`}>
+      <p className={`text-xs leading-relaxed ${isPast ? "text-slate-500" : "text-slate-300"} ${alignRight ? "text-right" : ""}`}>
         {period.summary}
       </p>
 
-      {/* Indication badges */}
-      <div className={`flex flex-wrap gap-1.5 mt-2 ${alignRight ? "justify-end" : ""}`}>
-        {period.indicates.meetingPartner && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
-            Meeting partner
-          </span>
-        )}
-        {period.indicates.engagement && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400">
-            Engagement
-          </span>
-        )}
-        {period.indicates.marriageFinalization && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400">
-            Marriage
-          </span>
-        )}
-      </div>
+      {/* Indication badges — hide for past */}
+      {!isPast && (
+        <div className={`flex flex-wrap gap-1.5 mt-2 ${alignRight ? "justify-end" : ""}`}>
+          {period.indicates.meetingPartner && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
+              Meeting partner
+            </span>
+          )}
+          {period.indicates.engagement && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              Engagement
+            </span>
+          )}
+          {period.indicates.marriageFinalization && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400">
+              Marriage
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Expand for Vedic interpretations */}
       <button

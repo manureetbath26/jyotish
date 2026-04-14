@@ -49,6 +49,8 @@ export interface KeyPeriod {
   strength: "Strong" | "Moderate";
   age: number;
   dasha: string;
+  /** ISO date string of window start (for chronological sorting & past/future detection) */
+  startDate: string;
   /** 1-2 sentence plain-English overview */
   summary: string;
   /** Per-rule Vedic-sourced interpretations (only for rules that are met) */
@@ -623,9 +625,9 @@ export function generateMarriageReport(
   // ── Section A: Summary ──
   const summary = generateSummary(windows, profile, birthYear, futureOnly);
 
-  // ── Section B: Key Periods ──
+  // ── Section B: Key Periods (chronological) ──
   const keyPeriods: KeyPeriod[] = windows
-    .sort((a, b) => b.peakScore - a.peakScore || b.avgScore - a.avgScore)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
     .map((w) => {
       const peak = w.months.reduce((best, m) =>
         m.rulesSatisfied > best.rulesSatisfied ? m : best, w.months[0]);
@@ -639,6 +641,7 @@ export function generateMarriageReport(
           : `${w.startMonth} – ${w.endMonth}`,
         strength,
         age,
+        startDate: w.startDate,
         dasha: dashaLabel,
         summary: buildWindowSummary(w, profile, birthYear),
         interpretations: buildRuleInterpretations(
