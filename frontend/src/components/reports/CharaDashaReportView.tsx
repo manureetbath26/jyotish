@@ -665,6 +665,11 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
           )}
         </div>
       )}
+
+      {/* ── Footnote ── */}
+      <p className="text-[10px] text-slate-600 italic leading-relaxed pt-2 border-t border-slate-800/50">
+        Note: Planetary alignments occurring before age 18 have been excluded from this analysis, as they fall outside the culturally and legally relevant age range for marriage.
+      </p>
     </div>
   );
 }
