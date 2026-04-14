@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { CharaDashaReport, DashaPeriod, Sign } from "@/lib/charaDashaEngine";
+import type { CharaDashaReport, DashaPeriod, SubPeriod, SubSubPeriod, Sign } from "@/lib/charaDashaEngine";
 import type { ChartResponse } from "@/lib/api";
 import { fetchLifetimeTransits } from "@/lib/api";
 import { preparePredictionInput } from "@/lib/jaiminiPredictiveEngine";
@@ -284,56 +284,8 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
           })}
         </div>
 
-        {/* Detailed table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800">
-                <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Sign</th>
-                <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Lord</th>
-                <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Lord In</th>
-                <th className="text-center py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Duration</th>
-                <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Period</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.dashaSequence.map((d) => {
-                const style = SIGN_STYLE[d.sign];
-                return (
-                  <tr
-                    key={d.sign}
-                    className={`border-b border-slate-800/50 ${
-                      d.isCurrentPeriod ? "bg-amber-500/5" : "hover:bg-slate-800/30"
-                    }`}
-                  >
-                    <td className="py-2.5 px-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className={style?.color || "text-slate-400"}>{style?.icon || ""}</span>
-                        <span className={`font-medium ${d.isCurrentPeriod ? "text-amber-400" : "text-slate-200"}`}>
-                          {d.sign}
-                        </span>
-                        {d.isCurrentPeriod && (
-                          <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
-                            Current
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-300">{d.lord}</td>
-                    <td className="py-2.5 px-2 text-slate-400">{d.lordSign}</td>
-                    <td className="py-2.5 px-2 text-center">
-                      <span className="text-slate-200 font-semibold">{d.duration}</span>
-                      <span className="text-slate-500 text-xs ml-0.5">yrs</span>
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-400 text-xs">
-                      {formatDate(d.startDate)} – {formatDate(d.endDate)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* Detailed table with collapsible sub-periods */}
+        <DashaTable dashaSequence={report.dashaSequence} />
       </Section>
 
       {/* Section 4: Marriage Prediction */}
@@ -796,6 +748,240 @@ function TimelineContent({
       )}
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Dasha Table with collapsible sub-periods
+// ────────────────────────────────────────────────────────────────────────────
+
+function DashaTable({ dashaSequence }: { dashaSequence: DashaPeriod[] }) {
+  const [expandedMD, setExpandedMD] = useState<string | null>(null);
+  const [expandedAD, setExpandedAD] = useState<string | null>(null);
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-800">
+            <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Sign</th>
+            <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Lord</th>
+            <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Lord In</th>
+            <th className="text-center py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Duration</th>
+            <th className="text-left py-2 px-2 text-xs text-slate-500 font-medium uppercase tracking-wide">Period</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dashaSequence.map((d) => {
+            const style = SIGN_STYLE[d.sign];
+            const isMDExpanded = expandedMD === d.sign;
+
+            return (
+              <DashaPeriodRows
+                key={d.sign}
+                dasha={d}
+                style={style}
+                isMDExpanded={isMDExpanded}
+                onToggleMD={() => {
+                  setExpandedMD(isMDExpanded ? null : d.sign);
+                  setExpandedAD(null);
+                }}
+                expandedAD={expandedAD}
+                onToggleAD={(key) => setExpandedAD(expandedAD === key ? null : key)}
+              />
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Renders the main dasha row + optional sub-period rows + sub-sub-period rows */
+function DashaPeriodRows({
+  dasha: d,
+  style,
+  isMDExpanded,
+  onToggleMD,
+  expandedAD,
+  onToggleAD,
+}: {
+  dasha: DashaPeriod;
+  style: { icon: string; color: string; bg: string } | undefined;
+  isMDExpanded: boolean;
+  onToggleMD: () => void;
+  expandedAD: string | null;
+  onToggleAD: (key: string) => void;
+}) {
+  const hasSubPeriods = d.subPeriods && d.subPeriods.length > 0;
+
+  return (
+    <>
+      {/* ── Maha Dasha row ── */}
+      <tr
+        className={`border-b border-slate-800/50 ${
+          d.isCurrentPeriod ? "bg-amber-500/5" : "hover:bg-slate-800/30"
+        } ${hasSubPeriods ? "cursor-pointer" : ""}`}
+        onClick={hasSubPeriods ? onToggleMD : undefined}
+      >
+        <td className="py-2.5 px-2">
+          <div className="flex items-center gap-1.5">
+            {hasSubPeriods && (
+              <span className="text-slate-600 text-[10px] w-3 flex-shrink-0">
+                {isMDExpanded ? "\u25BC" : "\u25B6"}
+              </span>
+            )}
+            <span className={style?.color || "text-slate-400"}>{style?.icon || ""}</span>
+            <span className={`font-medium ${d.isCurrentPeriod ? "text-amber-400" : "text-slate-200"}`}>
+              {d.sign}
+            </span>
+            {d.isCurrentPeriod && (
+              <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
+                Current
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="py-2.5 px-2 text-slate-300">{d.lord}</td>
+        <td className="py-2.5 px-2 text-slate-400">{d.lordSign}</td>
+        <td className="py-2.5 px-2 text-center">
+          <span className="text-slate-200 font-semibold">{d.duration}</span>
+          <span className="text-slate-500 text-xs ml-0.5">yrs</span>
+        </td>
+        <td className="py-2.5 px-2 text-slate-400 text-xs">
+          {formatDate(d.startDate)} – {formatDate(d.endDate)}
+        </td>
+      </tr>
+
+      {/* ── Antar Dasha rows (sub-periods) ── */}
+      {isMDExpanded && d.subPeriods?.map((sub, si) => {
+        const subStyle = SIGN_STYLE[sub.sign];
+        const adKey = `${d.sign}-${sub.sign}-${si}`;
+        const isADExpanded = expandedAD === adKey;
+        const hasSubSub = sub.subSubPeriods && sub.subSubPeriods.length > 0;
+
+        return (
+          <SubPeriodRows
+            key={adKey}
+            sub={sub}
+            subStyle={subStyle}
+            parentSign={d.sign}
+            adKey={adKey}
+            isADExpanded={isADExpanded}
+            onToggleAD={() => onToggleAD(adKey)}
+            hasSubSub={hasSubSub}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** Renders a sub-period row + optional sub-sub-period rows */
+function SubPeriodRows({
+  sub,
+  subStyle,
+  parentSign,
+  adKey,
+  isADExpanded,
+  onToggleAD,
+  hasSubSub,
+}: {
+  sub: SubPeriod;
+  subStyle: { icon: string; color: string; bg: string } | undefined;
+  parentSign: string;
+  adKey: string;
+  isADExpanded: boolean;
+  onToggleAD: () => void;
+  hasSubSub: boolean;
+}) {
+  return (
+    <>
+      <tr
+        className={`border-b border-slate-800/30 ${
+          sub.isCurrentPeriod ? "bg-amber-500/5" : "hover:bg-slate-800/20"
+        } ${hasSubSub ? "cursor-pointer" : ""}`}
+        onClick={hasSubSub ? onToggleAD : undefined}
+      >
+        <td className="py-2 px-2 pl-8">
+          <div className="flex items-center gap-1.5">
+            {hasSubSub && (
+              <span className="text-slate-600 text-[10px] w-3 flex-shrink-0">
+                {isADExpanded ? "\u25BC" : "\u25B6"}
+              </span>
+            )}
+            <span className={`text-xs ${subStyle?.color || "text-slate-500"}`}>{subStyle?.icon || ""}</span>
+            <span className={`text-xs ${sub.isCurrentPeriod ? "text-amber-400 font-medium" : "text-slate-400"}`}>
+              {parentSign}–{sub.sign}
+            </span>
+            {sub.isCurrentPeriod && (
+              <span className="text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full px-1 py-0.5 leading-none">
+                Active
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="py-2 px-2 text-xs text-slate-500">{sub.lord}</td>
+        <td className="py-2 px-2 text-xs text-slate-500">{sub.lordSign}</td>
+        <td className="py-2 px-2 text-center">
+          <span className="text-xs text-slate-400">{formatSubDuration(sub.duration)}</span>
+        </td>
+        <td className="py-2 px-2 text-slate-500 text-[11px]">
+          {formatDate(sub.startDate)} – {formatDate(sub.endDate)}
+        </td>
+      </tr>
+
+      {/* ── Pratyantardasha rows (sub-sub-periods) ── */}
+      {isADExpanded && sub.subSubPeriods?.map((ss, ssi) => {
+        const ssStyle = SIGN_STYLE[ss.sign];
+        return (
+          <tr
+            key={`${adKey}-${ss.sign}-${ssi}`}
+            className={`border-b border-slate-800/20 ${
+              ss.isCurrentPeriod ? "bg-amber-500/5" : "hover:bg-slate-800/10"
+            }`}
+          >
+            <td className="py-1.5 px-2 pl-14">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] ${ssStyle?.color || "text-slate-600"}`}>{ssStyle?.icon || ""}</span>
+                <span className={`text-[11px] ${ss.isCurrentPeriod ? "text-amber-400" : "text-slate-500"}`}>
+                  {parentSign}–{sub.sign}–{ss.sign}
+                </span>
+                {ss.isCurrentPeriod && (
+                  <span className="text-[8px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-1 py-0.5 leading-none">
+                    Now
+                  </span>
+                )}
+              </div>
+            </td>
+            <td className="py-1.5 px-2 text-[11px] text-slate-600">{ss.lord}</td>
+            <td className="py-1.5 px-2 text-[11px] text-slate-600">{ss.lordSign}</td>
+            <td className="py-1.5 px-2 text-center">
+              <span className="text-[11px] text-slate-500">{formatSubSubDuration(ss.duration)}</span>
+            </td>
+            <td className="py-1.5 px-2 text-slate-600 text-[10px]">
+              {formatDate(ss.startDate)} – {formatDate(ss.endDate)}
+            </td>
+          </tr>
+        );
+      })}
+    </>
+  );
+}
+
+/** Format sub-period duration (years fraction → "X mo") */
+function formatSubDuration(years: number): string {
+  const months = Math.round(years * 12);
+  return months >= 12 ? `${(months / 12).toFixed(0)} yr` : `${months} mo`;
+}
+
+/** Format sub-sub-period duration (years fraction → "X days") */
+function formatSubSubDuration(years: number): string {
+  const days = Math.round(years * 365.25);
+  if (days >= 30) {
+    const mo = (days / 30.44).toFixed(1);
+    return `${mo} mo`;
+  }
+  return `${days} d`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
