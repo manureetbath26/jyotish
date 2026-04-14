@@ -138,7 +138,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 
         // ── Generate structured report ──
         const report = generateMarriageReport(predInput, chart, scan, {
-          futureOnly: true,
+          futureOnly: false,
           birthYear,
         });
 
@@ -332,7 +332,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
   const hasStrongPeriods = allStrong.length > 0;
   const timelinePeriods = hasStrongPeriods
     ? allStrong
-    : [...allModerate].sort((a, b) => b.rulesMetList.length - a.rulesMetList.length);
+    : [...allModerate].sort((a, b) => a.startDate.localeCompare(b.startDate));
   const appendixPeriods = hasStrongPeriods ? allModerate : [];
 
   // Further split timeline into past/future
