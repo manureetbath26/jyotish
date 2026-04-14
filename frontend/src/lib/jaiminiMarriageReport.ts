@@ -37,6 +37,7 @@ export interface MarriageReport {
   verdict: ReportVerdict;
   marriageCount: MarriageCountEstimate;
   natalProfile: NatalMarriageProfile;
+  divorceRisk: DivorceRiskAssessment;
 }
 
 export interface ReportSummary {
@@ -85,11 +86,48 @@ export interface NatalMarriageProfile {
   seventhLord: string;
   dk: string;
   dkSign: Sign;
+  dkDegree: number;
   karakamsha: string | null;
   beneficsOn7th: string[];
   maleficsOnUL: string[];
   secondFromUL: Sign;
   planetsIn2ndFromUL: string[];
+  /** Gnatikaraka — 6th significator (enemies, legal disputes) */
+  gk: string;
+  gkSign: Sign;
+  gkDegree: number;
+  /** A7 / Dara Pada — pada of the 7th house */
+  a7Sign: Sign;
+  /** 8th house from UL — marital longevity */
+  eighthFromUL: Sign;
+  planetsIn8thFromUL: string[];
+  /** Relationship of UL to AL: house distance AL→UL */
+  ulFromAl: number;
+  /** Lord of the 2nd from UL */
+  secondFromULLord: string;
+  secondFromULLordSign: Sign;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Divorce / Separation risk types
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface DivorceRiskFinding {
+  /** Short label for the rule */
+  rule: string;
+  /** Severity: "high" | "moderate" | "mild" */
+  severity: "high" | "moderate" | "mild";
+  /** Empathetic plain-English explanation */
+  explanation: string;
+}
+
+export interface DivorceRiskAssessment {
+  /** Overall risk: "low" | "moderate" | "elevated" */
+  overallRisk: "low" | "moderate" | "elevated";
+  /** Individual findings (empty if no risk factors) */
+  findings: DivorceRiskFinding[];
+  /** Empathetic summary paragraph */
+  narrative: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -142,8 +180,19 @@ function buildNatalProfile(
   const dk = input.karakas.find((k) => k.role === "Darakaraka");
   const dkName = dk?.planet || "Venus";
   const dkSign = (dk?.rashi as Sign) || lagna;
+  const dkDegree = dk?.degree_in_rashi ?? 0;
+
+  // GK (Gnatikaraka) — 6th significator (enemies, legal disputes)
+  const gk = input.karakas.find((k) => k.role === "Gnatikaraka");
+  const gkName = gk?.planet || "Mercury";
+  const gkSign = (gk?.rashi as Sign) || lagna;
+  const gkDegree = gk?.degree_in_rashi ?? 0;
 
   const karakamsha = input.karakamsha?.karakamsha || null;
+
+  // A7 — Dara Pada (pada of the 7th house)
+  const a7Pada = input.allPadas.find((p) => p.house === 7);
+  const a7Sign = a7Pada?.padaSign || signAtOffset(lagna, 7);
 
   // Planets in 7th house
   const planetsIn7th = planetsInSign(chart.planets, seventhSign);
@@ -156,6 +205,16 @@ function buildNatalProfile(
   // 2nd from UL (sustenance of marriage)
   const secondFromUL = signAtOffset(ulSign, 2);
   const planetsIn2nd = planetsInSign(chart.planets, secondFromUL);
+  const secondFromULLord = SIGN_LORD[secondFromUL];
+  const secondFromULLordPlanet = chart.planets.find((p) => p.name === secondFromULLord);
+  const secondFromULLordSign = (secondFromULLordPlanet?.rashi as Sign) || secondFromUL;
+
+  // 8th from UL (marital longevity)
+  const eighthFromUL = signAtOffset(ulSign, 8);
+  const planetsIn8thFromUL = planetsInSign(chart.planets, eighthFromUL);
+
+  // UL position from AL (6/8 = friction)
+  const ulFromAl = ((SIGN_INDEX[ulSign] - SIGN_INDEX[alSign] + 12) % 12) + 1;
 
   return {
     ulSign,
@@ -166,11 +225,21 @@ function buildNatalProfile(
     seventhLord,
     dk: dkName,
     dkSign,
+    dkDegree,
     karakamsha,
     beneficsOn7th,
     maleficsOnUL,
     secondFromUL,
     planetsIn2ndFromUL: planetsIn2nd,
+    gk: gkName,
+    gkSign,
+    gkDegree,
+    a7Sign,
+    eighthFromUL,
+    planetsIn8thFromUL,
+    ulFromAl,
+    secondFromULLord,
+    secondFromULLordSign,
   };
 }
 
@@ -726,6 +795,182 @@ function generateVerdict(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Divorce / Separation risk assessment
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Debilitation signs for each planet */
+const DEBILITATION: Record<string, Sign> = {
+  Sun: "Libra",
+  Moon: "Scorpio",
+  Mars: "Cancer",
+  Mercury: "Pisces",
+  Jupiter: "Capricorn",
+  Venus: "Virgo",
+  Saturn: "Aries",
+};
+
+function buildDivorceRiskAssessment(
+  profile: NatalMarriageProfile,
+  chart: ChartResponse,
+): DivorceRiskAssessment {
+  const findings: DivorceRiskFinding[] = [];
+
+  // ── Rule 1: Malefics in 2nd from UL (sustenance of marriage) ──
+  // Jaimini Sutra 1.3.1–1.3.5: 2nd from UL indicates longevity of marriage
+  const maleficsIn2nd = profile.planetsIn2ndFromUL.filter((n) => MALEFICS.has(n));
+  const hasSaturnRahuIn2nd =
+    maleficsIn2nd.includes("Saturn") && maleficsIn2nd.includes("Rahu");
+
+  if (hasSaturnRahuIn2nd) {
+    findings.push({
+      rule: "Saturn-Rahu in 2nd from UL",
+      severity: "high",
+      explanation:
+        `Saturn and Rahu both occupy the 2nd house from your Upa-Pada (${profile.secondFromUL}). In Jaimini tradition, this combination in the sustaining house of marriage can bring significant challenges to marital stability — Saturn introduces coldness or emotional distance, while Rahu may indicate unconventional circumstances or misunderstandings. Awareness of these tendencies can help navigate them consciously.`,
+    });
+  } else if (maleficsIn2nd.length >= 2) {
+    const names = maleficsIn2nd.join(" and ");
+    findings.push({
+      rule: "Multiple malefics in 2nd from UL",
+      severity: "high",
+      explanation:
+        `${names} are placed in the 2nd house from your Upa-Pada (${profile.secondFromUL}), which governs the sustenance and continuity of marriage. Multiple challenging influences here suggest that maintaining harmony may require extra effort, patience, and clear communication from both partners.`,
+    });
+  } else if (maleficsIn2nd.length === 1) {
+    const planet = maleficsIn2nd[0];
+    const roleMap: Record<string, string> = {
+      Sun: "ego-related frictions or power struggles",
+      Mars: "arguments, impatience, or heated disagreements",
+      Saturn: "emotional distance, delays, or feelings of restriction",
+      Rahu: "misunderstandings, unconventional situations, or trust issues",
+      Ketu: "detachment or spiritual disconnection from marital responsibilities",
+    };
+    const role = roleMap[planet] || "challenges in the marital dynamic";
+    findings.push({
+      rule: `${planet} in 2nd from UL`,
+      severity: "moderate",
+      explanation:
+        `${planet} occupies the 2nd house from your Upa-Pada (${profile.secondFromUL}). This can occasionally manifest as ${role}. Being mindful of this tendency allows you to proactively strengthen the relationship.`,
+    });
+  }
+
+  // ── Rule 2: DK conjunct GK (spouse significator + enemy significator) ──
+  // When Darakaraka and Gnatikaraka are in the same sign, especially close in degree,
+  // it can indicate legal disputes or adversarial dynamics in marriage.
+  if (profile.dkSign === profile.gkSign && profile.dk !== profile.gk) {
+    const degreeDiff = Math.abs(profile.dkDegree - profile.gkDegree);
+    if (degreeDiff <= 5) {
+      findings.push({
+        rule: "DK-GK conjunction (close)",
+        severity: "high",
+        explanation:
+          `Your Darakaraka (${profile.dk} — spouse significator) is closely conjunct the Gnatikaraka (${profile.gk} — significator of adversaries and legal matters) in ${profile.dkSign}, within ${degreeDiff.toFixed(1)} degrees. In Jaimini astrology, this rare conjunction can indicate that marital life may occasionally touch upon legal or adversarial themes. Open communication and mutual respect are powerful antidotes to this influence.`,
+      });
+    } else {
+      findings.push({
+        rule: "DK-GK conjunction (wide)",
+        severity: "moderate",
+        explanation:
+          `Your Darakaraka (${profile.dk}) and Gnatikaraka (${profile.gk}) share the same sign (${profile.dkSign}), suggesting some overlap between partnership and conflict themes. The wider orb reduces intensity, but periodic disagreements may arise that benefit from patience and understanding.`,
+      });
+    }
+  }
+
+  // ── Rule 3: A7 (Dara Pada) in 6/8/12 from AL ──
+  // A7 in dusthana from AL indicates the world perceives the partnership
+  // through a lens of separation, conflict, or hidden dynamics.
+  const alSign = profile.alSign;
+  const a7FromAl = ((SIGN_INDEX[profile.a7Sign] - SIGN_INDEX[alSign] + 12) % 12) + 1;
+  if ([6, 8, 12].includes(a7FromAl)) {
+    const houseLabel =
+      a7FromAl === 6 ? "6th (conflict/service)"
+      : a7FromAl === 8 ? "8th (transformation/hidden matters)"
+      : "12th (loss/foreign lands)";
+    findings.push({
+      rule: `A7 in ${a7FromAl}th from AL`,
+      severity: a7FromAl === 8 ? "high" : "moderate",
+      explanation:
+        `Your Dara Pada (A7 — ${profile.a7Sign}) falls in the ${houseLabel} house from the Arudha Lagna (${alSign}). This placement suggests that the external perception of your partnership may carry themes of ${
+          a7FromAl === 6 ? "disagreements or adjustments"
+          : a7FromAl === 8 ? "deep transformation or periods of upheaval"
+          : "physical distance or letting go"
+        }. Understanding this pattern helps you build a partnership grounded in inner truth rather than external appearances.`,
+    });
+  }
+
+  // ── Rule 4: Debilitated lord of 2nd from UL ──
+  // If the lord governing marriage sustenance is debilitated, its protective capacity is weakened.
+  const secondLord = profile.secondFromULLord;
+  const secondLordSign = profile.secondFromULLordSign;
+  const debSign = DEBILITATION[secondLord];
+  if (debSign && secondLordSign === debSign) {
+    findings.push({
+      rule: `2nd-from-UL lord debilitated`,
+      severity: "moderate",
+      explanation:
+        `The lord of the 2nd house from your Upa-Pada (${secondLord}) is placed in its debilitation sign (${debSign}). This weakens the protective and sustaining energy for marital longevity. This does not determine outcomes — rather, it highlights an area where conscious nurturing and partnership effort yield great rewards.`,
+    });
+  }
+
+  // ── Rule 5: AL and UL in 6/8 relationship (constant friction) ──
+  // When the social self (AL) and the marriage house (UL) fall in 6/8 axis,
+  // there can be a fundamental tension between public life and domestic harmony.
+  if ([6, 8].includes(profile.ulFromAl)) {
+    findings.push({
+      rule: `UL in ${profile.ulFromAl}th from AL`,
+      severity: "moderate",
+      explanation:
+        `Your Upa-Pada (${profile.ulSign}) falls in the ${profile.ulFromAl}th house from the Arudha Lagna (${profile.alSign}), placing the marriage house and social image in a ${profile.ulFromAl === 6 ? "6/8" : "8/6"} axis. This can create underlying tension between public responsibilities and domestic peace. Prioritizing quality time and emotional presence at home can bridge this gap.`,
+    });
+  }
+
+  // ── Rule 6: Malefics in 8th from UL (sudden disruptions) ──
+  const maleficsIn8th = profile.planetsIn8thFromUL.filter((n) => MALEFICS.has(n));
+  if (maleficsIn8th.length > 0) {
+    findings.push({
+      rule: `Malefic(s) in 8th from UL`,
+      severity: maleficsIn8th.length >= 2 ? "high" : "mild",
+      explanation:
+        `${maleficsIn8th.join(" and ")} ${maleficsIn8th.length === 1 ? "occupies" : "occupy"} the 8th house from your Upa-Pada (${profile.eighthFromUL}). The 8th from UL relates to sudden changes in marital life. ${
+          maleficsIn8th.length >= 2
+            ? "Multiple malefics here amplify the potential for unexpected turns — financial pressures, health concerns, or abrupt changes in circumstances."
+            : `${maleficsIn8th[0]} here may bring periodic transformative experiences within the marriage that, while challenging, can deepen mutual understanding when faced together.`
+        }`,
+    });
+  }
+
+  // ── Determine overall risk level ──
+  const highCount = findings.filter((f) => f.severity === "high").length;
+  const moderateCount = findings.filter((f) => f.severity === "moderate").length;
+
+  let overallRisk: "low" | "moderate" | "elevated";
+  if (highCount >= 2 || (highCount >= 1 && moderateCount >= 2)) {
+    overallRisk = "elevated";
+  } else if (highCount >= 1 || moderateCount >= 2) {
+    overallRisk = "moderate";
+  } else if (moderateCount === 1 || findings.length > 0) {
+    overallRisk = "moderate";
+  } else {
+    overallRisk = "low";
+  }
+
+  // ── Build empathetic narrative ──
+  let narrative: string;
+  if (findings.length === 0) {
+    narrative =
+      "Your birth chart does not show significant classical Jaimini indicators for marital stress. The sustaining houses of marriage are well-supported, suggesting a naturally harmonious foundation for partnership.";
+  } else if (overallRisk === "elevated") {
+    narrative =
+      "Your chart contains several classical Jaimini indicators that may bring challenges to marital harmony. It is important to understand that these are tendencies, not certainties — every relationship is shaped by the choices, awareness, and growth of both partners. Many people with similar chart patterns build deeply fulfilling marriages by cultivating patience, honest communication, and mutual respect. These indicators are shared not to cause concern, but to empower you with self-awareness.";
+  } else {
+    narrative =
+      "Your chart shows some indicators that may require mindful attention in marital life. These are gentle tendencies rather than fixed outcomes — awareness of them is itself a protective factor. Many couples with similar patterns navigate these influences successfully through open communication and mutual care.";
+  }
+
+  return { overallRisk, findings, narrative };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main report generator
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -802,6 +1047,9 @@ export function generateMarriageReport(
   // ── Marriage count ──
   const marriageCount = estimateMarriageCount(profile, windows, chart);
 
+  // ── Divorce / Separation risk ──
+  const divorceRisk = buildDivorceRiskAssessment(profile, chart);
+
   return {
     summary,
     keyPeriods,
@@ -811,5 +1059,6 @@ export function generateMarriageReport(
     verdict,
     marriageCount,
     natalProfile: profile,
+    divorceRisk,
   };
 }

@@ -486,6 +486,7 @@ function CharaDashaReportContent() {
                   "Expected Marriage Count Analysis",
                   "Progress Tracking for Current Period",
                   "Supporting Indicators & Challenges",
+                  "Relationship Awareness & Cautions",
                   "Appendix: Supportive Relationship Timeframes",
                 ].map((f) => (
                   <div key={f} className="flex items-center gap-2 text-xs text-slate-400">

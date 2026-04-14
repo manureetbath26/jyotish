@@ -14,6 +14,7 @@ import {
   generateMarriageReport,
   type MarriageReport,
   type KeyPeriod,
+  type DivorceRiskAssessment,
 } from "@/lib/jaiminiMarriageReport";
 
 interface Props {
@@ -602,6 +603,11 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         </div>
       )}
 
+      {/* ── F. Relationship Cautions (Divorce Risk) ── */}
+      {report.divorceRisk.findings.length > 0 && (
+        <RelationshipCautionsSection assessment={report.divorceRisk} />
+      )}
+
       {/* ── Appendix: Moderate periods (only when strong periods exist) ── */}
       {appendixPeriods.length > 0 && (
         <div className="border border-slate-800 rounded-xl overflow-hidden">
@@ -659,6 +665,102 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
       <p className="text-[10px] text-slate-600 italic leading-relaxed pt-2 border-t border-slate-800/50">
         Note: Planetary alignments occurring before age 18 have been excluded from this analysis, as they fall outside the culturally and legally relevant age range for marriage.
       </p>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Relationship Cautions (Divorce Risk) section
+// ────────────────────────────────────────────────────────────────────────────
+
+function RelationshipCautionsSection({ assessment }: { assessment: DivorceRiskAssessment }) {
+  const [open, setOpen] = useState(false);
+
+  const riskColor =
+    assessment.overallRisk === "elevated"
+      ? { badge: "bg-rose-500/20 text-rose-400 border-rose-500/30", dot: "text-rose-400", border: "border-rose-500/20" }
+      : assessment.overallRisk === "moderate"
+        ? { badge: "bg-amber-500/20 text-amber-400 border-amber-500/30", dot: "text-amber-400", border: "border-amber-500/20" }
+        : { badge: "bg-slate-500/20 text-slate-400 border-slate-500/30", dot: "text-slate-400", border: "border-slate-500/20" };
+
+  const riskLabel =
+    assessment.overallRisk === "elevated" ? "Needs Attention"
+    : assessment.overallRisk === "moderate" ? "Some Cautions"
+    : "Minimal";
+
+  const severityIcon = (sev: "high" | "moderate" | "mild") =>
+    sev === "high" ? "\u26A0" : sev === "moderate" ? "\u25B3" : "\u25CB";
+
+  const severityColor = (sev: "high" | "moderate" | "mild") =>
+    sev === "high"
+      ? "text-rose-400"
+      : sev === "moderate"
+        ? "text-amber-400"
+        : "text-slate-500";
+
+  return (
+    <div className={`border ${riskColor.border} rounded-xl overflow-hidden bg-slate-900/30`}>
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/30 hover:bg-slate-800/50 transition-colors text-left"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{"\uD83D\uDCA1"}</span>
+          <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+            Relationship Awareness & Cautions
+          </span>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${riskColor.badge}`}>
+            {riskLabel}
+          </span>
+        </div>
+        <span className="text-slate-600 text-xs">{open ? "\u25B2" : "\u25BC"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-4 space-y-4">
+          {/* Empathetic intro */}
+          <div className="bg-slate-800/20 rounded-lg p-3 border border-slate-800/50">
+            <p className="text-xs text-slate-400 leading-relaxed italic">
+              {assessment.narrative}
+            </p>
+          </div>
+
+          {/* Individual findings */}
+          <div className="space-y-3">
+            {assessment.findings.map((finding, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <span className={`text-xs mt-0.5 flex-shrink-0 ${severityColor(finding.severity)}`}>
+                  {severityIcon(finding.severity)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[11px] font-semibold text-slate-300">{finding.rule}</span>
+                    <span className={`text-[9px] px-1 py-0.5 rounded ${
+                      finding.severity === "high"
+                        ? "bg-rose-500/15 text-rose-400"
+                        : finding.severity === "moderate"
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-slate-500/15 text-slate-500"
+                    }`}>
+                      {finding.severity}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">{finding.explanation}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Reassuring footer */}
+          <div className="pt-2 border-t border-slate-800/50">
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              These observations are drawn from Jaimini Sutra principles (1.3.1–1.3.5 on Upa-Pada, 1.1.13–1.1.21 on Karakas).
+              Astrological indicators reflect tendencies, not fixed destinies. Every relationship is ultimately shaped by the
+              awareness, choices, and love that both partners bring to it.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
