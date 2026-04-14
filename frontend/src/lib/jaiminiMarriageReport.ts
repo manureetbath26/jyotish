@@ -543,7 +543,9 @@ function generateSummary(
   profile: NatalMarriageProfile,
   birthYear: number,
   isFutureOnly: boolean,
+  todayStr?: string,
 ): ReportSummary {
+  const today = todayStr || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
   const strongWindows = windows.filter((w) => w.peakScore >= 5);
   const moderateWindows = windows.filter((w) => w.peakScore >= 3 && w.peakScore < 5);
   const bestWindow = windows.length > 0
@@ -559,10 +561,48 @@ function generateSummary(
   }
 
   const bestAge = ageAt(birthYear, bestWindow.startDate);
-  const futureLabel = isFutureOnly ? "upcoming" : "lifetime";
+  const bestIsPast = bestWindow.endDate < today;
 
+  // ── Best period is in the past → marriage has likely already occurred ──
+  if (bestIsPast && strongWindows.length > 0) {
+    const best = strongWindows.sort((a, b) => b.peakScore - a.peakScore)[0];
+    const bestPastAge = ageAt(birthYear, best.startDate);
+    const range = `${best.months[0].month}–${best.months[best.months.length - 1].month}`;
+
+    // Check if there are also future strong windows
+    const futureStrong = strongWindows.filter((w) => w.endDate >= today);
+    const futureNote = futureStrong.length > 0
+      ? ` Looking ahead, ${futureStrong.length} additional strong period${futureStrong.length > 1 ? "s" : ""} appear${futureStrong.length === 1 ? "s" : ""} in the future, which may indicate relationship renewal, deepening, or a significant new chapter.`
+      : "";
+
+    return {
+      text:
+        `Your Jaimini analysis indicates that the strongest marriage window in your chart occurred around age ${bestPastAge} (${range}). During this period, multiple planetary factors aligned simultaneously on your marriage house — this is a classical signature for the timing of marriage. If you are already married, this confirms strong astrological support for the union during that phase.${futureNote}`,
+      mostLikelyPeriod: `${best.months[0].month} – ${best.months[best.months.length - 1].month}`,
+    };
+  }
+
+  // ── Best period is in the past but only moderate ──
+  if (bestIsPast && moderateWindows.length > 0) {
+    const best = moderateWindows[0];
+    const bestPastAge = ageAt(birthYear, best.startDate);
+    const futureModerate = moderateWindows.filter((w) => w.endDate >= today);
+    const futureNote = futureModerate.length > 0
+      ? ` ${futureModerate.length} upcoming period${futureModerate.length > 1 ? "s" : ""} with moderate support may bring further relationship developments.`
+      : "";
+
+    return {
+      text:
+        `The most supportive marriage period in your chart was around age ${bestPastAge} (${best.months[0].month}–${best.months[best.months.length - 1].month}), when several planetary factors partially aligned with your marriage house. If you entered a committed relationship during this phase, the chart supports that timing.${futureNote}`,
+      mostLikelyPeriod: `${best.months[0].month} – ${best.months[best.months.length - 1].month}`,
+    };
+  }
+
+  // ── Best period is in the future ──
   if (strongWindows.length > 0) {
-    const best = strongWindows[0];
+    const futureStrong = strongWindows.filter((w) => w.endDate >= today).sort((a, b) => b.peakScore - a.peakScore);
+    const best = futureStrong.length > 0 ? futureStrong[0] : strongWindows[0];
+    const age = ageAt(birthYear, best.startDate);
     const bestPeak = best.months.reduce((a, m) =>
       m.rulesSatisfied > a.rulesSatisfied ? m : a, best.months[0]);
     const hasAllTransits = [1, 2, 3].every((r) => bestPeak.rulesMetList.includes(r));
@@ -577,9 +617,15 @@ function generateSummary(
       detail = "Key planetary transits align with your birth chart's marriage factors, while your current life period supports commitment and partnership.";
     }
 
+    // Note past strong windows too
+    const pastStrong = strongWindows.filter((w) => w.endDate < today);
+    const pastNote = pastStrong.length > 0
+      ? ` Your chart also shows ${pastStrong.length} strong period${pastStrong.length > 1 ? "s" : ""} in the past — if you experienced significant relationship milestones then, the chart confirms that timing.`
+      : "";
+
     return {
       text:
-        `Your Jaimini analysis reveals ${strongWindows.length} strongly favorable marriage period${strongWindows.length > 1 ? "s" : ""}. The most promising alignment is around age ${bestAge} (${best.months[0].month}–${best.months[best.months.length - 1].month}). ${detail}` +
+        `Your Jaimini analysis reveals a strongly favorable upcoming marriage period around age ${age} (${best.months[0].month}–${best.months[best.months.length - 1].month}). ${detail}${pastNote}` +
         (moderateWindows.length > 0
           ? ` ${moderateWindows.length} additional period${moderateWindows.length > 1 ? "s" : ""} with moderate support also exist.`
           : " This is a clear and auspicious indication for marriage."),
@@ -587,11 +633,12 @@ function generateSummary(
     };
   }
 
-  // Only moderate windows
-  const best = moderateWindows[0];
+  // Only moderate windows — best is future
+  const best = moderateWindows.filter((w) => w.endDate >= today)[0] || moderateWindows[0];
+  const age = ageAt(birthYear, best.startDate);
   return {
     text:
-      `Your chart shows ${moderateWindows.length} period${moderateWindows.length > 1 ? "s" : ""} with moderate marriage support. The best opportunity is around age ${bestAge} (${best.months[0].month}–${best.months[best.months.length - 1].month}), when planetary transits and dasha conditions partially align with your marriage house. While not the strongest configuration, these periods carry genuine potential — especially if supported by personal readiness.`,
+      `Your chart shows ${moderateWindows.length} period${moderateWindows.length > 1 ? "s" : ""} with moderate marriage support. The best upcoming opportunity is around age ${age} (${best.months[0].month}–${best.months[best.months.length - 1].month}), when planetary transits and dasha conditions partially align with your marriage house. While not the strongest configuration, these periods carry genuine potential — especially if supported by personal readiness.`,
     mostLikelyPeriod: `${best.months[0].month} – ${best.months[best.months.length - 1].month}`,
   };
 }
@@ -604,7 +651,10 @@ function generateVerdict(
   windows: MarriageWindow[],
   profile: NatalMarriageProfile,
   birthYear: number,
+  todayStr?: string,
 ): ReportVerdict {
+  const today = todayStr || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
+
   const strongWindows = windows
     .filter((w) => w.peakScore >= 5)
     .sort((a, b) => b.peakScore - a.peakScore || b.avgScore - a.avgScore);
@@ -613,7 +663,7 @@ function generateVerdict(
     .filter((w) => w.peakScore >= 3 && w.peakScore < 5)
     .sort((a, b) => b.peakScore - a.peakScore);
 
-  const topWindows = [...strongWindows, ...moderateWindows].slice(0, 2);
+  const topWindows = [...strongWindows, ...moderateWindows].slice(0, 3);
 
   if (topWindows.length === 0) {
     return {
@@ -636,9 +686,29 @@ function generateVerdict(
 
   const best = topWindows[0];
   const bestAge = ageAt(birthYear, best.startDate);
+  const bestIsPast = best.endDate < today;
 
   let narrative: string;
-  if (confidence === "High") {
+
+  if (bestIsPast && confidence === "High") {
+    // Strongest period is in the past — marriage likely happened
+    narrative = `The strongest marriage period in your chart was ${topLabels[0]} (around age ${bestAge}). The planetary conditions during this time closely matched classical Jaimini indicators for marriage — if you married during or near this period, the chart strongly confirms that timing. `;
+    const futureTop = topWindows.filter((w) => w.endDate >= today);
+    if (futureTop.length > 0) {
+      const futureAge = ageAt(birthYear, futureTop[0].startDate);
+      const futureLabel = `${futureTop[0].months[0].month} – ${futureTop[0].months[futureTop[0].months.length - 1].month}`;
+      narrative += `Looking ahead, ${futureLabel} (age ${futureAge}) also shows favorable conditions, which may relate to a deepening of the existing relationship or a new significant chapter.`;
+    }
+  } else if (bestIsPast) {
+    narrative = `The most supportive marriage period was ${topLabels[0]} (around age ${bestAge}). If a committed relationship began during this phase, the chart supports that timing. `;
+    const futureTop = topWindows.filter((w) => w.endDate >= today);
+    if (futureTop.length > 0) {
+      const futureAge = ageAt(birthYear, futureTop[0].startDate);
+      narrative += `A future period around age ${futureAge} also shows moderate alignment for relationship milestones.`;
+    } else {
+      narrative += "Future periods with additional support may emerge as planetary transits shift.";
+    }
+  } else if (confidence === "High") {
     narrative = `The most probable marriage period is ${topLabels[0]} (around age ${bestAge}), with strong convergence of transit, dasha, and natal factors. `;
     if (topWindows.length > 1) {
       const secondAge = ageAt(birthYear, topWindows[1].startDate);
@@ -683,7 +753,7 @@ export function generateMarriageReport(
     : scan.windows;
 
   // ── Section A: Summary ──
-  const summary = generateSummary(windows, profile, birthYear, futureOnly);
+  const summary = generateSummary(windows, profile, birthYear, futureOnly, todayStr);
 
   // ── Section B: Key Periods (chronological) ──
   const keyPeriods: KeyPeriod[] = windows
@@ -725,7 +795,7 @@ export function generateMarriageReport(
   const challenges = buildChallenges(profile, chart, windows);
 
   // ── Section F: Verdict ──
-  const verdict = generateVerdict(windows, profile, birthYear);
+  const verdict = generateVerdict(windows, profile, birthYear, todayStr);
 
   // ── Marriage count ──
   const marriageCount = estimateMarriageCount(profile, windows, chart);
