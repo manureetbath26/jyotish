@@ -418,20 +418,24 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                     </button>
                   </div>
 
-                  {/* Expanded past events — greyed out */}
+                  {/* Expanded past events — muted but with strength colors */}
                   {showPast && pastTimeline.map((period, i) => {
                     const globalIdx = timelinePeriods.indexOf(period);
                     const isRight = globalIdx % 2 === 0;
                     const isExpanded = expandedIdx === globalIdx;
+                    const isPastStrong = period.strength === "Strong";
+                    const pastDot = isPastStrong ? "bg-green-700" : "bg-amber-700";
+                    const pastBorder = isPastStrong ? "border-green-500/15" : "border-amber-500/15";
+                    const pastBg = isPastStrong ? "bg-green-500/[0.03]" : "bg-amber-500/[0.03]";
 
                     return (
-                      <div key={`past-${i}`} className="relative mt-8 opacity-50">
+                      <div key={`past-${i}`} className="relative mt-8">
                         {/* Mobile */}
                         <div className="flex items-start gap-3 sm:hidden">
                           <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
-                            <div className="w-[14px] h-[14px] rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg" />
+                            <div className={`w-[14px] h-[14px] rounded-full ${pastDot} border-2 border-slate-900 shadow-lg`} />
                           </div>
-                          <div className="flex-1 border border-slate-700 bg-slate-800/20 rounded-xl p-4">
+                          <div className={`flex-1 border ${pastBorder} ${pastBg} rounded-xl p-4`}>
                             <TimelineContent
                               period={period}
                               isPast
@@ -443,7 +447,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                         {/* Desktop */}
                         <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
                           {isRight ? <div /> : (
-                            <div className="border border-slate-700 bg-slate-800/20 rounded-xl p-4 text-right">
+                            <div className={`border ${pastBorder} ${pastBg} rounded-xl p-4 text-right`}>
                               <TimelineContent
                                 period={period}
                                 isPast
@@ -454,10 +458,10 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                             </div>
                           )}
                           <div className="flex justify-center pt-1">
-                            <div className="w-4 h-4 rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg z-10" />
+                            <div className={`w-4 h-4 rounded-full ${pastDot} border-2 border-slate-900 shadow-lg z-10`} />
                           </div>
                           {isRight ? (
-                            <div className="border border-slate-700 bg-slate-800/20 rounded-xl p-4">
+                            <div className={`border ${pastBorder} ${pastBg} rounded-xl p-4`}>
                               <TimelineContent
                                 period={period}
                                 isPast
@@ -683,8 +687,13 @@ function TimelineContent({
   alignRight?: boolean;
 }) {
   const isStrong = period.strength === "Strong";
-  const accentText = isPast ? "text-slate-500" : isStrong ? "text-green-400" : "text-amber-400";
-  const badgeBg = isPast ? "bg-slate-700/50 text-slate-500" : isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400";
+  // Past: muted but still colored by strength; Future: full color
+  const accentText = isPast
+    ? (isStrong ? "text-green-600" : "text-amber-600")
+    : (isStrong ? "text-green-400" : "text-amber-400");
+  const strengthBadge = isPast
+    ? (isStrong ? "bg-green-500/10 text-green-600" : "bg-amber-500/10 text-amber-600")
+    : (isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400");
 
   return (
     <div>
@@ -693,9 +702,14 @@ function TimelineContent({
         <span className={`text-lg font-bold ${accentText}`}>
           Age {period.age}
         </span>
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeBg}`}>
-          {isPast ? "Elapsed" : period.strength}
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${strengthBadge}`}>
+          {period.strength}
         </span>
+        {isPast && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-700/50 text-slate-500">
+            Past
+          </span>
+        )}
       </div>
 
       {/* Time range + dasha */}
@@ -707,26 +721,24 @@ function TimelineContent({
         {period.summary}
       </p>
 
-      {/* Indication badges — hide for past */}
-      {!isPast && (
-        <div className={`flex flex-wrap gap-1.5 mt-2 ${alignRight ? "justify-end" : ""}`}>
-          {period.indicates.meetingPartner && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
-              Meeting partner
-            </span>
-          )}
-          {period.indicates.engagement && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400">
-              Engagement
-            </span>
-          )}
-          {period.indicates.marriageFinalization && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400">
-              Marriage
-            </span>
-          )}
-        </div>
-      )}
+      {/* Indication badges — muted for past, full for future */}
+      <div className={`flex flex-wrap gap-1.5 mt-2 ${alignRight ? "justify-end" : ""}`}>
+        {period.indicates.meetingPartner && (
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isPast ? "bg-blue-500/5 border-blue-500/10 text-blue-600" : "bg-blue-500/10 border-blue-500/20 text-blue-400"}`}>
+            Meeting partner
+          </span>
+        )}
+        {period.indicates.engagement && (
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isPast ? "bg-purple-500/5 border-purple-500/10 text-purple-600" : "bg-purple-500/10 border-purple-500/20 text-purple-400"}`}>
+            Engagement
+          </span>
+        )}
+        {period.indicates.marriageFinalization && (
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isPast ? "bg-green-500/5 border-green-500/10 text-green-600" : "bg-green-500/10 border-green-500/20 text-green-400"}`}>
+            Marriage
+          </span>
+        )}
+      </div>
 
       {/* Expand for Vedic interpretations */}
       <button
