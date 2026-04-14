@@ -745,12 +745,14 @@ export function generateMarriageReport(
 
   const profile = buildNatalProfile(input, chart);
 
-  // Filter windows — future only for end users, all for admin
+  // Filter windows
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-  const windows = futureOnly
+  const MIN_MARRIAGE_AGE = 18;
+  const windows = (futureOnly
     ? scan.windows.filter((w) => w.endDate >= todayStr)
-    : scan.windows;
+    : scan.windows
+  ).filter((w) => ageAt(birthYear, w.startDate) >= MIN_MARRIAGE_AGE);
 
   // ── Section A: Summary ──
   const summary = generateSummary(windows, profile, birthYear, futureOnly, todayStr);
