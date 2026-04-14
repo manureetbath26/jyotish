@@ -30,7 +30,8 @@ import type {
 export interface MarriageReport {
   summary: ReportSummary;
   keyPeriods: KeyPeriod[];
-  detailedAnalysis: DetailedWindow[];
+  /** @deprecated — detailed info merged into keyPeriods */
+  detailedAnalysis: never[];
   strongIndicators: string[];
   challenges: string[];
   verdict: ReportVerdict;
@@ -46,18 +47,15 @@ export interface ReportSummary {
 export interface KeyPeriod {
   timeRange: string;
   strength: "Strong" | "Moderate";
+  age: number;
   dasha: string;
-  explanation: string;
-}
-
-export interface DetailedWindow {
-  windowLabel: string;
-  timeRange: string;
-  peakScore: number;
-  peakMonth: string;
-  dasha: string;
-  astrologicalNarrative: string;
-  whyMarriage: string;
+  /** 1-2 sentence plain-English overview */
+  summary: string;
+  /** Per-rule Vedic-sourced interpretations (only for rules that are met) */
+  interpretations: string[];
+  /** Which rules are met in the peak month (for reference) */
+  rulesMetList: number[];
+  /** What this period likely indicates */
   indicates: {
     meetingPartner: boolean;
     engagement: boolean;
@@ -251,99 +249,96 @@ function describeDasha(md: string | null, ad: string | null): string {
   return "the active Chara Dasha";
 }
 
-function describeTransit(month: MarriageWindowMonth): string {
-  const parts: string[] = [];
-  if (month.transit.saturn) parts.push(`Saturn in ${month.transit.saturn}`);
-  if (month.transit.jupiter) parts.push(`Jupiter in ${month.transit.jupiter}`);
-  if (month.transit.mars) parts.push(`Mars in ${month.transit.mars}`);
-  return parts.join(", ");
-}
-
-function windowNarrative(
-  w: MarriageWindow,
+/**
+ * Vedic-sourced rule interpretations.
+ *
+ * Based on Jaimini Sutras (Maharishi Jaimini) and standard Jaimini
+ * commentaries (Sanjay Rath, P.S. Sastri):
+ *
+ * - UL (Upa-Pada): Jaimini Sutra 1.3.1–1.3.5 — the pada of the 12th house
+ *   reveals marriage, its timing and quality.
+ * - DK (Darakaraka): Jaimini Sutra 1.1.13–1.1.21 — the planet with specific
+ *   degree qualification signifies the spouse.
+ * - AL (Arudha Lagna): Jaimini Sutra 1.1.30 — the image the world perceives;
+ *   Jupiter's transit here brings social expansion and visible opportunities.
+ * - Chara Dasha: Sign-based dasha described in Jaimini Sutra 2.1 — when a
+ *   sign period activates marriage factors, relationship themes dominate.
+ * - Argala: Jaimini Sutra 1.2.1–1.2.7 — planetary intervention from the
+ *   2nd, 4th, and 11th houses that "pushes" outcomes of a sign.
+ * - Jaimini aspects: Rashi drishti — signs of the same type aspect each
+ *   other (movable↔fixed except adjacent, dual↔dual).
+ */
+function buildRuleInterpretations(
+  rules: number[],
   profile: NatalMarriageProfile,
-  birthYear: number,
-): { astro: string; whyMarriage: string } {
-  const peak = w.months.reduce((best, m) =>
-    m.rulesSatisfied > best.rulesSatisfied ? m : best, w.months[0]);
+  md: string | null,
+  ad: string | null,
+): string[] {
+  const interps: string[] = [];
 
-  const rules = peak.rulesMetList;
-  const age = ageAt(birthYear, w.startDate);
-
-  const astroParts: string[] = [];
-  const whyParts: string[] = [];
-
-  // Transit-based narratives (rules 1-3)
   if (rules.includes(1)) {
-    astroParts.push(
-      `Transit Saturn activates the Upa-Pada (${profile.ulSign}) and connects with natal planetary positions, creating the foundational karmic trigger for marriage.`,
-    );
-    whyParts.push(
-      "Saturn's transit alignment with the marriage house provides the necessary karmic readiness and commitment energy.",
+    interps.push(
+      `Saturn's transit connects with your marriage house (${profile.ulSign}) and its natal position — this creates the karmic readiness and sense of responsibility needed for a lifelong commitment.`,
     );
   }
   if (rules.includes(2)) {
-    astroParts.push(
-      `Transit Mars energizes the Upa-Pada factors, adding initiative and drive toward formalizing a relationship.`,
-    );
-    whyParts.push(
-      "Mars provides the action-oriented energy needed to move from intention to commitment.",
+    interps.push(
+      `Mars transits through factors linked to your marriage house, providing the courage, initiative, and decisive energy to move toward formalizing a relationship.`,
     );
   }
   if (rules.includes(3)) {
-    astroParts.push(
-      `Transit Jupiter blesses both the Arudha Lagna (${profile.alSign}) and the 7th house (${profile.seventhSign}), expanding partnership opportunities and social visibility.`,
-    );
-    whyParts.push(
-      "Jupiter's grace on the partnership house brings auspicious timing and social support for marriage.",
+    interps.push(
+      `Jupiter blesses your social image (${profile.alSign}) and partnership house (${profile.seventhSign}) simultaneously — this is considered highly auspicious in Jaimini astrology, as it expands opportunities for meeting a partner and receiving support from family and society.`,
     );
   }
-
-  // Natal/dasha narratives (rules 4-6)
   if (rules.includes(4)) {
-    astroParts.push(
-      `The Darakaraka (${profile.dk}) is natally connected to marriage-significator houses, maintaining a constant supportive link to partnership themes.`,
-    );
-    whyParts.push(
-      "The relationship-karaka's natal placement naturally supports marriage formation in this chart.",
+    interps.push(
+      `Your Darakaraka (${profile.dk} — the planet signifying your spouse) naturally connects with key marriage houses in your birth chart, creating a strong foundational link between you and partnership themes.`,
     );
   }
   if (rules.includes(5)) {
-    astroParts.push(
-      `The ${describeDasha(peak.md, peak.ad)} directly activates marriage-related signs and their lords, channeling the period's energy toward partnership.`,
-    );
-    whyParts.push(
-      "The running dasha period aligns with marriage factors, making this a karmically ripe time for commitment.",
+    const dashaLabel = describeDasha(md, ad);
+    interps.push(
+      `The ${dashaLabel} period activates signs directly connected to marriage, channeling this phase of life toward relationship growth and commitment.`,
     );
   }
   if (rules.includes(6)) {
-    astroParts.push(
-      `Argala (planetary intervention) from the Darakaraka and associated lords influences the running dasha, pushing the period's outcomes toward relationship milestones.`,
-    );
-    whyParts.push(
-      "Strong argala on the dasha period from relationship planets ensures marriage themes cannot be bypassed.",
+    interps.push(
+      `Strong planetary influence (Argala) from your spouse-significator reinforces the current dasha period, ensuring that marriage themes are actively pushed to the forefront during this time.`,
     );
   }
 
-  // Add age context
-  if (age >= 18 && age <= 28) {
-    astroParts.push(
-      `At approximately age ${age}, this falls within the socially typical window for first marriage.`,
-    );
-  } else if (age >= 29 && age <= 38) {
-    astroParts.push(
-      `At approximately age ${age}, this period represents a mature and deliberate timing for marriage.`,
-    );
-  } else if (age > 38) {
-    astroParts.push(
-      `At approximately age ${age}, this is a later-life window — often associated with deeper emotional readiness.`,
-    );
-  }
+  return interps;
+}
 
-  return {
-    astro: astroParts.join(" "),
-    whyMarriage: whyParts.join(" "),
-  };
+/** Build a 1-2 sentence plain-English summary for a window. */
+function buildWindowSummary(
+  w: MarriageWindow,
+  profile: NatalMarriageProfile,
+  birthYear: number,
+): string {
+  const age = ageAt(birthYear, w.startDate);
+  const peak = w.months.reduce((best, m) =>
+    m.rulesSatisfied > best.rulesSatisfied ? m : best, w.months[0]);
+  const rules = peak.rulesMetList;
+
+  const hasTransits = rules.some((r) => r <= 3);
+  const hasDasha = rules.includes(5) || rules.includes(6);
+  const hasDK = rules.includes(4);
+
+  if (w.peakScore >= 5) {
+    return `Around age ${age}, a rare and powerful alignment occurs — planetary transits, your current life period, and your birth chart's marriage factors all converge, creating one of the strongest windows for marriage in your lifetime.`;
+  }
+  if (hasTransits && hasDasha) {
+    return `Around age ${age}, favorable planetary transits align with an active marriage-supportive life period, creating a meaningful opportunity for committed partnership.`;
+  }
+  if (hasTransits && hasDK) {
+    return `Around age ${age}, planetary transits activate your spouse-significator and marriage house, opening a window where relationship developments can progress naturally.`;
+  }
+  if (hasDasha) {
+    return `Around age ${age}, your Jaimini Dasha period directly supports marriage themes, making this a time when relationship milestones are more likely to unfold.`;
+  }
+  return `Around age ${age}, several astrological factors align to support marriage and partnership development.`;
 }
 
 function determineIndications(
@@ -506,12 +501,26 @@ function generateSummary(
 
   if (strongWindows.length > 0) {
     const best = strongWindows[0];
+    const bestPeak = best.months.reduce((a, m) =>
+      m.rulesSatisfied > a.rulesSatisfied ? m : a, best.months[0]);
+    const hasAllTransits = [1, 2, 3].every((r) => bestPeak.rulesMetList.includes(r));
+    const hasDashaSupport = bestPeak.rulesMetList.includes(5);
+
+    let detail: string;
+    if (hasAllTransits && hasDashaSupport) {
+      detail = "During this time, Saturn, Mars, and Jupiter all activate your marriage house and partnership factors, while your Jaimini Dasha period directly supports relationship themes.";
+    } else if (hasAllTransits) {
+      detail = "All three key transit planets — Saturn, Mars, and Jupiter — simultaneously activate marriage-related positions in your chart.";
+    } else {
+      detail = "Key planetary transits align with your birth chart's marriage factors, while your current life period supports commitment and partnership.";
+    }
+
     return {
       text:
-        `Your Jaimini chart reveals ${strongWindows.length} strongly favorable marriage period${strongWindows.length > 1 ? "s" : ""} in the ${futureLabel} analysis. The most powerful alignment occurs around ${best.months[0].month}–${best.months[best.months.length - 1].month} (approximately age ${bestAge}), when ${best.peakScore} out of 6 key astrological conditions converge simultaneously. ` +
+        `Your Jaimini analysis reveals ${strongWindows.length} strongly favorable marriage period${strongWindows.length > 1 ? "s" : ""}. The most promising alignment is around age ${bestAge} (${best.months[0].month}–${best.months[best.months.length - 1].month}). ${detail}` +
         (moderateWindows.length > 0
-          ? `Additionally, ${moderateWindows.length} moderately favorable period${moderateWindows.length > 1 ? "s" : ""} offer secondary windows.`
-          : "This is a clear and auspicious indication for marriage."),
+          ? ` ${moderateWindows.length} additional period${moderateWindows.length > 1 ? "s" : ""} with moderate support also exist.`
+          : " This is a clear and auspicious indication for marriage."),
       mostLikelyPeriod: `${best.months[0].month} – ${best.months[best.months.length - 1].month}`,
     };
   }
@@ -520,7 +529,7 @@ function generateSummary(
   const best = moderateWindows[0];
   return {
     text:
-      `Your chart shows ${moderateWindows.length} moderately favorable marriage period${moderateWindows.length > 1 ? "s" : ""}. The best alignment occurs around ${best.months[0].month}–${best.months[best.months.length - 1].month} (approximately age ${bestAge}), with ${best.peakScore} of 6 conditions active. While not overwhelmingly strong, these periods carry genuine potential — especially if supported by individual effort and readiness.`,
+      `Your chart shows ${moderateWindows.length} period${moderateWindows.length > 1 ? "s" : ""} with moderate marriage support. The best opportunity is around age ${bestAge} (${best.months[0].month}–${best.months[best.months.length - 1].month}), when planetary transits and dasha conditions partially align with your marriage house. While not the strongest configuration, these periods carry genuine potential — especially if supported by personal readiness.`,
     mostLikelyPeriod: `${best.months[0].month} – ${best.months[best.months.length - 1].month}`,
   };
 }
@@ -624,45 +633,27 @@ export function generateMarriageReport(
       const strength: "Strong" | "Moderate" = w.peakScore >= 5 ? "Strong" : "Moderate";
       const dashaLabel = describeDasha(peak.md, peak.ad);
 
-      let explanation: string;
-      if (w.peakScore >= 5) {
-        explanation = `A powerful convergence of ${w.peakScore} marriage indicators activates during the ${dashaLabel} period. Transit planets align with your marriage house and partnership factors, creating an auspicious window around age ${age}.`;
-      } else {
-        explanation = `A moderate alignment of ${w.peakScore} indicators emerges during the ${dashaLabel} period. While not the strongest configuration, this period around age ${age} carries genuine potential for relationship progress.`;
-      }
-
       return {
         timeRange: w.startMonth === w.endMonth
           ? w.startMonth
           : `${w.startMonth} – ${w.endMonth}`,
         strength,
+        age,
         dasha: dashaLabel,
-        explanation,
+        summary: buildWindowSummary(w, profile, birthYear),
+        interpretations: buildRuleInterpretations(
+          peak.rulesMetList,
+          profile,
+          peak.md,
+          peak.ad,
+        ),
+        rulesMetList: peak.rulesMetList,
+        indicates: determineIndications(w),
       };
     });
 
-  // ── Section C: Detailed Analysis (strong windows only) ──
-  const detailedAnalysis: DetailedWindow[] = windows
-    .filter((w) => w.peakScore >= 4)
-    .sort((a, b) => b.peakScore - a.peakScore)
-    .map((w) => {
-      const peak = w.months.reduce((best, m) =>
-        m.rulesSatisfied > best.rulesSatisfied ? m : best, w.months[0]);
-      const { astro, whyMarriage } = windowNarrative(w, profile, birthYear);
-      const indicates = determineIndications(w);
-
-      return {
-        windowLabel:
-          w.startMonth === w.endMonth ? w.startMonth : `${w.startMonth} – ${w.endMonth}`,
-        timeRange: `${w.startDate} to ${w.endDate}`,
-        peakScore: w.peakScore,
-        peakMonth: peak.month,
-        dasha: describeDasha(peak.md, peak.ad),
-        astrologicalNarrative: astro,
-        whyMarriage,
-        indicates,
-      };
-    });
+  // detailedAnalysis is deprecated — all info is now in keyPeriods
+  const detailedAnalysis: never[] = [];
 
   // ── Section D: Strong Indicators ──
   const strongIndicators = buildStrongIndicators(profile, chart, windows);

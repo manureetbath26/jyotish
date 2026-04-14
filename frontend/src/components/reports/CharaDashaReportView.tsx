@@ -14,7 +14,6 @@ import {
   generateMarriageReport,
   type MarriageReport,
   type KeyPeriod,
-  type DetailedWindow,
 } from "@/lib/jaiminiMarriageReport";
 
 interface Props {
@@ -353,19 +352,6 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
         {marriageReport && <MarriageReportSection report={marriageReport} />}
       </Section>
 
-      {/* Section 5: Interpretation placeholder */}
-      <Section title="Interpretations" badge="Coming Soon">
-        <div className="text-center py-8 space-y-3">
-          <p className="text-slate-500 text-sm">
-            Detailed sign-wise Chara Dasha interpretations will be available here soon.
-          </p>
-          <p className="text-xs text-slate-600">
-            This section will include period-specific predictions for career, relationships,
-            health, and finances based on the activated sign, its lord, and the planets
-            occupying and aspecting it.
-          </p>
-        </div>
-      </Section>
     </div>
   );
 }
@@ -379,7 +365,7 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function MarriageReportSection({ report }: { report: MarriageReport }) {
-  const [showDetailed, setShowDetailed] = useState(false);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   return (
     <div className="space-y-6">
@@ -394,59 +380,99 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         )}
       </div>
 
-      {/* ── Marriage count ── */}
-      <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg font-bold text-purple-400">
+      {/* ── Marriage count + natal refs ── */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-4 flex items-center gap-3 sm:flex-1">
+          <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg font-bold text-purple-400 flex-shrink-0">
             {report.marriageCount.expected}
           </div>
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Expected marriages</p>
-            <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{report.marriageCount.explanation}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{report.marriageCount.explanation}</p>
           </div>
         </div>
       </div>
 
-      {/* ── Natal reference chips ── */}
-      <div>
-        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-2">Chart Reference Points</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <NatalChip label="Upa-Pada (UL)" value={report.natalProfile.ulSign} />
-          <NatalChip label="Arudha Lagna" value={report.natalProfile.alSign} />
-          <NatalChip label="7th House" value={report.natalProfile.seventhSign} />
-          <NatalChip label={`DK (${report.natalProfile.dk})`} value={report.natalProfile.dkSign} />
-        </div>
-      </div>
-
-      {/* ── B. Key Marriage Periods ── */}
-      {report.keyPeriods.length > 0 && (
+      {/* ── B. Vertical Timeline ── */}
+      {report.keyPeriods.length > 0 ? (
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-3">Key Marriage Periods</p>
-          <div className="space-y-3">
-            {report.keyPeriods.map((period, i) => (
-              <KeyPeriodCard key={i} period={period} />
-            ))}
-          </div>
-        </div>
-      )}
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-4">Marriage Timeline</p>
+          <div className="relative">
+            {/* Central vertical line */}
+            <div className="absolute left-[28px] sm:left-1/2 sm:-translate-x-px top-0 bottom-0 w-0.5 bg-slate-700" />
 
-      {/* ── C. Detailed Analysis ── */}
-      {report.detailedAnalysis.length > 0 && (
-        <div>
-          <button
-            onClick={() => setShowDetailed((v) => !v)}
-            className="flex items-center gap-2 text-xs text-slate-500 uppercase tracking-wide font-medium mb-3 hover:text-slate-300 transition-colors"
-          >
-            <span>{showDetailed ? "\u25B2" : "\u25BC"}</span>
-            Detailed Analysis ({report.detailedAnalysis.length} period{report.detailedAnalysis.length > 1 ? "s" : ""})
-          </button>
-          {showDetailed && (
-            <div className="space-y-4">
-              {report.detailedAnalysis.map((dw, i) => (
-                <DetailedWindowCard key={i} window={dw} />
-              ))}
+            <div className="space-y-8">
+              {report.keyPeriods.map((period, i) => {
+                const isRight = i % 2 === 0;
+                const isStrong = period.strength === "Strong";
+                const isExpanded = expandedIdx === i;
+                const accentColor = isStrong ? "green" : "amber";
+                const dotBg = isStrong ? "bg-green-500" : "bg-amber-500";
+                const borderColor = isStrong ? "border-green-500/30" : "border-amber-500/30";
+                const bgColor = isStrong ? "bg-green-500/5" : "bg-amber-500/5";
+                const textColor = isStrong ? "text-green-400" : "text-amber-400";
+
+                return (
+                  <div key={i} className="relative">
+                    {/* ── Mobile layout: always left-aligned ── */}
+                    <div className="flex items-start gap-3 sm:hidden">
+                      {/* Dot on line */}
+                      <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
+                        <div className={`w-[14px] h-[14px] rounded-full ${dotBg} border-2 border-slate-900 shadow-lg`} />
+                      </div>
+                      {/* Content */}
+                      <div className={`flex-1 border ${borderColor} ${bgColor} rounded-xl p-4`}>
+                        <TimelineContent
+                          period={period}
+                          isExpanded={isExpanded}
+                          onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* ── Desktop layout: alternating left/right ── */}
+                    <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
+                      {/* Left column */}
+                      {isRight ? (
+                        <div />
+                      ) : (
+                        <div className={`border ${borderColor} ${bgColor} rounded-xl p-4 text-right`}>
+                          <TimelineContent
+                            period={period}
+                            isExpanded={isExpanded}
+                            onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                            alignRight
+                          />
+                        </div>
+                      )}
+
+                      {/* Center dot */}
+                      <div className="flex justify-center pt-1">
+                        <div className={`w-4 h-4 rounded-full ${dotBg} border-2 border-slate-900 shadow-lg z-10`} />
+                      </div>
+
+                      {/* Right column */}
+                      {isRight ? (
+                        <div className={`border ${borderColor} ${bgColor} rounded-xl p-4`}>
+                          <TimelineContent
+                            period={period}
+                            isExpanded={isExpanded}
+                            onToggle={() => setExpandedIdx(isExpanded ? null : i)}
+                          />
+                        </div>
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
+          <p className="text-sm text-slate-500">No strong marriage periods found in the analyzed timeframe.</p>
         </div>
       )}
 
@@ -510,82 +536,83 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 5-Year Marriage Window Timeline
+// Timeline sub-components
 // ────────────────────────────────────────────────────────────────────────────
 
-function NatalChip({ label, value }: { label: string; value: string }) {
-  const style = SIGN_STYLE[value];
-  return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5">
-      <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-sm font-semibold ${style?.color || "text-slate-200"}`}>
-        {style?.icon || ""} {value}
-      </p>
-    </div>
-  );
-}
-
-function KeyPeriodCard({ period }: { period: KeyPeriod }) {
+function TimelineContent({
+  period,
+  isExpanded,
+  onToggle,
+  alignRight,
+}: {
+  period: KeyPeriod;
+  isExpanded: boolean;
+  onToggle: () => void;
+  alignRight?: boolean;
+}) {
   const isStrong = period.strength === "Strong";
+
   return (
-    <div className={`border rounded-xl p-4 ${
-      isStrong
-        ? "border-green-500/20 bg-green-500/5"
-        : "border-amber-500/20 bg-amber-500/5"
-    }`}>
-      <div className="flex items-center justify-between mb-2">
-        <p className={`text-sm font-semibold ${isStrong ? "text-green-300" : "text-amber-300"}`}>
-          {period.timeRange}
-        </p>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+    <div>
+      {/* Age + strength */}
+      <div className={`flex items-center gap-2 mb-1 ${alignRight ? "justify-end" : ""}`}>
+        <span className={`text-lg font-bold ${isStrong ? "text-green-400" : "text-amber-400"}`}>
+          Age {period.age}
+        </span>
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
           isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400"
         }`}>
           {period.strength}
         </span>
       </div>
-      <p className="text-xs text-slate-500 mb-1">{period.dasha}</p>
-      <p className="text-xs text-slate-300 leading-relaxed">{period.explanation}</p>
-    </div>
-  );
-}
 
-function DetailedWindowCard({ window: dw }: { window: DetailedWindow }) {
-  return (
-    <div className="border border-slate-700 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 bg-slate-800/40 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-slate-200">{dw.windowLabel}</p>
-          <p className="text-xs text-slate-500">{dw.dasha} — Peak: {dw.peakScore}/6 in {dw.peakMonth}</p>
-        </div>
-      </div>
-      <div className="px-4 py-3 space-y-3">
-        <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">What&apos;s happening</p>
-          <p className="text-xs text-slate-300 leading-relaxed">{dw.astrologicalNarrative}</p>
-        </div>
-        <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">Why it supports marriage</p>
-          <p className="text-xs text-slate-300 leading-relaxed">{dw.whyMarriage}</p>
-        </div>
-        <div className="flex gap-3">
-          <IndicationBadge label="Meeting partner" active={dw.indicates.meetingPartner} />
-          <IndicationBadge label="Engagement" active={dw.indicates.engagement} />
-          <IndicationBadge label="Marriage" active={dw.indicates.marriageFinalization} />
-        </div>
-      </div>
-    </div>
-  );
-}
+      {/* Time range + dasha */}
+      <p className="text-xs text-slate-500">{period.timeRange}</p>
+      <p className="text-[10px] text-slate-600 mb-2">{period.dasha}</p>
 
-function IndicationBadge({ label, active }: { label: string; active: boolean }) {
-  return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-      active
-        ? "bg-green-500/10 border-green-500/20 text-green-400"
-        : "bg-slate-800/60 border-slate-700 text-slate-600"
-    }`}>
-      {active ? "\u2713 " : ""}{label}
-    </span>
+      {/* Summary */}
+      <p className={`text-xs text-slate-300 leading-relaxed ${alignRight ? "text-right" : ""}`}>
+        {period.summary}
+      </p>
+
+      {/* Indication badges */}
+      <div className={`flex flex-wrap gap-1.5 mt-2 ${alignRight ? "justify-end" : ""}`}>
+        {period.indicates.meetingPartner && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            Meeting partner
+          </span>
+        )}
+        {period.indicates.engagement && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400">
+            Engagement
+          </span>
+        )}
+        {period.indicates.marriageFinalization && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400">
+            Marriage
+          </span>
+        )}
+      </div>
+
+      {/* Expand for Vedic interpretations */}
+      <button
+        onClick={onToggle}
+        className={`mt-2 text-[11px] text-slate-500 hover:text-slate-300 transition-colors ${alignRight ? "ml-auto block" : ""}`}
+      >
+        {isExpanded ? "\u25B2 Less detail" : "\u25BC What does this mean?"}
+      </button>
+
+      {isExpanded && (
+        <div className={`mt-3 pt-3 border-t border-slate-700/50 space-y-2 ${alignRight ? "text-right" : ""}`}>
+          {period.interpretations.map((interp, j) => (
+            <div key={j} className={`flex items-start gap-2 text-[11px] ${alignRight ? "flex-row-reverse" : ""}`}>
+              <span className="text-amber-500 mt-0.5 flex-shrink-0">{"\u2022"}</span>
+              <span className="text-slate-400 leading-relaxed">{interp}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
