@@ -371,13 +371,26 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Split into strong (main timeline) and moderate (appendix)
-  const strongPeriods = report.keyPeriods.filter((p) => p.strength === "Strong");
-  const moderatePeriods = report.keyPeriods.filter((p) => p.strength === "Moderate");
+  // Split into strong and moderate
+  const allStrong = report.keyPeriods.filter((p) => p.strength === "Strong");
+  const allModerate = report.keyPeriods.filter((p) => p.strength === "Moderate");
 
-  // Further split strong into past/future
-  const pastStrong = strongPeriods.filter((p) => p.startDate < todayStr);
-  const futureStrong = strongPeriods.filter((p) => p.startDate >= todayStr);
+  // If no strong periods exist, promote moderate to the main timeline
+  // Sort moderate by peakScore-equivalent (rulesMetList length) descending for priority
+  const hasStrongPeriods = allStrong.length > 0;
+  const timelinePeriods = hasStrongPeriods
+    ? allStrong
+    : [...allModerate].sort((a, b) => b.rulesMetList.length - a.rulesMetList.length);
+  const appendixPeriods = hasStrongPeriods ? allModerate : [];
+
+  // Further split timeline into past/future
+  const pastTimeline = timelinePeriods.filter((p) => p.startDate < todayStr);
+  const futureTimeline = timelinePeriods.filter((p) => p.startDate >= todayStr);
+
+  // Accent colors: green for strong, amber for promoted moderate
+  const dotColor = hasStrongPeriods ? "bg-green-500" : "bg-amber-500";
+  const cardBorder = hasStrongPeriods ? "border-green-500/30" : "border-amber-500/30";
+  const cardBg = hasStrongPeriods ? "bg-green-500/5" : "bg-amber-500/5";
 
   return (
     <div className="space-y-6">
@@ -405,17 +418,24 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         </div>
       </div>
 
-      {/* ── B. Strong Periods – Vertical Timeline (chronological) ── */}
-      {strongPeriods.length > 0 ? (
+      {/* ── B. Vertical Timeline (chronological) ── */}
+      {timelinePeriods.length > 0 ? (
         <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-4">Marriage Timeline</p>
+          <div className="flex items-center gap-2 mb-4">
+            <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Marriage Timeline</p>
+            {!hasStrongPeriods && (
+              <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/20 rounded-full px-2 py-0.5">
+                Moderate indicators
+              </span>
+            )}
+          </div>
           <div className="relative">
             {/* Central vertical line */}
             <div className="absolute left-[28px] sm:left-1/2 sm:-translate-x-px top-0 bottom-0 w-0.5 bg-slate-700" />
 
             <div className="space-y-8">
-              {/* ── Past strong periods (collapsed by default, greyed out) ── */}
-              {pastStrong.length > 0 && (
+              {/* ── Past periods (collapsed by default, greyed out) ── */}
+              {pastTimeline.length > 0 && (
                 <div className="relative">
                   {/* Collapse toggle for past events */}
                   <div className="flex items-start gap-3 sm:hidden">
@@ -427,7 +447,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                       className="flex-1 border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
                     >
                       <span className="text-xs text-slate-500">
-                        {showPast ? "\u25B2" : "\u25BC"} {pastStrong.length} past period{pastStrong.length > 1 ? "s" : ""} (already elapsed)
+                        {showPast ? "\u25B2" : "\u25BC"} {pastTimeline.length} past period{pastTimeline.length > 1 ? "s" : ""} (already elapsed)
                       </span>
                     </button>
                   </div>
@@ -441,14 +461,14 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                       className="border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
                     >
                       <span className="text-xs text-slate-500">
-                        {showPast ? "\u25B2" : "\u25BC"} {pastStrong.length} past period{pastStrong.length > 1 ? "s" : ""} (already elapsed)
+                        {showPast ? "\u25B2" : "\u25BC"} {pastTimeline.length} past period{pastTimeline.length > 1 ? "s" : ""} (already elapsed)
                       </span>
                     </button>
                   </div>
 
                   {/* Expanded past events — greyed out */}
-                  {showPast && pastStrong.map((period, i) => {
-                    const globalIdx = strongPeriods.indexOf(period);
+                  {showPast && pastTimeline.map((period, i) => {
+                    const globalIdx = timelinePeriods.indexOf(period);
                     const isRight = globalIdx % 2 === 0;
                     const isExpanded = expandedIdx === globalIdx;
 
@@ -502,7 +522,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
               )}
 
               {/* ── "Now" marker between past & future ── */}
-              {pastStrong.length > 0 && futureStrong.length > 0 && (
+              {pastTimeline.length > 0 && futureTimeline.length > 0 && (
                 <div className="relative">
                   <div className="flex items-center gap-3 sm:hidden">
                     <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
@@ -523,23 +543,20 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                 </div>
               )}
 
-              {/* ── Future strong periods (full color, expanded) ── */}
-              {futureStrong.map((period, i) => {
-                const globalIdx = strongPeriods.indexOf(period);
+              {/* ── Future periods (full color) ── */}
+              {futureTimeline.map((period, i) => {
+                const globalIdx = timelinePeriods.indexOf(period);
                 const isRight = globalIdx % 2 === 0;
                 const isExpanded = expandedIdx === globalIdx;
-                const dotBg = "bg-green-500";
-                const borderColor = "border-green-500/30";
-                const bgColor = "bg-green-500/5";
 
                 return (
                   <div key={`future-${i}`} className="relative">
                     {/* Mobile */}
                     <div className="flex items-start gap-3 sm:hidden">
                       <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
-                        <div className={`w-[14px] h-[14px] rounded-full ${dotBg} border-2 border-slate-900 shadow-lg`} />
+                        <div className={`w-[14px] h-[14px] rounded-full ${dotColor} border-2 border-slate-900 shadow-lg`} />
                       </div>
-                      <div className={`flex-1 border ${borderColor} ${bgColor} rounded-xl p-4`}>
+                      <div className={`flex-1 border ${cardBorder} ${cardBg} rounded-xl p-4`}>
                         <TimelineContent
                           period={period}
                           isExpanded={isExpanded}
@@ -550,7 +567,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                     {/* Desktop */}
                     <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
                       {isRight ? <div /> : (
-                        <div className={`border ${borderColor} ${bgColor} rounded-xl p-4 text-right`}>
+                        <div className={`border ${cardBorder} ${cardBg} rounded-xl p-4 text-right`}>
                           <TimelineContent
                             period={period}
                             isExpanded={isExpanded}
@@ -560,10 +577,10 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                         </div>
                       )}
                       <div className="flex justify-center pt-1">
-                        <div className={`w-4 h-4 rounded-full ${dotBg} border-2 border-slate-900 shadow-lg z-10`} />
+                        <div className={`w-4 h-4 rounded-full ${dotColor} border-2 border-slate-900 shadow-lg z-10`} />
                       </div>
                       {isRight ? (
-                        <div className={`border ${borderColor} ${bgColor} rounded-xl p-4`}>
+                        <div className={`border ${cardBorder} ${cardBg} rounded-xl p-4`}>
                           <TimelineContent
                             period={period}
                             isExpanded={isExpanded}
@@ -580,7 +597,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         </div>
       ) : (
         <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
-          <p className="text-sm text-slate-500">No strong marriage periods found in the analyzed timeframe.</p>
+          <p className="text-sm text-slate-500">No marriage periods found in the analyzed timeframe.</p>
         </div>
       )}
 
@@ -640,8 +657,8 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         )}
       </div>
 
-      {/* ── Appendix: Moderate periods ── */}
-      {moderatePeriods.length > 0 && (
+      {/* ── Appendix: Moderate periods (only when strong periods exist) ── */}
+      {appendixPeriods.length > 0 && (
         <div className="border border-slate-800 rounded-xl overflow-hidden">
           <button
             className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/30 hover:bg-slate-800/50 transition-colors text-left"
@@ -652,7 +669,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                 Appendix: Additional Supportive Timeframes for Relationships
               </span>
               <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/20 rounded-full px-1.5 py-0.5 leading-none">
-                {moderatePeriods.length}
+                {appendixPeriods.length}
               </span>
             </div>
             <span className="text-slate-600 text-xs">{appendixOpen ? "\u25B2" : "\u25BC"}</span>
@@ -664,7 +681,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                 These periods show partial alignment of marriage indicators. While not as definitive as the strong periods above,
                 they may coincide with meaningful relationship developments, deepening of bonds, or preparatory phases leading to commitment.
               </p>
-              {moderatePeriods.map((period, i) => {
+              {appendixPeriods.map((period, i) => {
                 const isPast = period.startDate < todayStr;
                 return (
                   <div
@@ -713,8 +730,9 @@ function TimelineContent({
   onToggle: () => void;
   alignRight?: boolean;
 }) {
-  const accentText = isPast ? "text-slate-500" : "text-green-400";
-  const badgeBg = isPast ? "bg-slate-700/50 text-slate-500" : "bg-green-500/20 text-green-400";
+  const isStrong = period.strength === "Strong";
+  const accentText = isPast ? "text-slate-500" : isStrong ? "text-green-400" : "text-amber-400";
+  const badgeBg = isPast ? "bg-slate-700/50 text-slate-500" : isStrong ? "bg-green-500/20 text-green-400" : "bg-amber-500/20 text-amber-400";
 
   return (
     <div>
