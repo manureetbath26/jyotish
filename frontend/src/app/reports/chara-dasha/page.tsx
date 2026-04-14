@@ -480,13 +480,13 @@ function CharaDashaReportContent() {
               <div className="grid grid-cols-2 gap-2">
                 {[
                   "Complete 12-Sign Dasha Sequence",
-                  "Visual Timeline with Duration Bars",
+                  "Marriage Timeline with Strong Periods",
                   "Current Period Deep Dive",
-                  "Sign Lord & Placement Analysis",
-                  "Planets in Each Dasha Sign",
+                  "Vedic-Sourced Marriage Interpretations",
+                  "Expected Marriage Count Analysis",
                   "Progress Tracking for Current Period",
-                  "Chronological Table View",
-                  "Future: Antardasha & Interpretations",
+                  "Supporting Indicators & Challenges",
+                  "Appendix: Supportive Relationship Timeframes",
                 ].map((f) => (
                   <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
                     <span className="text-amber-500">{"\u2713"}</span>
