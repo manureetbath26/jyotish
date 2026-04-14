@@ -481,13 +481,13 @@ function CharaDashaReportContent() {
                 {[
                   "Complete 12-Sign Dasha Sequence",
                   "Marriage Timeline with Strong Periods",
-                  "Current Period Deep Dive",
-                  "Vedic-Sourced Marriage Interpretations",
                   "Expected Marriage Count Analysis",
-                  "Progress Tracking for Current Period",
-                  "Supporting Indicators & Challenges",
                   "Relationship Awareness & Cautions",
-                  "Appendix: Supportive Relationship Timeframes",
+                  "Career Outlook & Growth Periods",
+                  "Career Nature & Sector Analysis",
+                  "Career Growth vs Stagnation Timeline",
+                  "Supporting Indicators & Challenges",
+                  "Current Period Deep Dive",
                 ].map((f) => (
                   <div key={f} className="flex items-center gap-2 text-xs text-slate-400">
                     <span className="text-amber-500">{"\u2713"}</span>
