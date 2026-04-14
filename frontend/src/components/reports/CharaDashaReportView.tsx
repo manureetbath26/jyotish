@@ -346,13 +346,28 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
 
   return (
     <div className="space-y-6">
-      {/* ── A. Summary ── */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-5">
-        <p className="text-sm text-slate-200 leading-relaxed">{report.summary.text}</p>
-        {report.summary.mostLikelyPeriod && (
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wide">Most likely:</span>
-            <span className="text-sm font-semibold text-amber-400">{report.summary.mostLikelyPeriod}</span>
+      {/* ── Final Verdict (top position) ── */}
+      <div className="bg-gradient-to-r from-green-500/10 via-green-500/5 to-transparent border border-green-500/20 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Verdict</p>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            report.verdict.confidence === "High"
+              ? "bg-green-500/20 text-green-400"
+              : report.verdict.confidence === "Medium"
+                ? "bg-amber-500/20 text-amber-400"
+                : "bg-slate-700 text-slate-400"
+          }`}>
+            {report.verdict.confidence} Confidence
+          </span>
+        </div>
+        <p className="text-sm text-slate-200 leading-relaxed">{report.verdict.narrative}</p>
+        {report.verdict.topPeriods.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {report.verdict.topPeriods.map((p, i) => (
+              <span key={i} className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
+                {i === 0 ? "\u2605 " : ""}{p}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -586,32 +601,6 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
           </div>
         </div>
       )}
-
-      {/* ── F. Final Verdict ── */}
-      <div className="bg-gradient-to-r from-green-500/10 via-green-500/5 to-transparent border border-green-500/20 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Final Verdict</p>
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            report.verdict.confidence === "High"
-              ? "bg-green-500/20 text-green-400"
-              : report.verdict.confidence === "Medium"
-                ? "bg-amber-500/20 text-amber-400"
-                : "bg-slate-700 text-slate-400"
-          }`}>
-            {report.verdict.confidence} Confidence
-          </span>
-        </div>
-        <p className="text-sm text-slate-200 leading-relaxed">{report.verdict.narrative}</p>
-        {report.verdict.topPeriods.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {report.verdict.topPeriods.map((p, i) => (
-              <span key={i} className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1">
-                {i === 0 ? "\u2605 " : ""}{p}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* ── Appendix: Moderate periods (only when strong periods exist) ── */}
       {appendixPeriods.length > 0 && (
