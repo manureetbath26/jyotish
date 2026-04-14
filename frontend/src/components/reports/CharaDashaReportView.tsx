@@ -604,7 +604,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
       )}
 
       {/* ── F. Relationship Cautions (Divorce Risk) ── */}
-      {report.divorceRisk.findings.length > 0 && (
+      {report.divorceRisk && (
         <RelationshipCautionsSection assessment={report.divorceRisk} />
       )}
 
@@ -681,11 +681,14 @@ function RelationshipCautionsSection({ assessment }: { assessment: DivorceRiskAs
       ? { badge: "bg-rose-500/20 text-rose-400 border-rose-500/30", dot: "text-rose-400", border: "border-rose-500/20" }
       : assessment.overallRisk === "moderate"
         ? { badge: "bg-amber-500/20 text-amber-400 border-amber-500/30", dot: "text-amber-400", border: "border-amber-500/20" }
-        : { badge: "bg-slate-500/20 text-slate-400 border-slate-500/30", dot: "text-slate-400", border: "border-slate-500/20" };
+        : assessment.findings.length === 0
+          ? { badge: "bg-green-500/20 text-green-400 border-green-500/30", dot: "text-green-400", border: "border-green-500/20" }
+          : { badge: "bg-slate-500/20 text-slate-400 border-slate-500/30", dot: "text-slate-400", border: "border-slate-500/20" };
 
   const riskLabel =
     assessment.overallRisk === "elevated" ? "Needs Attention"
     : assessment.overallRisk === "moderate" ? "Some Cautions"
+    : assessment.findings.length === 0 ? "No Concerns"
     : "Minimal";
 
   const severityIcon = (sev: "high" | "moderate" | "mild") =>
@@ -726,37 +729,44 @@ function RelationshipCautionsSection({ assessment }: { assessment: DivorceRiskAs
           </div>
 
           {/* Individual findings */}
-          <div className="space-y-3">
-            {assessment.findings.map((finding, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className={`text-xs mt-0.5 flex-shrink-0 ${severityColor(finding.severity)}`}>
-                  {severityIcon(finding.severity)}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[11px] font-semibold text-slate-300">{finding.rule}</span>
-                    <span className={`text-[9px] px-1 py-0.5 rounded ${
-                      finding.severity === "high"
-                        ? "bg-rose-500/15 text-rose-400"
-                        : finding.severity === "moderate"
-                          ? "bg-amber-500/15 text-amber-400"
-                          : "bg-slate-500/15 text-slate-500"
-                    }`}>
-                      {finding.severity}
-                    </span>
+          {assessment.findings.length > 0 ? (
+            <div className="space-y-3">
+              {assessment.findings.map((finding, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className={`text-xs mt-0.5 flex-shrink-0 ${severityColor(finding.severity)}`}>
+                    {severityIcon(finding.severity)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[11px] font-semibold text-slate-300">{finding.rule}</span>
+                      <span className={`text-[9px] px-1 py-0.5 rounded ${
+                        finding.severity === "high"
+                          ? "bg-rose-500/15 text-rose-400"
+                          : finding.severity === "moderate"
+                            ? "bg-amber-500/15 text-amber-400"
+                            : "bg-slate-500/15 text-slate-500"
+                      }`}>
+                        {finding.severity}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">{finding.explanation}</p>
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">{finding.explanation}</p>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-green-400">{"\u2713"}</span>
+              <span className="text-slate-400">No classical Jaimini separation indicators were found in this chart. The sustaining houses of marriage are well-supported.</span>
+            </div>
+          )}
 
           {/* Reassuring footer */}
           <div className="pt-2 border-t border-slate-800/50">
             <p className="text-[10px] text-slate-500 leading-relaxed">
-              These observations are drawn from Jaimini Sutra principles (1.3.1–1.3.5 on Upa-Pada, 1.1.13–1.1.21 on Karakas).
-              Astrological indicators reflect tendencies, not fixed destinies. Every relationship is ultimately shaped by the
-              awareness, choices, and love that both partners bring to it.
+              {assessment.findings.length > 0
+                ? "These observations are drawn from Jaimini Sutra principles (1.3.1\u20131.3.5 on Upa-Pada, 1.1.13\u20131.1.21 on Karakas). Astrological indicators reflect tendencies, not fixed destinies. Every relationship is ultimately shaped by the awareness, choices, and love that both partners bring to it."
+                : "This assessment evaluates classical Jaimini indicators for marital challenges (Sutra 1.3.1\u20131.3.5 on Upa-Pada, 1.1.13\u20131.1.21 on Karakas). A clean reading here is a positive sign for marital harmony."}
             </p>
           </div>
         </div>
