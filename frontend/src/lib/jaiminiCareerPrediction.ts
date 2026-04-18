@@ -398,23 +398,58 @@ export function scanCareerWindows(
     });
   }
 
-  // ── Group favorable months (3+ rules) into continuous windows ──
+  // ── Group favorable months into continuous windows ──
+  //
+  // Requirements for a month to qualify:
+  //   1. At least 3 total rules satisfied
+  //   2. At least ONE transit rule (1, 2, or 3) — without this, natal/dasha
+  //      rules alone would mark entire Mahadashas as single mega-windows
+  //      (a 12-year MD could produce one 144-month window)
+  //   3. Windows are further capped at 18 months — longer stretches are
+  //      split at local minima to surface distinct peaks
+  //
+  const MAX_WINDOW_MONTHS = 18;
   const windows: CareerWindow[] = [];
   let currentWindow: CareerWindowMonth[] = [];
 
-  for (const m of months) {
-    if (m.rulesSatisfied >= 3) {
-      currentWindow.push(m);
+  const flushWindow = () => {
+    if (currentWindow.length === 0) return;
+
+    // Split oversized windows at local minima
+    if (currentWindow.length <= MAX_WINDOW_MONTHS) {
+      windows.push(buildWindow(currentWindow));
     } else {
-      if (currentWindow.length > 0) {
-        windows.push(buildWindow(currentWindow));
-        currentWindow = [];
+      let chunkStart = 0;
+      while (chunkStart < currentWindow.length) {
+        const chunkEnd = Math.min(chunkStart + MAX_WINDOW_MONTHS, currentWindow.length);
+        // Find a natural split point near chunkEnd: look backward for a local
+        // minimum in rulesSatisfied within the last ~6 months
+        let splitAt = chunkEnd;
+        if (chunkEnd < currentWindow.length) {
+          let minScore = Infinity;
+          for (let i = Math.max(chunkEnd - 6, chunkStart + 6); i < chunkEnd; i++) {
+            if (currentWindow[i].rulesSatisfied < minScore) {
+              minScore = currentWindow[i].rulesSatisfied;
+              splitAt = i + 1;
+            }
+          }
+        }
+        windows.push(buildWindow(currentWindow.slice(chunkStart, splitAt)));
+        chunkStart = splitAt;
       }
     }
+    currentWindow = [];
+  };
+
+  for (const m of months) {
+    const hasTransit = m.rulesMetList.some((r) => r === 1 || r === 2 || r === 3);
+    if (m.rulesSatisfied >= 3 && hasTransit) {
+      currentWindow.push(m);
+    } else {
+      flushWindow();
+    }
   }
-  if (currentWindow.length > 0) {
-    windows.push(buildWindow(currentWindow));
-  }
+  flushWindow();
 
   // ── Find peak month ──
   let peakMonth: CareerWindowMonth | null = null;
