@@ -14,7 +14,6 @@ import {
 import {
   generateCareerReport,
   type CareerReport,
-  type CareerKeyPeriod,
 } from "@/lib/jaiminiCareerReport";
 import type { Sign } from "@/lib/charaDashaEngine";
 
@@ -214,42 +213,12 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function CareerReportContent({ report }: { report: CareerReport }) {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-  const [appendixOpen, setAppendixOpen] = useState(false);
-
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-
-  // Split into strong / moderate
-  const allStrong = report.keyPeriods.filter((p) => p.strength === "Strong");
-  const allModerate = report.keyPeriods.filter((p) => p.strength === "Moderate");
-  const hasStrongPeriods = allStrong.length > 0;
-  const timelinePeriods = hasStrongPeriods
-    ? allStrong
-    : [...allModerate].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  const appendixPeriods = hasStrongPeriods ? allModerate : [];
-  const pastTimeline = timelinePeriods.filter((p) => p.startDate < todayStr);
-  const futureTimeline = timelinePeriods.filter((p) => p.startDate >= todayStr);
-
-  // Theme colors
-  const dotColor = hasStrongPeriods ? "bg-blue-500" : "bg-cyan-500";
-  const cardBorder = hasStrongPeriods ? "border-blue-500/30" : "border-cyan-500/30";
-  const cardBg = hasStrongPeriods ? "bg-blue-500/5" : "bg-cyan-500/5";
   const confColor =
     report.verdict.confidence === "High"
       ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
       : report.verdict.confidence === "Medium"
         ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
         : "bg-slate-500/20 text-slate-400 border-slate-500/30";
-
-  const indicationIcons = (period: CareerKeyPeriod) => {
-    const items: { icon: string; label: string }[] = [];
-    if (period.indicates.promotion) items.push({ icon: "\u2B06", label: "Promotion" });
-    if (period.indicates.jobChange) items.push({ icon: "\u{1F504}", label: "Job Change" });
-    if (period.indicates.businessLaunch) items.push({ icon: "\u{1F680}", label: "Business Launch" });
-    if (period.indicates.recognition) items.push({ icon: "\u2B50", label: "Recognition" });
-    return items;
-  };
 
   return (
     <div className="space-y-5">
@@ -366,76 +335,17 @@ function CareerReportContent({ report }: { report: CareerReport }) {
         </div>
       </div>
 
-      {/* ── Career Timeline ── */}
-      {(pastTimeline.length > 0 || futureTimeline.length > 0) && (
-        <div>
-          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-3">
-            Career Growth Timeline
-          </p>
+      {/* ── Career Success Assessment ── */}
+      <CareerSuccessSection assessment={report.successAssessment} />
 
-          {/* Past */}
-          {pastTimeline.length > 0 && (
-            <div className="space-y-2 mb-3">
-              {pastTimeline.map((period, i) => {
-                const globalIdx = timelinePeriods.indexOf(period);
-                return (
-                  <CareerCard
-                    key={`past-${i}`}
-                    period={period}
-                    isPast
-                    isExpanded={expandedIdx === globalIdx}
-                    onToggle={() => setExpandedIdx(expandedIdx === globalIdx ? null : globalIdx)}
-                    icons={indicationIcons(period)}
-                    dotColor={dotColor}
-                    cardBorder={cardBorder}
-                    cardBg={cardBg}
-                  />
-                );
-              })}
-            </div>
-          )}
+      {/* ── Career Direction ── */}
+      <CareerDirectionSection analysis={report.directionAnalysis} />
 
-          {/* Now marker */}
-          {pastTimeline.length > 0 && futureTimeline.length > 0 && (
-            <div className="flex items-center gap-2 my-3">
-              <div className="flex-1 h-px bg-blue-500/30" />
-              <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-500/10 rounded-full border border-blue-500/20 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                Now
-              </span>
-              <div className="flex-1 h-px bg-blue-500/30" />
-            </div>
-          )}
+      {/* ── Sector Deep Dive ── */}
+      <SectorDeepDiveSection dive={report.sectorDeepDive} />
 
-          {/* Future */}
-          {futureTimeline.length > 0 && (
-            <div className="space-y-2">
-              {futureTimeline.map((period, i) => {
-                const globalIdx = timelinePeriods.indexOf(period);
-                return (
-                  <CareerCard
-                    key={`future-${i}`}
-                    period={period}
-                    isPast={false}
-                    isExpanded={expandedIdx === globalIdx}
-                    onToggle={() => setExpandedIdx(expandedIdx === globalIdx ? null : globalIdx)}
-                    icons={indicationIcons(period)}
-                    dotColor={dotColor}
-                    cardBorder={cardBorder}
-                    cardBg={cardBg}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {timelinePeriods.length === 0 && (
-        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
-          <p className="text-sm text-slate-500">No significant career periods found in the analyzed timeframe.</p>
-        </div>
-      )}
+      {/* ── Growth Potential ── */}
+      <GrowthPotentialSection growth={report.growthPotential} />
 
       {/* ── Growth Indicators ── */}
       {report.strongIndicators.length > 0 && (
@@ -469,57 +379,6 @@ function CareerReportContent({ report }: { report: CareerReport }) {
         </div>
       )}
 
-      {/* ── Appendix ── */}
-      {appendixPeriods.length > 0 && (
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/30 hover:bg-slate-800/50 transition-colors text-left"
-            onClick={() => setAppendixOpen((v) => !v)}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                Appendix: Additional Career Windows
-              </span>
-              <span className="text-[10px] bg-cyan-500/15 text-cyan-500 border border-cyan-500/20 rounded-full px-1.5 py-0.5 leading-none">
-                {appendixPeriods.length}
-              </span>
-            </div>
-            <span className="text-slate-600 text-xs">{appendixOpen ? "\u25B2" : "\u25BC"}</span>
-          </button>
-
-          {appendixOpen && (
-            <div className="px-4 py-4 space-y-3">
-              <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-                These periods show partial alignment of career indicators. While not as definitive as the strong periods above,
-                they may coincide with incremental career developments, skill building, or preparatory phases.
-              </p>
-              {appendixPeriods.map((period, i) => {
-                const isPast = period.startDate < todayStr;
-                return (
-                  <div
-                    key={`cmod-${i}`}
-                    className={`border border-cyan-500/20 bg-cyan-500/5 rounded-lg p-3 ${isPast ? "opacity-40" : ""}`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-sm font-bold ${isPast ? "text-slate-500" : "text-cyan-400"}`}>
-                        Age {period.age}
-                      </span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400">
-                        Moderate
-                      </span>
-                      {isPast && <span className="text-[10px] text-slate-600 italic">Past</span>}
-                    </div>
-                    <p className="text-xs text-slate-500">{period.timeRange}</p>
-                    <p className="text-[10px] text-slate-600 mb-1">{period.dasha}</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">{period.summary}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Footnote ── */}
       <p className="text-[10px] text-slate-600 italic leading-relaxed pt-2 border-t border-slate-800/50">
         Career analysis based on Jaimini Chara Dasha principles (10th house, Amatya Karaka, A10 Rajya Pada, Karakamsha).
@@ -530,75 +389,341 @@ function CareerReportContent({ report }: { report: CareerReport }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Career Card
+// Career Success Assessment
 // ────────────────────────────────────────────────────────────────────────────
 
-function CareerCard({
-  period,
-  isPast,
-  isExpanded,
-  onToggle,
-  icons,
-  dotColor,
-  cardBorder,
-  cardBg,
-}: {
-  period: CareerKeyPeriod;
-  isPast: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-  icons: { icon: string; label: string }[];
-  dotColor: string;
-  cardBorder: string;
-  cardBg: string;
-}) {
-  const isStrong = period.strength === "Strong";
-  const accentText = isPast
-    ? (isStrong ? "text-blue-600" : "text-cyan-600")
-    : (isStrong ? "text-blue-400" : "text-cyan-400");
-  const strengthBadge = isPast
-    ? (isStrong ? "bg-blue-500/10 text-blue-600" : "bg-cyan-500/10 text-cyan-600")
-    : (isStrong ? "bg-blue-500/20 text-blue-400" : "bg-cyan-500/20 text-cyan-400");
+function CareerSuccessSection({ assessment }: { assessment: CareerReport["successAssessment"] }) {
+  const ratingColor: Record<string, string> = {
+    Exceptional: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    Strong: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    Good: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+    Moderate: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    Gradual: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+  };
+  const barColor: Record<string, string> = {
+    Exceptional: "bg-emerald-500",
+    Strong: "bg-blue-500",
+    Good: "bg-cyan-500",
+    Moderate: "bg-amber-500",
+    Gradual: "bg-slate-500",
+  };
+  const impactColor = (impact: "high" | "medium" | "low") =>
+    impact === "high" ? "text-emerald-400"
+    : impact === "medium" ? "text-blue-400"
+    : "text-slate-500";
 
   return (
-    <div
-      className={`border ${isPast ? "border-slate-700/50" : cardBorder} ${isPast ? "bg-slate-800/20" : cardBg} rounded-lg overflow-hidden cursor-pointer transition-colors hover:bg-slate-800/40`}
-      onClick={onToggle}
-    >
-      <div className="p-3">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span className={`w-2 h-2 rounded-full ${isPast ? "bg-slate-600" : dotColor}`} />
-          <span className={`text-sm font-bold ${accentText}`}>Age {period.age}</span>
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${strengthBadge}`}>
-            {period.strength}
-          </span>
-          {isPast && <span className="text-[10px] text-slate-600 italic">Past</span>}
-          {icons.map((ic, j) => (
-            <span
-              key={j}
-              className={`text-[9px] px-1 py-0.5 rounded ${
-                isPast ? "bg-slate-700/50 text-slate-500" : "bg-blue-500/10 text-blue-300"
-              }`}
-            >
-              {ic.icon} {ic.label}
-            </span>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500">{period.timeRange}</p>
-        <p className="text-[10px] text-slate-600">{period.dasha}</p>
-        <p className="text-xs text-slate-400 leading-relaxed mt-1">{period.summary}</p>
+    <div className="bg-slate-800/30 border border-slate-800 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm">{"\u{1F3C6}"}</span>
+        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Career Success Potential</h4>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ratingColor[assessment.rating]}`}>
+          {assessment.rating}
+        </span>
+        <span className="text-[10px] text-slate-500 ml-auto">{assessment.score}/100</span>
       </div>
 
-      {isExpanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-slate-800/50 pt-2">
-          {period.interpretations.map((interp, k) => (
-            <div key={k} className="flex items-start gap-2 text-[11px]">
-              <span className="text-blue-500 mt-0.5 flex-shrink-0">{"\u25B8"}</span>
-              <span className="text-slate-400 leading-relaxed">{interp}</span>
-            </div>
-          ))}
+      {/* Score bar */}
+      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${barColor[assessment.rating]} transition-all`}
+          style={{ width: `${assessment.score}%` }}
+        />
+      </div>
+
+      <p className="text-xs text-slate-300 leading-relaxed">{assessment.narrative}</p>
+
+      {assessment.strengths.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Natal Strengths</p>
+          <div className="space-y-1.5">
+            {assessment.strengths.map((s, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px]">
+                <span className="text-emerald-400 mt-0.5 flex-shrink-0">{"\u2713"}</span>
+                <span className="text-slate-400 leading-relaxed">{s}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      {assessment.successFactors.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Contributing Factors</p>
+          <div className="flex flex-wrap gap-1.5">
+            {assessment.successFactors.map((f, i) => (
+              <span
+                key={i}
+                className={`text-[9px] px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-600/30 ${impactColor(f.impact)}`}
+              >
+                {f.factor}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Career Direction
+// ────────────────────────────────────────────────────────────────────────────
+
+function CareerDirectionSection({ analysis }: { analysis: CareerReport["directionAnalysis"] }) {
+  const leadershipColor: Record<string, string> = {
+    High: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    Moderate: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    Supportive: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+  };
+  const fitColor: Record<string, string> = {
+    "Best fit": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    "Excellent fit": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    "Strong fit": "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm">{"\u{1F9ED}"}</span>
+        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Career Direction & Strategy</h4>
+      </div>
+
+      {/* Optimal Paths */}
+      <div className="space-y-2">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide">Optimal Career Paths</p>
+        {analysis.optimalPaths.map((path, i) => (
+          <div key={i} className="border border-slate-800 bg-slate-800/20 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-slate-200">{path.title}</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${fitColor[path.fit]}`}>
+                {path.fit}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{path.reasoning}</p>
+            {path.specificRoles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {path.specificRoles.map((r, j) => (
+                  <span
+                    key={j}
+                    className="text-[10px] bg-slate-700/50 text-slate-300 border border-slate-600/30 rounded-full px-2 py-0.5"
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Leadership */}
+      <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs">{"\u{1F451}"}</span>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide">Leadership Profile</p>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${leadershipColor[analysis.leadership.rating]}`}>
+            {analysis.leadership.rating}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400 leading-relaxed">{analysis.leadership.narrative}</p>
+        {analysis.leadership.strengths.length > 0 && (
+          <ul className="space-y-1">
+            {analysis.leadership.strengths.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-[11px]">
+                <span className="text-blue-400 mt-0.5 flex-shrink-0">{"\u25B8"}</span>
+                <span className="text-slate-400 leading-relaxed">{s}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Work style */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Work Environment</p>
+          <p className="text-xs font-semibold text-slate-200 mb-1">{analysis.workStyle.environment}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">{analysis.workStyle.environmentReasoning}</p>
+        </div>
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Pace & Rhythm</p>
+          <p className="text-xs font-semibold text-slate-200 mb-1">{analysis.workStyle.pace}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">{analysis.workStyle.paceReasoning}</p>
+        </div>
+      </div>
+
+      {/* Collaboration */}
+      <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Collaboration Style</p>
+        <p className="text-xs font-semibold text-slate-200 mb-1">{analysis.collaborationStyle}</p>
+        <p className="text-[11px] text-slate-400 leading-relaxed">{analysis.collaborationReasoning}</p>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sector Deep Dive
+// ────────────────────────────────────────────────────────────────────────────
+
+function SectorDeepDiveSection({ dive }: { dive: CareerReport["sectorDeepDive"] }) {
+  const fitColor: Record<string, string> = {
+    "Perfect fit": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    "Excellent fit": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    "Strong fit": "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+    "Good fit": "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  };
+  const stabilityColor: Record<string, string> = {
+    Stable: "text-emerald-400",
+    "Variable with upside": "text-blue-400",
+    Mixed: "text-amber-400",
+  };
+  const wealthColor: Record<string, string> = {
+    Strong: "text-emerald-400",
+    Moderate: "text-blue-400",
+    Gradual: "text-amber-400",
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm">{"\u{1F3E2}"}</span>
+        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Sectors & Industries Deep Dive</h4>
+      </div>
+
+      {/* Top sectors */}
+      <div className="space-y-2">
+        {dive.topSectors.map((s, i) => (
+          <div key={i} className="border border-slate-800 bg-slate-800/20 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-slate-200">{s.sector}</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${fitColor[s.fit]}`}>
+                {s.fit}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{s.reasoning}</p>
+            {s.specificRoles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {s.specificRoles.map((r, j) => (
+                  <span
+                    key={j}
+                    className="text-[10px] bg-slate-700/50 text-slate-300 border border-slate-600/30 rounded-full px-2 py-0.5"
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Organization size + wealth */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Organization Size Fit</p>
+          <p className="text-xs font-semibold text-slate-200 mb-1">{dive.organizationSize}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">{dive.sizeReasoning}</p>
+        </div>
+        <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-3">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Income & Wealth</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-xs font-semibold ${stabilityColor[dive.incomeStability]}`}>
+              {dive.incomeStability}
+            </span>
+            <span className="text-slate-600 text-[10px]">{"\u00B7"}</span>
+            <span className={`text-[10px] font-semibold ${wealthColor[dive.wealthAccumulation]}`}>
+              {dive.wealthAccumulation} accumulation
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">{dive.incomeNarrative}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Growth Potential
+// ────────────────────────────────────────────────────────────────────────────
+
+function GrowthPotentialSection({ growth }: { growth: CareerReport["growthPotential"] }) {
+  const trajectoryColor: Record<string, string> = {
+    "Early bloomer": "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    "Steady climb": "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    "Mid-life peak": "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    "Late bloomer": "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    "Uneven": "bg-slate-500/20 text-slate-300 border-slate-500/30",
+  };
+  const intensityColor: Record<string, string> = {
+    Peak: "bg-emerald-500/20 text-emerald-300",
+    High: "bg-blue-500/20 text-blue-300",
+    Moderate: "bg-cyan-500/20 text-cyan-300",
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm">{"\u{1F4C8}"}</span>
+        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Growth Potential & Trajectory</h4>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${trajectoryColor[growth.trajectory]}`}>
+          {growth.trajectory}
+        </span>
+      </div>
+
+      <p className="text-xs text-slate-300 leading-relaxed">{growth.trajectoryNarrative}</p>
+
+      {/* Peak decades */}
+      {growth.peakDecades.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Peak Life Phases for Career</p>
+          <div className="space-y-2">
+            {growth.peakDecades.map((d, i) => (
+              <div key={i} className="flex items-start gap-2 bg-slate-800/30 border border-slate-800 rounded-lg p-2.5">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${intensityColor[d.intensity]} flex-shrink-0`}>
+                  {d.intensity}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-200">{d.ageRange}</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{d.themes}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Accelerators */}
+      {growth.accelerators.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Growth Accelerators</p>
+          <div className="space-y-1.5">
+            {growth.accelerators.map((a, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px]">
+                <span className="text-emerald-400 mt-0.5 flex-shrink-0">{"\u21E1"}</span>
+                <span className="text-slate-400 leading-relaxed">{a}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ceiling factors */}
+      <div>
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Ceiling Factors & Limits</p>
+        <p className="text-[11px] text-slate-400 leading-relaxed mb-2">{growth.ceilingNarrative}</p>
+        {growth.ceilingFactors.length > 0 && (
+          <div className="space-y-1.5">
+            {growth.ceilingFactors.map((c, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px]">
+                <span className="text-amber-400 mt-0.5 flex-shrink-0">{"\u21E3"}</span>
+                <span className="text-slate-400 leading-relaxed">{c}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

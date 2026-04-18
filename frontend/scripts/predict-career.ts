@@ -87,7 +87,52 @@ if (report.verdict.topPeriods.length > 0) {
 }
 console.log("");
 
-console.log("=== KEY CAREER PERIODS ===");
+console.log("=== CAREER SUCCESS POTENTIAL ===");
+console.log("Rating:", report.successAssessment.rating, `(${report.successAssessment.score}/100)`);
+console.log(report.successAssessment.narrative);
+console.log("Strengths:");
+report.successAssessment.strengths.forEach((s) => console.log("  +", s));
+console.log("");
+
+console.log("=== CAREER DIRECTION ===");
+report.directionAnalysis.optimalPaths.forEach((p, i) => {
+  console.log(`\nPath ${i + 1}: ${p.title} (${p.fit})`);
+  console.log(`  ${p.reasoning}`);
+  console.log(`  Roles: ${p.specificRoles.join(", ")}`);
+});
+console.log("");
+console.log(`Leadership: ${report.directionAnalysis.leadership.rating}`);
+console.log(`  ${report.directionAnalysis.leadership.narrative}`);
+console.log("");
+console.log(`Work Environment: ${report.directionAnalysis.workStyle.environment}`);
+console.log(`Pace: ${report.directionAnalysis.workStyle.pace}`);
+console.log(`Collaboration: ${report.directionAnalysis.collaborationStyle}`);
+console.log("");
+
+console.log("=== SECTORS DEEP DIVE ===");
+report.sectorDeepDive.topSectors.forEach((s) => {
+  console.log(`\n[${s.fit}] ${s.sector}`);
+  console.log(`  Roles: ${s.specificRoles.join(", ")}`);
+});
+console.log("");
+console.log(`Org Size Fit: ${report.sectorDeepDive.organizationSize}`);
+console.log(`Income: ${report.sectorDeepDive.incomeStability} | Wealth: ${report.sectorDeepDive.wealthAccumulation}`);
+console.log("");
+
+console.log("=== GROWTH POTENTIAL ===");
+console.log(`Trajectory: ${report.growthPotential.trajectory}`);
+console.log(report.growthPotential.trajectoryNarrative);
+console.log("Peak Life Phases:");
+report.growthPotential.peakDecades.forEach((d) => {
+  console.log(`  [${d.intensity}] ${d.ageRange}: ${d.themes}`);
+});
+console.log("Accelerators:");
+report.growthPotential.accelerators.forEach((a) => console.log("  UP", a));
+console.log("Ceiling Factors:");
+report.growthPotential.ceilingFactors.forEach((c) => console.log("  DN", c));
+console.log("");
+
+console.log("=== KEY CAREER PERIODS (engine-only, not rendered) ===");
 if (report.keyPeriods.length === 0) {
   console.log("No strong career windows found in the next 3 years.");
 } else {
