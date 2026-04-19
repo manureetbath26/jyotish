@@ -15,6 +15,15 @@ import {
   generateCareerReport,
   type CareerReport,
 } from "@/lib/jaiminiCareerReport";
+import {
+  computeAshtakvarga,
+  type AshtakvargaRule,
+} from "@/lib/ashtakvargaEngine";
+import {
+  computeCareerAshtakvargaInsights,
+  type CareerAshtakvargaInsights,
+} from "@/lib/careerAshtakvargaInsights";
+import { CareerAshtakvargaPanel } from "@/components/CareerAshtakvargaPanel";
 import type { Sign } from "@/lib/charaDashaEngine";
 
 interface Props {
@@ -63,6 +72,8 @@ function Section({
 
 export function CareerReportView({ chart, userName, onBack }: Props) {
   const [report, setReport] = useState<CareerReport | null>(null);
+  const [ashtakvargaInsights, setAshtakvargaInsights] =
+    useState<CareerAshtakvargaInsights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,22 +118,40 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
 
         if (cancelled) return;
 
+        // ── 5-year forward scan from today ──
         const scan = scanCareerWindows(
           predInput,
           chart,
           allSnapshots,
-          80,
-          chart.date,
+          5,
+          undefined, // default: from today
         );
 
         if (cancelled) return;
 
         const careerRpt = generateCareerReport(predInput, chart, scan, {
-          futureOnly: false,
+          futureOnly: true,
           birthYear,
         });
 
         if (!cancelled) setReport(careerRpt);
+
+        // ── Compute Ashtakvarga career insights ──
+        try {
+          const rulesRes = await fetch("/api/ashtakvarga/rules");
+          if (rulesRes.ok) {
+            const rules: AshtakvargaRule[] = await rulesRes.json();
+            const analysis = computeAshtakvarga(chart, rules);
+            const insights = computeCareerAshtakvargaInsights(
+              analysis,
+              careerRpt.natalProfile.a10Sign,
+              careerRpt.natalProfile.amk,
+            );
+            if (!cancelled) setAshtakvargaInsights(insights);
+          }
+        } catch (err) {
+          console.warn("[Career] Ashtakvarga insights failed:", err);
+        }
       } catch (err) {
         console.error("[Career] Unexpected error:", err);
         if (!cancelled) {
@@ -202,7 +231,12 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
             {error}
           </div>
         )}
-        {report && <CareerReportContent report={report} />}
+        {report && (
+          <CareerReportContent
+            report={report}
+            ashtakvargaInsights={ashtakvargaInsights}
+          />
+        )}
       </Section>
     </div>
   );
@@ -212,7 +246,13 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
 // Career Report Content
 // ────────────────────────────────────────────────────────────────────────────
 
-function CareerReportContent({ report }: { report: CareerReport }) {
+function CareerReportContent({
+  report,
+  ashtakvargaInsights,
+}: {
+  report: CareerReport;
+  ashtakvargaInsights: CareerAshtakvargaInsights | null;
+}) {
   const confColor =
     report.verdict.confidence === "High"
       ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
@@ -347,6 +387,13 @@ function CareerReportContent({ report }: { report: CareerReport }) {
       {/* ── Growth Potential ── */}
       <GrowthPotentialSection growth={report.growthPotential} />
 
+      {/* ── Ashtakvarga career indicators (natal evidence) ── */}
+      {ashtakvargaInsights && (
+        <div className="border border-blue-500/20 bg-blue-500/[0.03] rounded-xl p-4 sm:p-5">
+          <CareerAshtakvargaPanel insights={ashtakvargaInsights} />
+        </div>
+      )}
+
       {/* ── Growth Indicators ── */}
       {report.strongIndicators.length > 0 && (
         <div>
@@ -381,8 +428,10 @@ function CareerReportContent({ report }: { report: CareerReport }) {
 
       {/* ── Footnote ── */}
       <p className="text-[10px] text-slate-600 italic leading-relaxed pt-2 border-t border-slate-800/50">
-        Career analysis based on Jaimini Chara Dasha principles (10th house, Amatya Karaka, A10 Rajya Pada, Karakamsha).
-        Planetary alignments before age 16 have been excluded. Transit positions are approximate for distant future periods.
+        Scope: forward-looking 5-year window from today. Based on Jaimini Chara Dasha
+        principles (10th house, Amatya Karaka, A10 Rajya Pada, Karakamsha). Ashtakvarga
+        indicators reflect natal bindu strength — independent of the dasha-transit timing
+        signals above, they describe the built-in support your chart brings to career.
       </p>
     </div>
   );
