@@ -258,6 +258,25 @@ model AshtakvargaRule {
   @@unique([planet, source])
 }
 
+// ---------------------------------------------------------------------------
+// Sarvashtakavarga interpretation rules (house-wise impacts + comparisons).
+// Source: https://shilaavinyaas.com/p/sarvashtakavarga-explained-house-wise-impacts-rules-remedies
+// Stored as structured JSON per category so rules can be extended later
+// without schema migrations.
+// ---------------------------------------------------------------------------
+model SarvashtakvargaRule {
+  id        String   @id @default(cuid())
+  category  String   // "house" | "trikona" | "comparison"
+  ruleKey   String   // house number ("1".."12") or trikona id or comparison id
+  content   Json     // structured payload (see seed script for shape)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, ruleKey])
+  @@index([category])
+}
+
 model Coupon {
   id        String    @id @default(cuid())
   code      String    @unique

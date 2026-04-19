@@ -9,6 +9,12 @@ import {
 } from "@/lib/ashtakvargaEngine";
 import { AshtakvargaCharts } from "@/components/AshtakvargaCharts";
 import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
+import { SarvashtakvargaInterpretation } from "@/components/SarvashtakvargaInterpretation";
+import {
+  interpretSarvashtakvarga,
+  type InterpretationRules,
+  type SarvashtakvargaInsights,
+} from "@/lib/sarvashtakvargaInterpreter";
 
 async function searchPlaces(query: string): Promise<string[]> {
   if (query.length < 3) return [];
@@ -38,13 +44,15 @@ export default function AshtakvargaPage() {
   // Chart & analysis
   const [chart, setChart] = useState<ChartResponse | null>(null);
   const [rules, setRules] = useState<AshtakvargaRule[] | null>(null);
+  const [interpretationRules, setInterpretationRules] = useState<InterpretationRules | null>(null);
   const [analysis, setAnalysis] = useState<AshtakvargaAnalysis | null>(null);
+  const [insights, setInsights] = useState<SarvashtakvargaInsights | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("Loading chart...");
   const [error, setError] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
 
-  // Pre-fetch rules on mount (small payload, cached)
+  // Pre-fetch bindu rules on mount (small payload, cached)
   useEffect(() => {
     let cancelled = false;
     fetch("/api/ashtakvarga/rules")
@@ -57,6 +65,38 @@ export default function AshtakvargaPage() {
       cancelled = true;
     };
   }, []);
+
+  // Pre-fetch interpretation rules
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ashtakvarga/interpretation-rules")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setInterpretationRules(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Compute interpretation whenever analysis + interpretation rules are ready
+  useEffect(() => {
+    if (!analysis || !interpretationRules) {
+      setInsights(null);
+      return;
+    }
+    try {
+      const result = interpretSarvashtakvarga(
+        analysis.sarvashtakvarga.signTotals,
+        analysis.lagnaSign,
+        interpretationRules,
+      );
+      setInsights(result);
+    } catch (err) {
+      console.error("[Ashtakvarga] Interpretation failed:", err);
+    }
+  }, [analysis, interpretationRules]);
 
   const loadForProfile = async (profileId: string, profileName: string) => {
     setLoading(true);
@@ -367,6 +407,23 @@ export default function AshtakvargaPage() {
               Jupiter 56 &middot; Venus 52 &middot; Saturn 39 &middot; SAV 337
             </p>
           </div>
+
+          {/* Sarvashtakvarga interpretation panel */}
+          {insights && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                  <span>{"\u{1F4D6}"}</span>
+                  Sarvashtakavarga Interpretation
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  House-by-house impacts, 4-pillar analysis, and practical decision rules based on
+                  classical Sarvashtakavarga thresholds.
+                </p>
+              </div>
+              <SarvashtakvargaInterpretation insights={insights} />
+            </div>
+          )}
         </div>
       )}
     </div>
