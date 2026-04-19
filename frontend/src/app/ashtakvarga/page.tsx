@@ -67,14 +67,35 @@ export default function AshtakvargaPage() {
   }, []);
 
   // Pre-fetch interpretation rules
+  const [interpRulesError, setInterpRulesError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     fetch("/api/ashtakvarga/interpretation-rules")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setInterpretationRules(data);
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        return r.json();
       })
-      .catch(() => {});
+      .then((data) => {
+        if (!cancelled) {
+          // Validate shape
+          if (!data || !Array.isArray(data.house) || data.house.length === 0) {
+            setInterpRulesError(
+              "Interpretation rules returned empty. Run: npx tsx scripts/seed-sarvashtakvarga-rules.ts",
+            );
+            return;
+          }
+          setInterpretationRules(data);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setInterpRulesError(
+            err instanceof Error ? err.message : "Failed to load interpretation rules",
+          );
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -409,21 +430,30 @@ export default function AshtakvargaPage() {
           </div>
 
           {/* Sarvashtakvarga interpretation panel */}
-          {insights && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                  <span>{"\u{1F4D6}"}</span>
-                  Sarvashtakavarga Interpretation
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  House-by-house impacts, 4-pillar analysis, and practical decision rules based on
-                  classical Sarvashtakavarga thresholds.
-                </p>
-              </div>
-              <SarvashtakvargaInterpretation insights={insights} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                <span>{"\u{1F4D6}"}</span>
+                Sarvashtakavarga Interpretation
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                House-by-house impacts, 4-pillar analysis, and practical decision rules based on
+                classical Sarvashtakavarga thresholds.
+              </p>
             </div>
-          )}
+            {insights ? (
+              <SarvashtakvargaInterpretation insights={insights} />
+            ) : interpRulesError ? (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-400">
+                Could not load interpretation rules: {interpRulesError}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
+                <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                Loading interpretation rules...
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

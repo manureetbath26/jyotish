@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Interpretation rules are classical and stable — cache aggressively
-export const dynamic = "force-static";
-export const revalidate = 3600;
+// Use dynamic rendering to ensure DB is queried fresh on each request.
+// (force-static with DB access can silently cache empty arrays if build
+// happens before seed, which would hide the interpretation panel.)
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/ashtakvarga/interpretation-rules
