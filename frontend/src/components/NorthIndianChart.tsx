@@ -3,83 +3,86 @@
 import { SIGN_INDEX, ZODIAC_ORDER, type Sign } from "@/lib/charaDashaEngine";
 
 /**
- * North Indian diamond chart for displaying 12 values (one per house).
+ * North Indian diamond chart with Lagna (H1) at the TOP inner diamond.
  *
- * Layout (all coords in SVG viewBox 0 0 200 200):
- *   - Outer square (0,0) - (200,200)
- *   - Inner diamond with vertices at midpoints of outer sides: T(100,0),
- *     R(200,100), B(100,200), L(0,100)
- *   - Both outer-square diagonals drawn, crossing at center C(100,100)
- *   - Outer diagonals intersect the diamond edges at (50,50), (150,50),
- *     (150,150), (50,150) — these 4 points + the 4 diamond vertices
- *     divide the space into 12 regions
+ * Layout (SVG viewBox 0 0 200 200):
+ *   Outer square + inscribed diamond + both outer diagonals → 12 regions.
+ *   Houses run counter-clockwise from H1 (top inner):
+ *     H1  = top inner diamond
+ *     H2  = top-left UPPER sub (closer to top edge)
+ *     H3  = top-left LOWER sub (closer to left edge)
+ *     H4  = left inner diamond
+ *     H5  = bottom-left UPPER sub (closer to left edge)
+ *     H6  = bottom-left LOWER sub (closer to bottom edge)
+ *     H7  = bottom inner diamond
+ *     H8  = bottom-right LOWER sub (closer to bottom edge)
+ *     H9  = bottom-right UPPER sub (closer to right edge)
+ *     H10 = right inner diamond
+ *     H11 = top-right LOWER sub (closer to right edge)
+ *     H12 = top-right UPPER sub (closer to top edge)
  *
- * Houses are arranged counter-clockwise starting from the BOTTOM inner
- * diamond (H1), matching the screenshot convention provided:
- *   - Inner diamond triangles: H1 bottom, H4 right, H7 top, H10 left
- *   - Corner sub-triangles: pairs {H2,H3} BR, {H5,H6} TR, {H8,H9} TL, {H11,H12} BL
+ * Small numbers displayed inside each house are RASHI NUMBERS (1-12,
+ * Aries=1 .. Pisces=12), not house numbers. The rashi that sits in each
+ * house is computed from the Lagna sign.
  */
 
-// Polygon coordinates for each of the 12 houses (index = house - 1)
+// Polygon coords — index = house - 1
 const HOUSE_POLYGONS: string[] = [
-  "100,100 150,150 100,200 50,150", // H1  bottom inner diamond
-  "150,150 100,200 200,200",         // H2  BR inner sub (closer to H1)
-  "150,150 200,200 200,100",         // H3  BR outer sub (closer to H4)
-  "100,100 150,50 200,100 150,150",  // H4  right inner diamond
-  "150,50 200,100 200,0",            // H5  TR outer sub (closer to H4)
-  "150,50 200,0 100,0",              // H6  TR inner sub (closer to H7)
-  "100,100 50,50 100,0 150,50",      // H7  top inner diamond
-  "50,50 100,0 0,0",                 // H8  TL inner sub (closer to H7)
-  "50,50 0,0 0,100",                 // H9  TL outer sub (closer to H10)
-  "100,100 50,150 0,100 50,50",      // H10 left inner diamond
-  "50,150 0,100 0,200",              // H11 BL outer sub (closer to H10)
-  "50,150 0,200 100,200",            // H12 BL inner sub (closer to H1)
+  "50,50 100,0 150,50 100,100",      // H1  top inner diamond
+  "0,0 100,0 50,50",                 // H2  TL UPPER sub
+  "0,0 0,100 50,50",                 // H3  TL LOWER sub
+  "50,50 0,100 50,150 100,100",      // H4  left inner diamond
+  "0,200 0,100 50,150",              // H5  BL UPPER sub (closer to left)
+  "0,200 100,200 50,150",            // H6  BL LOWER sub (closer to bottom)
+  "50,150 100,200 150,150 100,100",  // H7  bottom inner diamond
+  "200,200 100,200 150,150",         // H8  BR LOWER sub (closer to bottom)
+  "200,200 200,100 150,150",         // H9  BR UPPER sub (closer to right)
+  "150,50 200,100 150,150 100,100",  // H10 right inner diamond
+  "200,0 200,100 150,50",            // H11 TR LOWER sub (closer to right)
+  "200,0 100,0 150,50",              // H12 TR UPPER sub (closer to top)
 ];
 
-// Centroids for value labels
-const HOUSE_CENTROIDS: [number, number][] = [
-  [100, 160],  // H1 (adjusted down from center)
-  [150, 185],  // H2
-  [182, 152],  // H3
-  [150, 100],  // H4
-  [182, 48],   // H5
-  [150, 15],   // H6
-  [100, 40],   // H7 (adjusted up from center)
-  [50, 15],    // H8
-  [18, 48],    // H9
-  [50, 100],   // H10
-  [18, 152],   // H11
-  [50, 185],   // H12
+// Centroid for the main VALUE label (large number)
+const VALUE_POS: [number, number][] = [
+  [100, 38],   // H1 — upper part of top diamond
+  [50, 18],    // H2
+  [18, 50],    // H3
+  [38, 100],   // H4 — left part of left diamond
+  [18, 150],   // H5
+  [50, 182],   // H6
+  [100, 162],  // H7 — lower part of bottom diamond
+  [150, 182],  // H8
+  [182, 150],  // H9
+  [162, 100],  // H10 — right part of right diamond
+  [182, 50],   // H11
+  [150, 18],   // H12
 ];
 
-// Positions for small house-number labels (closer to the inner meeting point)
-const HOUSE_LABEL_POS: [number, number][] = [
-  [100, 115],  // H1 — near top of bottom diamond
-  [135, 182],  // H2
-  [170, 138],  // H3
-  [140, 105],  // H4 — left of center
-  [170, 60],   // H5
-  [135, 20],   // H6
-  [100, 85],   // H7 — below top of diamond
-  [65, 20],    // H8
-  [30, 60],    // H9
-  [60, 105],   // H10 — right of center
-  [30, 138],   // H11
-  [65, 182],   // H12
+// Small RASHI number label position — near the inner meeting point of
+// each region (where the 4 inner diamond tips converge visually)
+const RASHI_POS: [number, number][] = [
+  [100, 82],   // H1 — near bottom of top diamond (close to center)
+  [62, 40],    // H2 — near (50,50) inward
+  [40, 62],    // H3 — near (50,50) inward
+  [82, 100],   // H4 — right side of left diamond (close to center)
+  [40, 138],   // H5 — near (50,150) inward
+  [62, 160],   // H6 — near (50,150) inward
+  [100, 118],  // H7 — near top of bottom diamond (close to center)
+  [138, 160],  // H8
+  [160, 138],  // H9
+  [118, 100],  // H10 — left side of right diamond
+  [160, 62],   // H11
+  [138, 40],   // H12
 ];
 
 interface Props {
-  /** 12 values indexed by sign (0 = Aries, 1 = Taurus, ..., 11 = Pisces) */
+  /** 12 values indexed by sign (0 = Aries ... 11 = Pisces) */
   signTotals: number[];
   lagnaSign: Sign;
   title?: string;
-  /** Planets placed at each sign (for rendering symbols inside houses) */
-  planetsBySign?: Record<string, string[]>;
   /** Optional: highlight a specific house (1-12) */
   highlightHouse?: number;
-  /** Color theme — border + text */
   accent?: "amber" | "blue" | "emerald";
-  /** SVG size in px (the component stays square) */
   size?: number;
 }
 
@@ -93,35 +96,29 @@ export function NorthIndianChart({
 }: Props) {
   const lagnaIdx = SIGN_INDEX[lagnaSign];
 
-  const accentClasses: Record<string, { stroke: string; text: string; highlight: string; title: string }> = {
-    amber: {
-      stroke: "#f59e0b",
-      text: "#e2e8f0",
-      highlight: "rgba(245, 158, 11, 0.15)",
-      title: "text-amber-400",
-    },
-    blue: {
-      stroke: "#3b82f6",
-      text: "#e2e8f0",
-      highlight: "rgba(59, 130, 246, 0.15)",
-      title: "text-blue-400",
-    },
-    emerald: {
-      stroke: "#10b981",
-      text: "#e2e8f0",
-      highlight: "rgba(16, 185, 129, 0.15)",
-      title: "text-emerald-400",
-    },
-  };
-  const cls = accentClasses[accent];
+  // Accent color mappings
+  const strokeColor =
+    accent === "blue" ? "#3b82f6"
+    : accent === "emerald" ? "#10b981"
+    : "#f59e0b";
+  const highlightFill =
+    accent === "blue" ? "rgba(59, 130, 246, 0.12)"
+    : accent === "emerald" ? "rgba(16, 185, 129, 0.12)"
+    : "rgba(245, 158, 11, 0.12)";
+  const titleColor =
+    accent === "blue" ? "text-blue-400"
+    : accent === "emerald" ? "text-emerald-400"
+    : "text-amber-400";
 
-  // For each house 1-12, determine sign and value
+  // Per-house data
   const houses = Array.from({ length: 12 }, (_, i) => {
+    const h = i + 1;
     const signIdx = (lagnaIdx + i) % 12;
     return {
-      house: i + 1,
+      house: h,
       signIdx,
       sign: ZODIAC_ORDER[signIdx],
+      rashiNumber: signIdx + 1, // 1-12
       value: signTotals[signIdx] ?? 0,
     };
   });
@@ -129,20 +126,22 @@ export function NorthIndianChart({
   return (
     <div className="inline-flex flex-col items-center">
       {title && (
-        <h3 className={`text-base font-bold mb-2 ${cls.title}`}>{title}</h3>
+        <h3 className={`text-base font-bold mb-2 ${titleColor}`}>{title}</h3>
       )}
+      {/* Text color via currentColor — text-slate-100 auto-adapts per theme
+          (near-white in dark mode, near-black in light mode via inverted scale) */}
       <svg
         viewBox="0 0 200 200"
         width={size}
         height={size}
-        className="max-w-full"
+        className="max-w-full text-slate-100"
         style={{ aspectRatio: "1 / 1" }}
       >
-        {/* Highlight layer — only for the highlighted house */}
+        {/* Highlight layer */}
         {highlightHouse && highlightHouse >= 1 && highlightHouse <= 12 && (
           <polygon
             points={HOUSE_POLYGONS[highlightHouse - 1]}
-            fill={cls.highlight}
+            fill={highlightFill}
           />
         )}
 
@@ -152,14 +151,14 @@ export function NorthIndianChart({
             key={i}
             points={poly}
             fill="none"
-            stroke={cls.stroke}
+            stroke={strokeColor}
             strokeWidth={0.8}
           />
         ))}
 
-        {/* Values — centered in each region */}
+        {/* Large value numbers (theme-aware) */}
         {houses.map((h) => {
-          const [cx, cy] = HOUSE_CENTROIDS[h.house - 1];
+          const [cx, cy] = VALUE_POS[h.house - 1];
           return (
             <text
               key={`v-${h.house}`}
@@ -168,29 +167,30 @@ export function NorthIndianChart({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="13"
-              fontWeight="600"
-              fill={cls.text}
+              fontWeight="700"
+              fill="currentColor"
             >
               {h.value}
             </text>
           );
         })}
 
-        {/* Small house-number labels */}
+        {/* Small rashi numbers (accent color) */}
         {houses.map((h) => {
-          const [lx, ly] = HOUSE_LABEL_POS[h.house - 1];
+          const [rx, ry] = RASHI_POS[h.house - 1];
           return (
             <text
-              key={`h-${h.house}`}
-              x={lx}
-              y={ly}
+              key={`r-${h.house}`}
+              x={rx}
+              y={ry}
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize="6.5"
-              fill={cls.stroke}
-              opacity="0.9"
+              fontSize="7"
+              fontWeight="500"
+              fill={strokeColor}
+              opacity="0.85"
             >
-              {h.house}
+              {h.rashiNumber}
             </text>
           );
         })}
