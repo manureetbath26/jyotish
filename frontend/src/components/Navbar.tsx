@@ -47,6 +47,10 @@ export function Navbar() {
               Reports
             </Link>
 
+            <Link href="/ashtakvarga" className="text-slate-300 hover:text-white transition-colors">
+              Ashtakvarga
+            </Link>
+
             {session ? (
               <>
                 <Link href="/profiles" className="text-slate-300 hover:text-white transition-colors">

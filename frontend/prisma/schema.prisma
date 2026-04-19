@@ -225,6 +225,23 @@ model Interpretation {
   @@index([category])
 }
 
+// ---------------------------------------------------------------------------
+// Ashtakvarga rules — bindu contribution tables per classical Jyotish texts
+// Source: Jyotish Ashtakavarga by M.S. Mehta, tables on pages 11–13.
+// One row per (planet, source); `houses` lists the relative house offsets
+// (1-12) from the source at which the planet receives a benefic bindu.
+// ---------------------------------------------------------------------------
+model AshtakvargaRule {
+  id        String   @id @default(cuid())
+  planet    String   // "Sun" | "Moon" | "Mars" | "Mercury" | "Jupiter" | "Venus" | "Saturn"
+  source    String   // "Sun" | "Moon" | "Mars" | "Mercury" | "Jupiter" | "Venus" | "Saturn" | "Lagna"
+  houses    Int[]    // benefic offsets from source (1..12)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planet, source])
+}
+
 model Coupon {
   id        String    @id @default(cuid())
   code      String    @unique
