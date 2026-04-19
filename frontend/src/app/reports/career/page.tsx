@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { calculateChart, ChartResponse } from "@/lib/api";
 import { CareerReportView } from "@/components/reports/CareerReportView";
+import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
 
 const UPI_ID = "9872653657@ybl";
 const DEFAULT_REPORT_PRICE = 500;
@@ -46,6 +47,9 @@ function CareerReportContent() {
 
   const [step, setStep] = useState<Step>("birth");
 
+  // Profile selection
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+
   // Birth form
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
@@ -56,6 +60,27 @@ function CareerReportContent() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedRef = useRef(false);
+
+  const handleProfileSelect = (sel: SelectedSource) => {
+    if (sel.kind === "profile") {
+      const p = sel.profile;
+      setSelectedProfileId(p.id);
+      setName(p.name);
+      setDate(p.dateOfBirth);
+      setTime(p.timeOfBirth);
+      setPlace(p.placeOfBirth);
+      if (p.gender === "male" || p.gender === "female" || p.gender === "other") {
+        setGender(p.gender);
+      }
+    } else {
+      setSelectedProfileId(null);
+      setName("");
+      setDate("");
+      setTime("");
+      setPlace("");
+      setGender("male");
+    }
+  };
 
   // Chart
   const [chart, setChart] = useState<ChartResponse | null>(null);
@@ -177,6 +202,7 @@ function CareerReportContent() {
           email: purchaseEmail,
           couponCode: coupon.trim(),
           reportType: "career",
+          profileId: selectedProfileId,
           birthName: name || null,
           birthData: { date, time, place },
           chartData: chart,
@@ -208,6 +234,7 @@ function CareerReportContent() {
           email,
           upiTransactionId: upiRef,
           reportType: "career",
+          profileId: selectedProfileId,
           birthName: name || null,
           birthData: { date, time, place },
           chartData: chart,
@@ -283,7 +310,14 @@ function CareerReportContent() {
       {/* Step 1: Birth Details */}
       {step === "birth" && (
         <form onSubmit={handleCalculate} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
-          <h2 className="text-lg font-semibold text-blue-400">Enter Birth Details</h2>
+          <ProfileSelector
+            accent="blue"
+            selectedProfileId={selectedProfileId}
+            onSelect={handleProfileSelect}
+          />
+          <h2 className="text-lg font-semibold text-blue-400">
+            {selectedProfileId ? "Confirm Birth Details" : "Enter Birth Details"}
+          </h2>
           <p className="text-xs text-slate-500 leading-relaxed">
             Accurate birth details are essential for precise career analysis.
             The ascendant and planetary positions determine career timing, nature, and growth periods.

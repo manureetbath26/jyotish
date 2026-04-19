@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: NextRequest) {
   const session = await auth();
   const body = await req.json();
-  const { email, upiTransactionId, couponCode, reportType, birthName, birthData, chartData, reportData } = body;
+  const { email, upiTransactionId, couponCode, reportType, profileId, birthName, birthData, chartData, reportData } = body;
 
   if (!email || !reportType || !birthData || !chartData) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
@@ -66,9 +66,19 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Payment reference required" }, { status: 400 });
   }
 
+  // Validate profileId (if provided) belongs to the current user
+  let verifiedProfileId: string | null = null;
+  if (profileId && session?.user?.id) {
+    const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+    if (profile && profile.userId === session.user.id) {
+      verifiedProfileId = profile.id;
+    }
+  }
+
   const purchase = await prisma.reportPurchase.create({
     data: {
       userId: session?.user?.id ?? null,
+      profileId: verifiedProfileId,
       email,
       reportType,
       amount,

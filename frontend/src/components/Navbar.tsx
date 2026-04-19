@@ -49,6 +49,9 @@ export function Navbar() {
 
             {session ? (
               <>
+                <Link href="/profiles" className="text-slate-300 hover:text-white transition-colors">
+                  Profiles
+                </Link>
                 <Link href="/compatibility" className="text-slate-300 hover:text-white transition-colors">
                   Compatibility
                 </Link>
