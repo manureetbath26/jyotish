@@ -16,6 +16,15 @@ import {
   type KeyPeriod,
   type DivorceRiskAssessment,
 } from "@/lib/jaiminiMarriageReport";
+import {
+  computeAshtakvarga,
+  type AshtakvargaRule,
+} from "@/lib/ashtakvargaEngine";
+import {
+  computeMarriageAshtakvargaInsights,
+  type MarriageAshtakvargaInsights,
+} from "@/lib/marriageAshtakvargaInsights";
+import { MarriageAshtakvargaPanel } from "@/components/MarriageAshtakvargaPanel";
 
 interface Props {
   report: CharaDashaReport;
@@ -81,6 +90,8 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
   const [marriageReport, setMarriageReport] = useState<MarriageReport | null>(null);
   const [marriageLoading, setMarriageLoading] = useState(false);
   const [marriageError, setMarriageError] = useState<string | null>(null);
+  const [ashtakvargaInsights, setAshtakvargaInsights] =
+    useState<MarriageAshtakvargaInsights | null>(null);
 
 
   useEffect(() => {
@@ -127,24 +138,40 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 
         if (cancelled) return;
 
-        // ── Full lifetime scan (birth to 80 years) ──
+        // ── 5-year forward scan from today ──
         const scan = scanMarriageWindows(
           predInput,
           chart,
           allSnapshots,
-          80,
-          chart.date,
+          5,
+          undefined, // default: from today
         );
 
         if (cancelled) return;
 
-        // ── Generate structured report ──
+        // ── Generate structured report (future only) ──
         const report = generateMarriageReport(predInput, chart, scan, {
-          futureOnly: false,
+          futureOnly: true,
           birthYear,
         });
 
         if (!cancelled) setMarriageReport(report);
+
+        // ── Compute Ashtakvarga marriage insights ──
+        try {
+          const rulesRes = await fetch("/api/ashtakvarga/rules");
+          if (rulesRes.ok) {
+            const rules: AshtakvargaRule[] = await rulesRes.json();
+            const analysis = computeAshtakvarga(chart, rules);
+            const insights = computeMarriageAshtakvargaInsights(
+              analysis,
+              report.natalProfile.ulSign,
+            );
+            if (!cancelled) setAshtakvargaInsights(insights);
+          }
+        } catch (err) {
+          console.warn("[Marriage] Ashtakvarga insights failed:", err);
+        }
       } catch (err) {
         console.error("[Marriage] Unexpected error:", err);
         if (!cancelled) {
@@ -303,7 +330,12 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
             {marriageError}
           </div>
         )}
-        {marriageReport && <MarriageReportSection report={marriageReport} />}
+        {marriageReport && (
+          <MarriageReportSection
+            report={marriageReport}
+            ashtakvargaInsights={ashtakvargaInsights}
+          />
+        )}
       </Section>
 
     </div>
@@ -318,28 +350,26 @@ export function CharaDashaReportView({ report, chart, onBack }: Props) {
 // Marriage Report Section (structured narrative)
 // ────────────────────────────────────────────────────────────────────────────
 
-function MarriageReportSection({ report }: { report: MarriageReport }) {
+function MarriageReportSection({
+  report,
+  ashtakvargaInsights,
+}: {
+  report: MarriageReport;
+  ashtakvargaInsights: MarriageAshtakvargaInsights | null;
+}) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-  const [showPast, setShowPast] = useState(false);
   const [appendixOpen, setAppendixOpen] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  // Split into strong and moderate
+  // Future-only scan — split strong vs moderate, no past timeline
   const allStrong = report.keyPeriods.filter((p) => p.strength === "Strong");
   const allModerate = report.keyPeriods.filter((p) => p.strength === "Moderate");
 
-  // If no strong periods exist, promote moderate to the main timeline
-  // Sort moderate by peakScore-equivalent (rulesMetList length) descending for priority
+  // If no strong periods, promote moderate to the main timeline
   const hasStrongPeriods = allStrong.length > 0;
   const timelinePeriods = hasStrongPeriods
     ? allStrong
     : [...allModerate].sort((a, b) => a.startDate.localeCompare(b.startDate));
   const appendixPeriods = hasStrongPeriods ? allModerate : [];
-
-  // Further split timeline into past/future
-  const pastTimeline = timelinePeriods.filter((p) => p.startDate < todayStr);
-  const futureTimeline = timelinePeriods.filter((p) => p.startDate >= todayStr);
 
   // Accent colors: green for strong, amber for promoted moderate
   const dotColor = hasStrongPeriods ? "bg-green-500" : "bg-amber-500";
@@ -391,7 +421,7 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
       {timelinePeriods.length > 0 ? (
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Marriage Timeline</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Marriage Timeline — Next 5 Years</p>
             {!hasStrongPeriods && (
               <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/20 rounded-full px-2 py-0.5">
                 Moderate indicators
@@ -403,121 +433,8 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
             <div className="absolute left-[28px] sm:left-1/2 sm:-translate-x-px top-0 bottom-0 w-0.5 bg-slate-700" />
 
             <div className="space-y-8">
-              {/* ── Past periods (collapsed by default, greyed out) ── */}
-              {pastTimeline.length > 0 && (
-                <div className="relative">
-                  {/* Collapse toggle for past events */}
-                  <div className="flex items-start gap-3 sm:hidden">
-                    <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
-                      <div className="w-[14px] h-[14px] rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg" />
-                    </div>
-                    <button
-                      onClick={() => setShowPast((v) => !v)}
-                      className="flex-1 border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
-                    >
-                      <span className="text-xs text-slate-500">
-                        {showPast ? "\u25B2" : "\u25BC"} {pastTimeline.length} past period{pastTimeline.length > 1 ? "s" : ""} (already elapsed)
-                      </span>
-                    </button>
-                  </div>
-                  <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
-                    <div />
-                    <div className="flex justify-center pt-1">
-                      <div className="w-4 h-4 rounded-full bg-slate-600 border-2 border-slate-900 shadow-lg z-10" />
-                    </div>
-                    <button
-                      onClick={() => setShowPast((v) => !v)}
-                      className="border border-slate-700 bg-slate-800/30 rounded-xl px-4 py-2.5 text-left"
-                    >
-                      <span className="text-xs text-slate-500">
-                        {showPast ? "\u25B2" : "\u25BC"} {pastTimeline.length} past period{pastTimeline.length > 1 ? "s" : ""} (already elapsed)
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Expanded past events — muted but with strength colors */}
-                  {showPast && pastTimeline.map((period, i) => {
-                    const globalIdx = timelinePeriods.indexOf(period);
-                    const isRight = globalIdx % 2 === 0;
-                    const isExpanded = expandedIdx === globalIdx;
-                    const isPastStrong = period.strength === "Strong";
-                    const pastDot = isPastStrong ? "bg-green-700" : "bg-amber-700";
-                    const pastBorder = isPastStrong ? "border-green-500/15" : "border-amber-500/15";
-                    const pastBg = isPastStrong ? "bg-green-500/[0.03]" : "bg-amber-500/[0.03]";
-
-                    return (
-                      <div key={`past-${i}`} className="relative mt-8">
-                        {/* Mobile */}
-                        <div className="flex items-start gap-3 sm:hidden">
-                          <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
-                            <div className={`w-[14px] h-[14px] rounded-full ${pastDot} border-2 border-slate-900 shadow-lg`} />
-                          </div>
-                          <div className={`flex-1 border ${pastBorder} ${pastBg} rounded-xl p-4`}>
-                            <TimelineContent
-                              period={period}
-                              isPast
-                              isExpanded={isExpanded}
-                              onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
-                            />
-                          </div>
-                        </div>
-                        {/* Desktop */}
-                        <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-start">
-                          {isRight ? <div /> : (
-                            <div className={`border ${pastBorder} ${pastBg} rounded-xl p-4 text-right`}>
-                              <TimelineContent
-                                period={period}
-                                isPast
-                                isExpanded={isExpanded}
-                                onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
-                                alignRight
-                              />
-                            </div>
-                          )}
-                          <div className="flex justify-center pt-1">
-                            <div className={`w-4 h-4 rounded-full ${pastDot} border-2 border-slate-900 shadow-lg z-10`} />
-                          </div>
-                          {isRight ? (
-                            <div className={`border ${pastBorder} ${pastBg} rounded-xl p-4`}>
-                              <TimelineContent
-                                period={period}
-                                isPast
-                                isExpanded={isExpanded}
-                                onToggle={() => setExpandedIdx(isExpanded ? null : globalIdx)}
-                              />
-                            </div>
-                          ) : <div />}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* ── "Now" marker between past & future ── */}
-              {pastTimeline.length > 0 && futureTimeline.length > 0 && (
-                <div className="relative">
-                  <div className="flex items-center gap-3 sm:hidden">
-                    <div className="relative z-10 flex-shrink-0 flex flex-col items-center">
-                      <div className="w-[14px] h-[14px] rounded-full bg-amber-500 border-2 border-slate-900 shadow-lg ring-2 ring-amber-500/30 animate-pulse" />
-                    </div>
-                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Now</span>
-                  </div>
-                  <div className="hidden sm:grid sm:grid-cols-[1fr_32px_1fr] sm:gap-4 sm:items-center">
-                    <div className="border-t border-dashed border-amber-500/30" />
-                    <div className="flex justify-center">
-                      <div className="w-5 h-5 rounded-full bg-amber-500 border-2 border-slate-900 shadow-lg ring-2 ring-amber-500/30 animate-pulse z-10" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="border-t border-dashed border-amber-500/30 flex-1" />
-                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-widest flex-shrink-0">Present</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Future periods (full color) ── */}
-              {futureTimeline.map((period, i) => {
+              {/* ── Next 5 years — future periods only ── */}
+              {timelinePeriods.map((period, i) => {
                 const globalIdx = timelinePeriods.indexOf(period);
                 const isRight = globalIdx % 2 === 0;
                 const isExpanded = expandedIdx === globalIdx;
@@ -570,7 +487,14 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
         </div>
       ) : (
         <div className="bg-slate-800/30 border border-slate-800 rounded-lg p-4 text-center">
-          <p className="text-sm text-slate-500">No marriage periods found in the analyzed timeframe.</p>
+          <p className="text-sm text-slate-500">No marriage periods found in the next 5 years.</p>
+        </div>
+      )}
+
+      {/* ── Ashtakvarga marriage indicators (natal evidence) ── */}
+      {ashtakvargaInsights && (
+        <div className="border border-amber-500/20 bg-amber-500/[0.03] rounded-xl p-4 sm:p-5">
+          <MarriageAshtakvargaPanel insights={ashtakvargaInsights} />
         </div>
       )}
 
@@ -633,30 +557,24 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
                 These periods show partial alignment of marriage indicators. While not as definitive as the strong periods above,
                 they may coincide with meaningful relationship developments, deepening of bonds, or preparatory phases leading to commitment.
               </p>
-              {appendixPeriods.map((period, i) => {
-                const isPast = period.startDate < todayStr;
-                return (
-                  <div
-                    key={`mod-${i}`}
-                    className={`border border-amber-500/20 bg-amber-500/5 rounded-lg p-3 ${isPast ? "opacity-40" : ""}`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-sm font-bold ${isPast ? "text-slate-500" : "text-amber-400"}`}>
-                        Age {period.age}
-                      </span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
-                        Moderate
-                      </span>
-                      {isPast && (
-                        <span className="text-[10px] text-slate-600 italic">Past</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500">{period.timeRange}</p>
-                    <p className="text-[10px] text-slate-600 mb-1">{period.dasha}</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">{period.summary}</p>
+              {appendixPeriods.map((period, i) => (
+                <div
+                  key={`mod-${i}`}
+                  className="border border-amber-500/20 bg-amber-500/5 rounded-lg p-3"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-amber-400">
+                      Age {period.age}
+                    </span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                      Moderate
+                    </span>
                   </div>
-                );
-              })}
+                  <p className="text-xs text-slate-500">{period.timeRange}</p>
+                  <p className="text-[10px] text-slate-600 mb-1">{period.dasha}</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">{period.summary}</p>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -664,7 +582,9 @@ function MarriageReportSection({ report }: { report: MarriageReport }) {
 
       {/* ── Footnote ── */}
       <p className="text-[10px] text-slate-600 italic leading-relaxed pt-2 border-t border-slate-800/50">
-        Note: Planetary alignments occurring before age 18 have been excluded from this analysis, as they fall outside the culturally and legally relevant age range for marriage.
+        Scope: forward-looking 5-year window from today. Ashtakvarga indicators reflect natal
+        bindu strength — independent of the dasha-transit timing signals above, they describe the
+        built-in support (or challenge) your chart brings to marriage.
       </p>
     </div>
   );
