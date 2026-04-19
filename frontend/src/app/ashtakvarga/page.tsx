@@ -19,15 +19,13 @@ async function searchPlaces(query: string): Promise<string[]> {
   return data.map((item: { display_name: string }) => item.display_name);
 }
 
-type Step = "birth" | "charts";
-
 export default function AshtakvargaPage() {
-  const [step, setStep] = useState<Step>("birth");
-
   // Profile
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [selectedProfileName, setSelectedProfileName] = useState<string>("");
 
-  // Birth form
+  // Manual entry form
+  const [manualMode, setManualMode] = useState(false);
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
@@ -42,18 +40,80 @@ export default function AshtakvargaPage() {
   const [rules, setRules] = useState<AshtakvargaRule[] | null>(null);
   const [analysis, setAnalysis] = useState<AshtakvargaAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("Loading chart...");
   const [error, setError] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
+
+  // Pre-fetch rules on mount (small payload, cached)
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ashtakvarga/rules")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancelled) setRules(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadForProfile = async (profileId: string, profileName: string) => {
+    setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    setChart(null);
+    setLoadingMsg("Loading saved chart...");
+    setSelectedProfileName(profileName);
+
+    try {
+      // Try cached endpoint first — computes on backend if needed
+      const res = await fetch(`/api/profiles/${profileId}/chart`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      if (!data.cached) {
+        setLoadingMsg("First-time generation — saving for next visit...");
+      }
+      setFromCache(!!data.cached);
+      setChart(data.chartData);
+
+      // Load rules if not yet
+      let activeRules = rules;
+      if (!activeRules) {
+        const rulesRes = await fetch("/api/ashtakvarga/rules");
+        activeRules = rulesRes.ok ? await rulesRes.json() : [];
+        setRules(activeRules);
+      }
+
+      const result = computeAshtakvarga(data.chartData, activeRules || []);
+      setAnalysis(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load chart");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleProfileSelect = (sel: SelectedSource) => {
     if (sel.kind === "profile") {
-      const p = sel.profile;
-      setSelectedProfileId(p.id);
-      setName(p.name);
-      setDate(p.dateOfBirth);
-      setTime(p.timeOfBirth);
-      setPlace(p.placeOfBirth);
+      setSelectedProfileId(sel.profile.id);
+      setManualMode(false);
+      // Pre-fill manual form in case user switches
+      setName(sel.profile.name);
+      setDate(sel.profile.dateOfBirth);
+      setTime(sel.profile.timeOfBirth);
+      setPlace(sel.profile.placeOfBirth);
+      // Auto-load the chart
+      loadForProfile(sel.profile.id, sel.profile.name);
     } else {
       setSelectedProfileId(null);
+      setManualMode(true);
+      setAnalysis(null);
+      setChart(null);
       setName("");
       setDate("");
       setTime("");
@@ -61,7 +121,7 @@ export default function AshtakvargaPage() {
     }
   };
 
-  // Place autocomplete
+  // Place autocomplete for manual mode
   useEffect(() => {
     if (selectedRef.current) {
       selectedRef.current = false;
@@ -78,30 +138,18 @@ export default function AshtakvargaPage() {
     };
   }, [place]);
 
-  // Pre-fetch rules on mount (small payload, cached)
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/ashtakvarga/rules")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        if (!cancelled) setRules(data);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleCalculate = async (e: React.FormEvent) => {
+  const handleManualCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !time || !place) return;
     setLoading(true);
+    setLoadingMsg("Calculating chart...");
     setError(null);
+    setFromCache(false);
+    setSelectedProfileName(name || "Manual entry");
     try {
       const result = await calculateChart({ date, time, place });
       setChart(result);
 
-      // Load rules if not yet loaded
       let activeRules = rules;
       if (!activeRules) {
         const res = await fetch("/api/ashtakvarga/rules");
@@ -109,9 +157,8 @@ export default function AshtakvargaPage() {
         setRules(activeRules);
       }
 
-      const result2 = computeAshtakvarga(result, activeRules || []);
-      setAnalysis(result2);
-      setStep("charts");
+      const analysisResult = computeAshtakvarga(result, activeRules || []);
+      setAnalysis(analysisResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to calculate");
     } finally {
@@ -129,27 +176,29 @@ export default function AshtakvargaPage() {
         <p className="text-slate-400 text-sm mt-1">
           Eight classical charts showing planetary bindu distributions across the zodiac
         </p>
-        <p className="text-[10px] text-slate-600 mt-1">
+        <p className="text-[10px] text-slate-500 mt-1">
           Based on bindu contribution tables from M.S. Mehta&apos;s <em>Jyotish Ashtakavarga</em>
         </p>
       </header>
 
-      {step === "birth" && (
+      {/* Profile selector — always visible at top */}
+      <div className="max-w-2xl mx-auto">
+        <ProfileSelector
+          accent="amber"
+          selectedProfileId={selectedProfileId}
+          onSelect={handleProfileSelect}
+        />
+      </div>
+
+      {/* Manual entry form — only when "Enter manually" is active */}
+      {manualMode && !analysis && (
         <form
-          onSubmit={handleCalculate}
+          onSubmit={handleManualCalculate}
           className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 max-w-2xl mx-auto"
         >
-          <ProfileSelector
-            accent="amber"
-            selectedProfileId={selectedProfileId}
-            onSelect={handleProfileSelect}
-          />
-
-          <h2 className="text-lg font-semibold text-amber-400">
-            {selectedProfileId ? "Confirm Birth Details" : "Enter Birth Details"}
-          </h2>
+          <h2 className="text-lg font-semibold text-amber-400">Enter Birth Details</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Accurate birth details determine planetary positions, which drive all 8 Ashtakvarga charts.
+            Chart computed on-the-fly. Save as a profile to avoid re-entering next time.
           </p>
 
           <div className="flex flex-col gap-1.5">
@@ -228,44 +277,69 @@ export default function AshtakvargaPage() {
             )}
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold py-2.5 rounded-lg transition-colors text-sm"
           >
-            {loading ? "Calculating charts..." : "Generate Ashtakvarga Charts"}
+            {loading ? "Calculating..." : "Generate Charts"}
           </button>
         </form>
       )}
 
-      {step === "charts" && chart && analysis && (
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center gap-3 py-10">
+          <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-400">{loadingMsg}</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="max-w-2xl mx-auto bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Charts */}
+      {!loading && chart && analysis && (
         <div className="space-y-4">
           {/* Context header */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
             <div>
-              <p className="text-sm text-slate-200 font-semibold">
-                {name || "Chart"} &middot; {chart.lagna} Lagna
+              <p className="text-sm text-slate-100 font-semibold">
+                {selectedProfileName || "Chart"} &middot; {chart.lagna} Lagna
               </p>
               <p className="text-xs text-slate-500">
                 {chart.date} &middot; {chart.time} &middot; {chart.place?.split(",").slice(0, 2).join(",")}
               </p>
             </div>
-            <button
-              onClick={() => {
-                setStep("birth");
-                setAnalysis(null);
-                setChart(null);
-              }}
-              className="text-xs border border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-amber-400 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              {"\u2190"} New chart
-            </button>
+            <div className="flex items-center gap-2">
+              {fromCache && (
+                <span
+                  className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5"
+                  title="Loaded from saved chart (no recomputation)"
+                >
+                  {"\u26A1"} Saved
+                </span>
+              )}
+              {selectedProfileId && (
+                <button
+                  onClick={async () => {
+                    // Force regenerate
+                    await fetch(`/api/profiles/${selectedProfileId}/chart`, {
+                      method: "DELETE",
+                    });
+                    loadForProfile(selectedProfileId, selectedProfileName);
+                  }}
+                  className="text-xs border border-slate-700 hover:border-amber-500/50 text-slate-400 hover:text-amber-400 px-3 py-1.5 rounded-lg transition-colors"
+                  title="Recalculate from scratch"
+                >
+                  {"\u21BB"} Refresh
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6">
@@ -288,7 +362,7 @@ export default function AshtakvargaPage() {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-slate-600 mt-2">
+            <p className="text-[10px] text-slate-500 mt-2">
               Classical maxima: Sun 48 &middot; Moon 49 &middot; Mars 39 &middot; Mercury 54 &middot;
               Jupiter 56 &middot; Venus 52 &middot; Saturn 39 &middot; SAV 337
             </p>

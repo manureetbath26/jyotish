@@ -87,10 +87,20 @@ export async function PATCH(
   }
   // isOwn is NOT editable — it's set once at creation
 
+  // If any birth-affecting field changed, invalidate the cached chart
+  const birthChanged =
+    (data.dateOfBirth !== undefined && data.dateOfBirth !== existing.dateOfBirth) ||
+    (data.timeOfBirth !== undefined && data.timeOfBirth !== existing.timeOfBirth) ||
+    (data.placeOfBirth !== undefined && data.placeOfBirth !== existing.placeOfBirth);
+
   const updated = await prisma.profile.update({
     where: { id },
     data,
   });
+
+  if (birthChanged) {
+    await prisma.profileChart.deleteMany({ where: { profileId: id } });
+  }
 
   return Response.json(updated);
 }
