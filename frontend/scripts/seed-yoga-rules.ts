@@ -8,6 +8,7 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import type { YogaDetector } from "../src/lib/yogaEngine";
+import { YOGA_IMPLICATIONS } from "./yoga-implications";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -1305,7 +1306,13 @@ async function main() {
 
   console.log(`Seeding ${RULES.length} yoga rules (including ${bhavaRules.length} bhava yogas)...`);
 
+  let implicationsSeeded = 0;
+  let implicationsMissing = 0;
   for (const r of RULES) {
+    const implications = YOGA_IMPLICATIONS[r.slug] ?? null;
+    if (implications) implicationsSeeded++;
+    else implicationsMissing++;
+
     await prisma.yogaRule.upsert({
       where: { slug: r.slug },
       create: {
@@ -1317,6 +1324,7 @@ async function main() {
         classicalText: r.classicalText,
         formation: r.formation,
         effects: r.effects,
+        implications,
         importance: r.importance,
         sortOrder: r.sortOrder,
         detector: r.detector as unknown as object,
@@ -1329,6 +1337,7 @@ async function main() {
         classicalText: r.classicalText,
         formation: r.formation,
         effects: r.effects,
+        implications,
         importance: r.importance,
         sortOrder: r.sortOrder,
         detector: r.detector as unknown as object,
@@ -1341,6 +1350,7 @@ async function main() {
   console.log("Per category:");
   for (const [cat, n] of byCategory) console.log(`  ${cat.padEnd(12)}: ${n}`);
   console.log(`Total: ${RULES.length}`);
+  console.log(`Implications seeded: ${implicationsSeeded} / ${RULES.length} (missing: ${implicationsMissing})`);
 }
 
 main()

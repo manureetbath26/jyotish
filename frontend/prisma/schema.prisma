@@ -287,11 +287,14 @@ model YogaRule {
   slug          String   @unique          // "gajakesari", "hamsa_mahapurusha", ...
   name          String                    // "Gaja Kesari Yoga"
   category      String                    // "mahapurusha" | "nabhasa" | "chandra" | "surya" | "raja" | "dhana" | "special" | "dosha"
-  chapter       Int                       // BPHS chapter (34-40)
+  chapter       Int                       // BPHS chapter (34-43)
   source        String                    // "BPHS Ch. 36.3-4"
   classicalText String                    // classical translation
   formation     String                    // concise formation rule in plain English
-  effects       String                    // what the yoga delivers
+  effects       String                    // what the yoga delivers (classical summary)
+  implications  String?                   // rich narrative: how it plays out in life,
+                                          // when it activates (dasha/transit), caveats,
+                                          // how to maximize.
   importance    Int      @default(3)      // 1-5 for display ordering
   detector      Json                      // typed detector payload for engine
   sortOrder     Int      @default(0)

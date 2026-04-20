@@ -50,6 +50,8 @@ export interface YogaRule {
   classicalText: string;
   formation: string;
   effects: string;
+  /** Richer narrative: manifestation, activation, caveats, how to maximize */
+  implications?: string | null;
   importance: number;
   detector: YogaDetector;
   sortOrder: number;

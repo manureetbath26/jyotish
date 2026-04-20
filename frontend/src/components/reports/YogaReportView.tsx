@@ -230,15 +230,25 @@ function YogaCard({
         </span>
       </button>
       {isExpanded && (
-        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-800/50">
+        <div className="px-3 pb-3 pt-1 space-y-3 border-t border-slate-800/50">
           <div>
             <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Formation</p>
             <p className="text-xs text-slate-300 leading-relaxed">{yoga.rule.formation}</p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Effects</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Classical effects</p>
             <p className="text-xs text-slate-300 leading-relaxed">{yoga.rule.effects}</p>
           </div>
+          {yoga.rule.implications && (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-md p-2.5">
+              <p className="text-[10px] text-amber-400 uppercase tracking-wide mb-0.5 font-semibold">
+                {"\u2728"} How this plays out in life
+              </p>
+              <p className="text-xs text-slate-200 leading-relaxed">
+                {yoga.rule.implications}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Classical source</p>
             <p className="text-[11px] text-slate-400 italic">
