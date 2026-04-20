@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ChartResponse, BirthDataInput, calculateChart } from "@/lib/api";
 import { calculateCompatibility, type CompatibilityResult } from "@/lib/compatibilityEngine";
+import type { Profile } from "@/components/ProfileSelector";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 import jsPDF from "jspdf";
 
 interface Props {
@@ -10,13 +12,16 @@ interface Props {
   chart?: ChartResponse;
 }
 
+// Legacy alias kept to minimise structural churn; the "saved" list is now
+// driven by user Profiles, not the legacy Chart table.
 interface SavedChart {
   id: string;
   name: string;
   chartData: ChartResponse;
+  relationship?: string | null;
 }
 
-type InputMode = "saved" | "manual";
+type InputMode = "profile" | "manual";
 
 const RELATIONSHIPS = [
   { id: "romantic", label: "Romantic Partner / Spouse", icon: "💕" },
@@ -53,11 +58,61 @@ function ScoreBar({ score, max, label }: { score: number; max: number; label: st
 }
 
 export function CompatibilityTab({ chart: chartProp }: Props) {
-  const [savedCharts, setSavedCharts] = useState<SavedChart[]>([]);
+  const { activeProfile } = useActiveProfile();
+
+  // Profiles the current user has saved — these populate the "From Profiles"
+  // dropdown for both the primary chart and partner entries.
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loadingCharts, setLoadingCharts] = useState(false);
 
+  // Per-profile lazy chart cache. Fetching a profile's chart is O(API+compute)
+  // so we fetch on first selection and then cache.
+  const [profileCharts, setProfileCharts] = useState<Record<string, ChartResponse>>({});
+  const [fetchingProfileIds, setFetchingProfileIds] = useState<Set<string>>(new Set());
+
+  const savedCharts: SavedChart[] = profiles
+    .map((p) => {
+      const chartData = profileCharts[p.id];
+      if (!chartData) return null;
+      return {
+        id: p.id,
+        name: p.name,
+        chartData,
+        relationship: p.relationship,
+      } as SavedChart;
+    })
+    .filter((x): x is SavedChart => x !== null);
+
+  /**
+   * Fetch a profile's cached chart if it isn't in the in-memory cache.
+   * Safe to call repeatedly — concurrent callers share the same request.
+   */
+  const loadProfileChart = useCallback(
+    async (profileId: string): Promise<ChartResponse | null> => {
+      if (profileCharts[profileId]) return profileCharts[profileId];
+      setFetchingProfileIds((prev) => new Set(prev).add(profileId));
+      try {
+        const res = await fetch(`/api/profiles/${profileId}/chart`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const chart = data.chartData as ChartResponse;
+        setProfileCharts((prev) => ({ ...prev, [profileId]: chart }));
+        return chart;
+      } catch {
+        return null;
+      } finally {
+        setFetchingProfileIds((prev) => {
+          const next = new Set(prev);
+          next.delete(profileId);
+          return next;
+        });
+      }
+    },
+    [profileCharts],
+  );
+
   // "Your chart" selection — if chartProp not provided, user selects or enters own chart
-  const [ownMode, setOwnMode] = useState<InputMode>(chartProp ? "saved" : "saved");
+  const [ownMode, setOwnMode] = useState<InputMode>("profile");
   const [ownSavedChartId, setOwnSavedChartId] = useState("");
   const [ownName, setOwnName] = useState("");
   const [ownDate, setOwnDate] = useState("");
@@ -80,7 +135,7 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
     relationship: string;
     chart: ChartResponse | null;
   }[]>([
-    { id: 1, mode: "manual", savedChartId: "", name: "", date: "", time: "", place: "", relationship: "romantic", chart: null },
+    { id: 1, mode: "profile", savedChartId: "", name: "", date: "", time: "", place: "", relationship: "romantic", chart: null },
   ]);
 
   const [results, setResults] = useState<CompatibilityResult[]>([]);
@@ -101,12 +156,12 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
     }, 350);
   };
 
-  // Fetch saved charts
+  // Fetch the user's saved profiles (each profile has a cached chart behind it)
   useEffect(() => {
     setLoadingCharts(true);
-    fetch("/api/charts")
-      .then(r => r.ok ? r.json() : [])
-      .then((data: SavedChart[]) => setSavedCharts(data))
+    fetch("/api/profiles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Profile[]) => setProfiles(data))
       .catch(() => {})
       .finally(() => setLoadingCharts(false));
   }, []);
@@ -314,11 +369,14 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
       let primaryChart = chart;
       let primaryName = "You";
       if (!chartProp) {
-        if (ownMode === "saved") {
-          const saved = savedCharts.find(c => c.id === ownSavedChartId);
-          if (!saved) throw new Error("Please select your own chart first.");
-          primaryChart = saved.chartData as ChartResponse;
-          primaryName = saved.name || "You";
+        if (ownMode === "profile") {
+          if (!ownSavedChartId) throw new Error("Please select your own profile first.");
+          const profile = profiles.find((p) => p.id === ownSavedChartId);
+          if (!profile) throw new Error("Selected profile not found.");
+          const c = profileCharts[ownSavedChartId] ?? (await loadProfileChart(ownSavedChartId));
+          if (!c) throw new Error(`Failed to load chart for "${profile.name}".`);
+          primaryChart = c;
+          primaryName = profile.name;
           setOwnChart(primaryChart);
         } else {
           if (!ownDate || !ownTime || !ownPlace) throw new Error("Please fill in your own birth details.");
@@ -332,12 +390,15 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
       const resolvedEntries: { name: string; chart: ChartResponse; relationship: string }[] = [];
 
       for (const entry of entries) {
-        if (entry.mode === "saved") {
-          const saved = savedCharts.find(c => c.id === entry.savedChartId);
-          if (!saved) throw new Error(`Please select a saved chart for "${entry.name || "Person"}"`);
+        if (entry.mode === "profile") {
+          if (!entry.savedChartId) throw new Error(`Please pick a profile for "${entry.name || "Person"}"`);
+          const profile = profiles.find((p) => p.id === entry.savedChartId);
+          if (!profile) throw new Error(`Profile not found for "${entry.name || "Person"}"`);
+          const c = profileCharts[entry.savedChartId] ?? (await loadProfileChart(entry.savedChartId));
+          if (!c) throw new Error(`Failed to load chart for "${profile.name}"`);
           resolvedEntries.push({
-            name: saved.name,
-            chart: saved.chartData as ChartResponse,
+            name: profile.name,
+            chart: c,
             relationship: entry.relationship,
           });
         } else {
@@ -392,7 +453,7 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
 
           {/* Input mode toggle */}
           <div className="flex rounded-lg overflow-hidden border border-slate-700 w-fit">
-            {(["saved", "manual"] as InputMode[]).map(m => (
+            {(["profile", "manual"] as InputMode[]).map(m => (
               <button
                 key={m}
                 onClick={() => setOwnMode(m)}
@@ -402,32 +463,41 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
                     : "bg-slate-800 text-slate-400 hover:text-slate-200"
                 }`}
               >
-                {m === "saved" ? "From My Charts" : "Enter Details"}
+                {m === "profile" ? "From My Profiles" : "New Chart"}
               </button>
             ))}
           </div>
 
-          {ownMode === "saved" ? (
+          {ownMode === "profile" ? (
             <div>
               <select
                 value={ownSavedChartId}
-                onChange={e => {
-                  setOwnSavedChartId(e.target.value);
-                  const sc = savedCharts.find(c => c.id === e.target.value);
-                  if (sc) { setOwnChart(sc.chartData as ChartResponse); setOwnName(sc.name); }
+                onChange={async (e) => {
+                  const pid = e.target.value;
+                  setOwnSavedChartId(pid);
+                  if (!pid) return;
+                  const profile = profiles.find((p) => p.id === pid);
+                  if (profile) setOwnName(profile.name);
+                  const c = await loadProfileChart(pid);
+                  if (c) setOwnChart(c);
                 }}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
               >
-                <option value="">— Select your chart —</option>
-                {savedCharts.map(sc => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.name} ({(sc.chartData as ChartResponse).lagna} Lagna)
+                <option value="">— Select a profile —</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.isOwn ? "\u2B50 " : ""}{p.name}
+                    {p.relationship && p.relationship !== "self" ? ` (${p.relationship})` : ""}
+                    {" \u00B7 "}{p.dateOfBirth}
                   </option>
                 ))}
               </select>
-              {loadingCharts && <p className="text-xs text-slate-500 mt-1">Loading saved charts...</p>}
-              {!loadingCharts && savedCharts.length === 0 && (
-                <p className="text-xs text-slate-500 mt-1">No saved charts. Switch to &quot;Enter Details&quot; to enter your birth info.</p>
+              {loadingCharts && <p className="text-xs text-slate-500 mt-1">Loading profiles...</p>}
+              {fetchingProfileIds.has(ownSavedChartId) && (
+                <p className="text-xs text-slate-500 mt-1">Loading chart for selected profile...</p>
+              )}
+              {!loadingCharts && profiles.length === 0 && (
+                <p className="text-xs text-slate-500 mt-1">No saved profiles. Switch to &quot;New Chart&quot; to enter birth details.</p>
               )}
             </div>
           ) : (
@@ -519,7 +589,7 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
 
             {/* Input mode toggle */}
             <div className="flex rounded-lg overflow-hidden border border-slate-700 w-fit">
-              {(["saved", "manual"] as InputMode[]).map(m => (
+              {(["profile", "manual"] as InputMode[]).map(m => (
                 <button
                   key={m}
                   onClick={() => updateEntry(entry.id, { mode: m })}
@@ -529,28 +599,56 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
                       : "bg-slate-800 text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  {m === "saved" ? "From My Charts" : "Enter Details"}
+                  {m === "profile" ? "From My Profiles" : "New Chart"}
                 </button>
               ))}
             </div>
 
-            {entry.mode === "saved" ? (
+            {entry.mode === "profile" ? (
               <div>
                 <select
                   value={entry.savedChartId}
-                  onChange={e => updateEntry(entry.id, { savedChartId: e.target.value, name: savedCharts.find(c => c.id === e.target.value)?.name || "" })}
+                  onChange={async (e) => {
+                    const pid = e.target.value;
+                    const profile = profiles.find((p) => p.id === pid);
+                    const updates: Partial<(typeof entries)[0]> = {
+                      savedChartId: pid,
+                      name: profile?.name || "",
+                    };
+                    // Auto-fill relationship from profile if we know it
+                    if (profile?.relationship) {
+                      const r = profile.relationship.toLowerCase();
+                      const known = RELATIONSHIPS.find((opt) => opt.id === r);
+                      if (known) updates.relationship = known.id;
+                      else if (r === "spouse" || r === "partner") updates.relationship = "romantic";
+                      else if (r === "self") updates.relationship = "other";
+                    }
+                    updateEntry(entry.id, updates);
+                    if (!pid) return;
+                    const c = await loadProfileChart(pid);
+                    if (c) updateEntry(entry.id, { chart: c });
+                  }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
-                  <option value="">— Select a saved chart —</option>
-                  {savedCharts.map(sc => (
-                    <option key={sc.id} value={sc.id}>
-                      {sc.name} ({(sc.chartData as ChartResponse).lagna} Lagna)
-                    </option>
-                  ))}
+                  <option value="">— Select a profile —</option>
+                  {profiles
+                    // Exclude the active profile from the partner dropdown so
+                    // users don't accidentally compare their chart to itself.
+                    .filter((p) => p.id !== activeProfile?.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.isOwn ? "\u2B50 " : ""}{p.name}
+                        {p.relationship && p.relationship !== "self" ? ` (${p.relationship})` : ""}
+                        {" \u00B7 "}{p.dateOfBirth}
+                      </option>
+                    ))}
                 </select>
-                {loadingCharts && <p className="text-xs text-slate-500 mt-1">Loading saved charts...</p>}
-                {!loadingCharts && savedCharts.length === 0 && (
-                  <p className="text-xs text-slate-500 mt-1">No saved charts. Switch to &quot;Enter Details&quot; or save some charts first.</p>
+                {loadingCharts && <p className="text-xs text-slate-500 mt-1">Loading profiles...</p>}
+                {fetchingProfileIds.has(entry.savedChartId) && (
+                  <p className="text-xs text-slate-500 mt-1">Loading chart...</p>
+                )}
+                {!loadingCharts && profiles.filter((p) => p.id !== activeProfile?.id).length === 0 && (
+                  <p className="text-xs text-slate-500 mt-1">No other profiles to compare against. Switch to &quot;New Chart&quot; to enter birth details, or add profiles on the Profiles page.</p>
                 )}
               </div>
             ) : (
