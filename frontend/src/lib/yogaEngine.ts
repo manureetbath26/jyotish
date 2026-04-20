@@ -951,12 +951,19 @@ function detectKartariBhava(
   bhava: number,
   chart: ChartResponse,
 ): string | null {
-  return detectKartariByHouse(
+  const base = detectKartariByHouse(
     benefic,
     bhava,
     `Bhava ${bhava}`,
     chart,
   );
+  if (!base) return null;
+  // Enrich with planets sitting in the flanked bhava — these are the
+  // entities whose significations are most directly pinched/protected.
+  const occupants = planetsInHouse(chart, bhava);
+  if (occupants.length === 0) return base + ` \u2014 no planets in the bhava itself`;
+  const names = occupants.map((p) => p.name).join(", ");
+  return base + ` \u2014 affecting ${names} in this bhava`;
 }
 
 function detectYogakaraka(chart: ChartResponse): string | null {

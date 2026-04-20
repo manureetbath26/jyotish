@@ -638,59 +638,9 @@ const RULES: Rule[] = [
     detector: { type: "vipareet_raja", house: 12 },
   },
 
-  // Kartari Yogas — flanking Lagna or Moon
-  {
-    slug: "shubha_kartari_lagna",
-    name: "Shubha Kartari Yoga (Lagna)",
-    category: "special",
-    chapter: 36,
-    source: "BPHS & classical tradition",
-    classicalText: "The Lagna is flanked by benefics on both sides.",
-    formation: "Benefics occupy both the 2nd and 12th houses from the Lagna.",
-    effects: "Well-being, protection, steady guidance, support from benefic influences in both outgoing (12th) and accumulated (2nd) aspects of life.",
-    importance: 3,
-    sortOrder: 100,
-    detector: { type: "kartari", benefic: true, reference: "lagna" },
-  },
-  {
-    slug: "papa_kartari_lagna",
-    name: "Papa Kartari Yoga (Lagna)",
-    category: "dosha",
-    chapter: 36,
-    source: "BPHS & classical tradition",
-    classicalText: "The Lagna is flanked by malefics on both sides.",
-    formation: "Malefics occupy both the 2nd and 12th houses from the Lagna.",
-    effects: "Self-expression feels pressured or constrained; life tests self-reliance. Strong inner resource develops from navigating these pressures.",
-    importance: 3,
-    sortOrder: 101,
-    detector: { type: "kartari", benefic: false, reference: "lagna" },
-  },
-  {
-    slug: "shubha_kartari_moon",
-    name: "Shubha Kartari Yoga (Moon)",
-    category: "chandra",
-    chapter: 37,
-    source: "Classical tradition",
-    classicalText: "The Moon is flanked by benefics on both sides.",
-    formation: "Benefics occupy both the 2nd and 12th houses from the Moon.",
-    effects: "Emotional steadiness, protective influences around the mind, warm social support, mental clarity.",
-    importance: 3,
-    sortOrder: 56,
-    detector: { type: "kartari", benefic: true, reference: "moon" },
-  },
-  {
-    slug: "papa_kartari_moon",
-    name: "Papa Kartari Yoga (Moon)",
-    category: "dosha",
-    chapter: 37,
-    source: "Classical tradition",
-    classicalText: "The Moon is flanked by malefics on both sides.",
-    formation: "Malefics occupy both the 2nd and 12th houses from the Moon.",
-    effects: "Mind experiences pressure from either side — builds resilience but may bring phases of worry or emotional strain. Benefic aspects on Moon ease this.",
-    importance: 3,
-    sortOrder: 57,
-    detector: { type: "kartari", benefic: false, reference: "moon" },
-  },
+  // Kartari Yogas — moved to per-bhava generator (generateKartariRules below).
+  // The legacy lagna/moon variants are subsumed by bhava-1 / bhava-N
+  // detection in whole-sign systems.
 
   // Yogakaraka
   {
@@ -1305,7 +1255,6 @@ function generateBhavaYogaRules(): Rule[] {
 // Same logic for malefics → Papa Kartari. Both flavours can co-exist on the
 // same reference when the flanking is mixed on both sides.
 
-const PLANET_KARTARI_BASE_SORT = 300;
 const BHAVA_KARTARI_BASE_SORT = 350;
 
 const HOUSE_NAMES: Record<number, string> = {
@@ -1323,44 +1272,13 @@ const HOUSE_NAMES: Record<number, string> = {
   12: "Vyaya (losses)",
 };
 
-const KARTARI_PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"];
-
 function generateKartariRules(): Rule[] {
   const rules: Rule[] = [];
-  let sort = PLANET_KARTARI_BASE_SORT;
-
-  // Per-planet: each of 7 classical planets × Shubha + Papa
-  for (const planet of KARTARI_PLANETS) {
-    rules.push({
-      slug: `shubha_kartari_${planet.toLowerCase()}`,
-      name: `Shubha Kartari Yoga (${planet})`,
-      category: "special",
-      chapter: 36,
-      source: "Classical tradition; permissive reading per Sanatan Veda, Astroyogi, Indastro",
-      classicalText: `${planet} is flanked by benefic planets in the adjacent signs.`,
-      formation: `At least one benefic occupies the 12th from ${planet}'s sign AND at least one benefic occupies the 2nd from ${planet}'s sign.`,
-      effects: `${planet}'s significations are protected and supported by benefic influences on both sides — even when ${planet} is structurally weak, results tend to be cushioned.`,
-      importance: 3,
-      sortOrder: sort++,
-      detector: { type: "kartari_planet", benefic: true, planet },
-    });
-    rules.push({
-      slug: `papa_kartari_${planet.toLowerCase()}`,
-      name: `Papa Kartari Yoga (${planet})`,
-      category: "dosha",
-      chapter: 36,
-      source: "Classical tradition; permissive reading per Sanatan Veda, Astroyogi, Indastro",
-      classicalText: `${planet} is flanked by malefic planets in the adjacent signs.`,
-      formation: `At least one malefic occupies the 12th from ${planet}'s sign AND at least one malefic occupies the 2nd from ${planet}'s sign.`,
-      effects: `${planet}'s significations face friction and obstruction — the planet's results come with effort, delay, or pressure from authority/conflict/disruption depending on which malefics flank it.`,
-      importance: 3,
-      sortOrder: sort++,
-      detector: { type: "kartari_planet", benefic: false, planet },
-    });
-  }
-
-  // Per-bhava: each of 12 bhavas × Shubha + Papa
-  sort = BHAVA_KARTARI_BASE_SORT;
+  // Per-bhava only. In whole-sign houses, "Kartari around a planet" is
+  // identical to "Kartari around the bhava the planet sits in" — emitting
+  // both would always duplicate. Bhava-Kartari evidence is enriched with
+  // the planets sitting in the flanked bhava so no info is lost.
+  let sort = BHAVA_KARTARI_BASE_SORT;
   for (let bhava = 1; bhava <= 12; bhava++) {
     const houseName = HOUSE_NAMES[bhava];
     rules.push({
@@ -1399,6 +1317,23 @@ async function main() {
 
   const kartariRules = generateKartariRules();
   RULES.push(...kartariRules);
+
+  // Drop legacy kartari rules now subsumed by bhava-kartari in whole-sign:
+  //  - per-planet (each planet's flanking == its bhava's flanking)
+  //  - lagna (== bhava 1)
+  //  - moon (== whichever bhava the Moon sits in)
+  const orphanSlugs = [
+    ...["sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn"]
+      .flatMap((p) => [`shubha_kartari_${p}`, `papa_kartari_${p}`]),
+    "shubha_kartari_lagna", "papa_kartari_lagna",
+    "shubha_kartari_moon",  "papa_kartari_moon",
+  ];
+  const deleted = await prisma.yogaRule.deleteMany({
+    where: { slug: { in: orphanSlugs } },
+  });
+  if (deleted.count > 0) {
+    console.log(`Deleted ${deleted.count} legacy kartari rules now subsumed by bhava-kartari.`);
+  }
 
   console.log(`Seeding ${RULES.length} yoga rules (including ${bhavaRules.length} bhava yogas, ${kartariRules.length} kartari extensions)...`);
 
