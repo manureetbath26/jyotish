@@ -689,15 +689,81 @@ function detectKalaSarpa(chart: ChartResponse): string | null {
 
 const DUSTHANAS = [6, 8, 12];
 
+/**
+ * Check if `planet` forms a "hard" connection (conjunction, mutual 7th
+ * aspect, or sign exchange) with any of the `others`. Special one-way
+ * Parashari aspects (Jupiter 5/9, Mars 4/8, Saturn 3/10) are NOT
+ * considered blockers here — classical commentaries generally treat
+ * only strong bilateral relationships as disruptive of Vipareet Raja.
+ */
+function hasHardConnection(
+  planet: string,
+  others: string[],
+  chart: ChartResponse,
+  lagna: Sign,
+): { connected: boolean; via: string | null } {
+  const planetH = planetHouse(chart, planet);
+  const planetSignV = planetSign(chart, planet);
+  if (!planetH || !planetSignV) return { connected: false, via: null };
+
+  for (const other of others) {
+    if (other === planet) continue;
+    const otherH = planetHouse(chart, other);
+    const otherSign = planetSign(chart, other);
+    if (!otherH || !otherSign) continue;
+
+    // Conjunction
+    if (otherH === planetH) {
+      return { connected: true, via: `conjunct with ${other} in H${planetH}` };
+    }
+
+    // Mutual 7th aspect
+    const offset = ((otherH - planetH + 12) % 12) + 1;
+    if (offset === 7) {
+      return { connected: true, via: `mutual 7th aspect with ${other}` };
+    }
+
+    // Sign exchange (parivartana)
+    const planetHome = CLASSICAL_HOUSE_BY_LORD(planet, lagna);
+    const otherHome = CLASSICAL_HOUSE_BY_LORD(other, lagna);
+    const planetHomeSign = signOffset(lagna, planetHome);
+    const otherHomeSign = signOffset(lagna, otherHome);
+    if (planetSignV === otherHomeSign && otherSign === planetHomeSign) {
+      return { connected: true, via: `sign exchange with ${other}` };
+    }
+  }
+  return { connected: false, via: null };
+}
+
 function detectVipareetRaja(houseLorded: 6 | 8 | 12, chart: ChartResponse): string | null {
   const lagna = chart.lagna as Sign;
   const lord = lordOf(houseLorded, lagna);
   const placementHouse = planetHouse(chart, lord);
   if (!placementHouse) return null;
   if (!DUSTHANAS.includes(placementHouse)) return null;
+
+  // Classical cancellation: the Vipareet Raja Yoga is blocked if the
+  // dusthana lord forms a HARD connection (conjunction, mutual 7th
+  // aspect, or sign exchange) with the Lagna lord, 5th lord, or 9th
+  // lord — the three kona lords being the most unambiguously benefic.
+  // A benefic kona lord's connection "saves" the dusthana from its
+  // debilitated state, eliminating the need for the reversal effect.
+  //
+  // One-way Parashari aspects (e.g. Jupiter's 9th aspect to another
+  // house) are intentionally NOT considered blockers — classical
+  // sources treat only bilateral / strong relationships as disruptive.
+  const konaLords = Array.from(
+    new Set([1, 5, 9].map((h) => lordOf(h, lagna)).filter((l) => l !== lord)),
+  );
+  const connection = hasHardConnection(lord, konaLords, chart, lagna);
+  if (connection.connected) {
+    // Yoga is cancelled — do not report.
+    return null;
+  }
+
   const yogaName =
     houseLorded === 6 ? "Harsha" : houseLorded === 8 ? "Sarala" : "Vimala";
-  return `${yogaName}: ${houseLorded}th lord ${lord} is in the ${placementHouse}th house (a dusthana — the evil houses cancel each other)`;
+  return `${yogaName}: ${houseLorded}th lord ${lord} is in the ${placementHouse}th house (dusthana) and has no blocking connection with the Lagna/5th/9th lord — the classical cancellation does not apply, so the yoga delivers full results`;
 }
 
 function detectKartari(
