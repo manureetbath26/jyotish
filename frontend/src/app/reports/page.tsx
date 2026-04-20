@@ -110,6 +110,7 @@ export default function ReportsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [activeTab, setActiveTab] = useState<"available" | "my">("available");
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -182,7 +183,12 @@ export default function ReportsPage() {
     setLoadingReports(true);
     fetch("/api/reports")
       .then((r) => (r.ok ? r.json() : []))
-      .then(setMyReports)
+      .then((rs: PurchasedReport[]) => {
+        setMyReports(rs);
+        // Land signed-in users with history directly on "My Reports" so
+        // they don't have to scroll past the catalogue.
+        if (rs.length > 0) setActiveTab("my");
+      })
       .catch(() => {})
       .finally(() => setLoadingReports(false));
   }, [session]);
@@ -198,8 +204,61 @@ export default function ReportsPage() {
         </p>
       </header>
 
-      {/* My Reports (logged-in users) */}
-      {session && myReports.length > 0 && (
+      {/* Tab switcher — only shown to signed-in users */}
+      {session && (
+        <div className="flex items-center gap-1 border-b border-slate-800">
+          <button
+            onClick={() => setActiveTab("my")}
+            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === "my"
+                ? "text-amber-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            My Reports
+            {myReports.length > 0 && (
+              <span className={`ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                activeTab === "my"
+                  ? "bg-amber-500/20 text-amber-300"
+                  : "bg-slate-800 text-slate-500"
+              }`}>
+                {myReports.length}
+              </span>
+            )}
+            {activeTab === "my" && (
+              <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-amber-500" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("available")}
+            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === "available"
+                ? "text-amber-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Available Reports
+            {activeTab === "available" && (
+              <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-amber-500" />
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* My Reports (logged-in users, active tab) */}
+      {session && activeTab === "my" && myReports.length === 0 && !loadingReports && (
+        <div className="text-center py-12 border border-dashed border-slate-800 rounded-2xl space-y-2">
+          <p className="text-slate-400">You haven&apos;t generated any reports yet.</p>
+          <button
+            onClick={() => setActiveTab("available")}
+            className="text-sm text-amber-400 hover:text-amber-300"
+          >
+            Browse available reports {"\u2192"}
+          </button>
+        </div>
+      )}
+
+      {session && activeTab === "my" && myReports.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-semibold text-amber-400">My Reports</h2>
@@ -401,15 +460,16 @@ export default function ReportsPage() {
           </div>
         </section>
       )}
-      {session && loadingReports && (
+      {session && activeTab === "my" && loadingReports && (
         <div className="flex items-center justify-center h-16 text-slate-500">
           <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Available Reports */}
+      {/* Available Reports — always visible for signed-out users, gated for signed-in */}
+      {(!session || activeTab === "available") && (
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-200">Available Reports</h2>
+        {!session && <h2 className="text-lg font-semibold text-slate-200">Available Reports</h2>}
         <div className="grid grid-cols-1 gap-6">
           {catalogEntries.map((entry) => {
             const meta = REPORT_META[entry.slug];
@@ -467,13 +527,16 @@ export default function ReportsPage() {
           })}
         </div>
       </section>
+      )}
 
-      {/* Coming soon placeholder */}
-      <section className="border border-dashed border-slate-800 rounded-2xl p-8 text-center">
-        <p className="text-slate-600 text-sm">
-          More reports coming soon — Career & Finance Report, Marriage Compatibility Report, Annual Transit Report
-        </p>
-      </section>
+      {/* Coming soon placeholder — only on Available tab / signed-out view */}
+      {(!session || activeTab === "available") && (
+        <section className="border border-dashed border-slate-800 rounded-2xl p-8 text-center">
+          <p className="text-slate-600 text-sm">
+            More reports coming soon — Career & Finance Report, Marriage Compatibility Report, Annual Transit Report
+          </p>
+        </section>
+      )}
     </div>
   );
 }
