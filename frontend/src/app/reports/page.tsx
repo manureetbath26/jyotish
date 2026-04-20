@@ -185,9 +185,6 @@ export default function ReportsPage() {
       .then((r) => (r.ok ? r.json() : []))
       .then((rs: PurchasedReport[]) => {
         setMyReports(rs);
-        // Land signed-in users with history directly on "My Reports" so
-        // they don't have to scroll past the catalogue.
-        if (rs.length > 0) setActiveTab("my");
       })
       .catch(() => {})
       .finally(() => setLoadingReports(false));
@@ -208,6 +205,19 @@ export default function ReportsPage() {
       {session && (
         <div className="flex items-center gap-1 border-b border-slate-800">
           <button
+            onClick={() => setActiveTab("available")}
+            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === "available"
+                ? "text-amber-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Available Reports
+            {activeTab === "available" && (
+              <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-amber-500" />
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab("my")}
             className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
               activeTab === "my"
@@ -226,19 +236,6 @@ export default function ReportsPage() {
               </span>
             )}
             {activeTab === "my" && (
-              <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-amber-500" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("available")}
-            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === "available"
-                ? "text-amber-400"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Available Reports
-            {activeTab === "available" && (
               <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-amber-500" />
             )}
           </button>
