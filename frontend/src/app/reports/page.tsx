@@ -97,6 +97,23 @@ const REPORT_META: Record<string, { href: string; icon: string; badge?: string; 
       "Each yoga: formation, effects, classical source (BPHS Ch. 34-43)",
     ],
   },
+  finance: {
+    href: "/reports/finance",
+    icon: "\u{1F4B0}",
+    badge: "New",
+    features: [
+      "Headline wealth verdict (0-100 score)",
+      "Dhana yogas + Lakshmi, Kubera, Kalanidhi signatures",
+      "Ashtakvarga health for H2, H5, H9, H11 + dusthanas",
+      "Income source profile (sectors + business vs job)",
+      "Savings vs expense axis (retention score)",
+      "Jaimini Arudha analysis (A2, A11)",
+      "Current wealth period (Vimshottari)",
+      "Best 3-5 wealth windows in next 5 years",
+      "Caution windows + classical remedies",
+      "Quarter-by-quarter forward timeline",
+    ],
+  },
 };
 
 export default function ReportsPage() {
