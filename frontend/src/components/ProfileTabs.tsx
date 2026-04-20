@@ -107,10 +107,10 @@ export function ProfileTabs() {
 
         <Link
           href="/profiles"
-          className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-md border border-slate-700 bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:border-slate-600 ml-1"
-          title="Manage profiles"
+          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:border-slate-600 ml-1"
+          title="Add, edit or delete profiles"
         >
-          {"\u002B"} Add
+          {"\u2630"} Show all profiles
         </Link>
 
         {activeProfile && (
