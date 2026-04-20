@@ -135,7 +135,23 @@ export type YogaDetector =
   | { type: "akhanda_samrajya" }
   // Sunapha/Anapha all-benefic or all-malefic subtype (flavours existing rules)
   // Grahana (eclipse) — Sun or Moon conjunct Rahu or Ketu
-  | { type: "grahana" };
+  | { type: "grahana" }
+  // Named Raja yogas from BPHS Ch 36
+  | { type: "shankh" }
+  | { type: "bhairi" }
+  | { type: "mridang" }
+  | { type: "shrinath" }
+  | { type: "khadg" }
+  | { type: "matsya" }
+  | { type: "kurma" }
+  // Chandra-yoga flavor variants (is it benefic-flavored or malefic-flavored?)
+  | { type: "sunapha_flavored"; flavor: "benefic" | "malefic" }
+  | { type: "anapha_flavored"; flavor: "benefic" | "malefic" }
+  | { type: "duradhara_flavored"; flavor: "benefic" | "malefic" }
+  // Per-ascendant yogakaraka — BPHS Ch 34 specific narratives
+  | { type: "ascendant_yogakaraka"; ascendant: Sign; planet: string }
+  // General bhava yoga — lord of house N placed in house M
+  | { type: "bhava_yoga"; lordOf: number; inHouse: number };
 
 export interface DetectedYoga {
   rule: YogaRule;
@@ -976,6 +992,277 @@ function detectGrahana(chart: ChartResponse): string | null {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Phase 3: Named Raja yogas from BPHS Ch 36
+// ────────────────────────────────────────────────────────────────────────────
+
+function isOwnOrExalted(planet: string, sign: Sign): boolean {
+  return (OWN_SIGNS[planet]?.includes(sign) ?? false) || EXALTATION_SIGN[planet] === sign;
+}
+
+function detectShankh(chart: ChartResponse): string | null {
+  // BPHS 36.13-14: If Lagna lord is strong, while the Lords of 5th and 6th
+  // Bhava are in mutual Kendras, Shankh Yog is produced.
+  // Alternatively: 1L and 10L in a Movable sign while 9L is strong.
+  const lagna = chart.lagna as Sign;
+  const l1 = lordOf(1, lagna);
+  const l5 = lordOf(5, lagna);
+  const l6 = lordOf(6, lagna);
+  const l1H = planetHouse(chart, l1);
+  const l5H = planetHouse(chart, l5);
+  const l6H = planetHouse(chart, l6);
+  const l1Sign = planetSign(chart, l1);
+  if (!l1H || !l5H || !l6H || !l1Sign) return null;
+
+  // Lagna lord strong: in own sign, exaltation, or kendra/kona
+  const l1Strong = isOwnOrExalted(l1, l1Sign) || KENDRAS.includes(l1H) || KONAS.includes(l1H);
+  if (!l1Strong) return null;
+
+  // 5L and 6L in mutual kendras (i.e., 1/4/7/10 from each other)
+  const fromL5toL6 = ((l6H - l5H + 12) % 12) + 1;
+  if (!KENDRAS.includes(fromL5toL6)) return null;
+
+  return `Shankh: Lagna lord ${l1} strong (H${l1H}); 5L ${l5} (H${l5H}) and 6L ${l6} (H${l6H}) in mutual kendras`;
+}
+
+function detectBhairi(chart: ChartResponse): string | null {
+  // BPHS 36.15-16: Venus, Jupiter and Lagna lord are in a Kendra, while 9L is strong.
+  const lagna = chart.lagna as Sign;
+  const l1 = lordOf(1, lagna);
+  const l9 = lordOf(9, lagna);
+  const venusH = planetHouse(chart, "Venus");
+  const jupH = planetHouse(chart, "Jupiter");
+  const l1H = planetHouse(chart, l1);
+  const l9Sign = planetSign(chart, l9);
+  const l9H = planetHouse(chart, l9);
+  if (!venusH || !jupH || !l1H || !l9H || !l9Sign) return null;
+
+  // Venus, Jupiter, Lagna Lord — all in kendras
+  if (!KENDRAS.includes(venusH) || !KENDRAS.includes(jupH) || !KENDRAS.includes(l1H)) {
+    return null;
+  }
+
+  const l9Strong =
+    isOwnOrExalted(l9, l9Sign) || KENDRAS.includes(l9H) || KONAS.includes(l9H);
+  if (!l9Strong) return null;
+
+  return `Bhairi: Venus (H${venusH}), Jupiter (H${jupH}), Lagna lord ${l1} (H${l1H}) all in kendras; 9L ${l9} strongly placed`;
+}
+
+function detectMridang(chart: ChartResponse): string | null {
+  // BPHS 36.17: If Lagna lord is strong and others occupy kendras, konas,
+  // own bhavas, or exaltation signs, Mridang Yoga is formed.
+  const lagna = chart.lagna as Sign;
+  const l1 = lordOf(1, lagna);
+  const l1H = planetHouse(chart, l1);
+  const l1Sign = planetSign(chart, l1);
+  if (!l1H || !l1Sign) return null;
+  const l1Strong = isOwnOrExalted(l1, l1Sign) || KENDRAS.includes(l1H) || KONAS.includes(l1H);
+  if (!l1Strong) return null;
+
+  // Require at least 4 of the other 6 classical planets to be in kendra/kona/own/exalt
+  const others = CLASSICAL_PLANETS.filter((p) => p !== l1);
+  let wellPlaced = 0;
+  const details: string[] = [];
+  for (const p of others) {
+    const pSign = planetSign(chart, p);
+    const pH = planetHouse(chart, p);
+    if (!pSign || !pH) continue;
+    if (isOwnOrExalted(p, pSign) || KENDRAS.includes(pH) || KONAS.includes(pH)) {
+      wellPlaced++;
+      details.push(`${p}@H${pH}`);
+    }
+  }
+  if (wellPlaced < 4) return null;
+  return `Mridang: Lagna lord ${l1} strong, and ${wellPlaced} other planets in dignified placements (${details.slice(0, 4).join(", ")})`;
+}
+
+function detectShrinath(chart: ChartResponse): string | null {
+  // BPHS 36.18: 7L in 10th Bhava, 10L exalted and conjunct 9L.
+  const lagna = chart.lagna as Sign;
+  const l7 = lordOf(7, lagna);
+  const l9 = lordOf(9, lagna);
+  const l10 = lordOf(10, lagna);
+  const l7H = planetHouse(chart, l7);
+  const l9H = planetHouse(chart, l9);
+  const l10H = planetHouse(chart, l10);
+  const l10Sign = planetSign(chart, l10);
+  if (!l7H || !l9H || !l10H || !l10Sign) return null;
+  if (l7H !== 10) return null;
+  if (EXALTATION_SIGN[l10] !== l10Sign) return null;
+  if (l9H !== l10H) return null; // conjunct
+  return `Shrinath: 7L ${l7} in 10th; 10L ${l10} exalted in ${l10Sign} conjunct 9L ${l9} in H${l10H}`;
+}
+
+function detectKhadg(chart: ChartResponse): string | null {
+  // BPHS 36.25-26: 2L and 9L exchange signs, while Lagna lord is in a kendra or kona.
+  const lagna = chart.lagna as Sign;
+  const l1 = lordOf(1, lagna);
+  const l2 = lordOf(2, lagna);
+  const l9 = lordOf(9, lagna);
+  const l1H = planetHouse(chart, l1);
+  const l2Sign = planetSign(chart, l2);
+  const l9Sign = planetSign(chart, l9);
+  if (!l1H || !l2Sign || !l9Sign) return null;
+  if (!KENDRAS.includes(l1H) && !KONAS.includes(l1H)) return null;
+  const l2NatalSign = signOffset(lagna, 2);
+  const l9NatalSign = signOffset(lagna, 9);
+  if (l2Sign === l9NatalSign && l9Sign === l2NatalSign) {
+    return `Khadg: 2L ${l2} and 9L ${l9} in sign exchange; Lagna lord ${l1} well-placed in H${l1H}`;
+  }
+  return null;
+}
+
+function detectMatsya(chart: ChartResponse): string | null {
+  // BPHS 36.21-22: Benefics in 9th and 1st, mixed grahas in 5th, malefics in
+  // 4th and 8th.
+  const first = planetsInHouse(chart, 1);
+  const ninth = planetsInHouse(chart, 9);
+  const fourth = planetsInHouse(chart, 4);
+  const eighth = planetsInHouse(chart, 8);
+
+  const beneficIn1 = first.length > 0 && first.every((p) => BENEFICS.has(p.name));
+  const beneficIn9 = ninth.length > 0 && ninth.every((p) => BENEFICS.has(p.name));
+  const maleficIn4 = fourth.length > 0 && fourth.every((p) => MALEFICS.has(p.name));
+  const maleficIn8 = eighth.length > 0 && eighth.every((p) => MALEFICS.has(p.name));
+
+  if (beneficIn1 && beneficIn9 && maleficIn4 && maleficIn8) {
+    return `Matsya: benefics in H1 (${first.map((p) => p.name).join(",")}) and H9 (${ninth.map((p) => p.name).join(",")}); malefics in H4 (${fourth.map((p) => p.name).join(",")}) and H8 (${eighth.map((p) => p.name).join(",")})`;
+  }
+  return null;
+}
+
+function detectKurma(chart: ChartResponse): string | null {
+  // BPHS 36.23-24: Benefics in 5th, 6th, and 7th identical with own/exalt/friend
+  // signs; malefics in 1st, 3rd, and 11th in own or exalt.
+  const lagna = chart.lagna as Sign;
+  const checkBeneficsIn = (houses: number[]): { ok: boolean; detail: string } => {
+    const found: string[] = [];
+    for (const h of houses) {
+      const occ = planetsInHouse(chart, h);
+      const sign = signOffset(lagna, h);
+      const benefic = occ.find((p) => BENEFICS.has(p.name) && isOwnOrExalted(p.name, sign));
+      if (!benefic) return { ok: false, detail: "" };
+      found.push(`${benefic.name}@H${h}`);
+    }
+    return { ok: true, detail: found.join(", ") };
+  };
+  const checkMaleficsIn = (houses: number[]): { ok: boolean; detail: string } => {
+    const found: string[] = [];
+    for (const h of houses) {
+      const occ = planetsInHouse(chart, h);
+      const sign = signOffset(lagna, h);
+      const malefic = occ.find((p) => MALEFICS.has(p.name) && isOwnOrExalted(p.name, sign));
+      if (!malefic) return { ok: false, detail: "" };
+      found.push(`${malefic.name}@H${h}`);
+    }
+    return { ok: true, detail: found.join(", ") };
+  };
+
+  const bene = checkBeneficsIn([5, 6, 7]);
+  if (!bene.ok) return null;
+  const male = checkMaleficsIn([1, 3, 11]);
+  if (!male.ok) return null;
+  return `Kurma: dignified benefics in H5/6/7 (${bene.detail}); dignified malefics in H1/3/11 (${male.detail})`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Chandra yoga variants (benefic/malefic flavour)
+// ────────────────────────────────────────────────────────────────────────────
+
+function detectSunaphaFlavored(
+  flavor: "benefic" | "malefic",
+  chart: ChartResponse,
+): string | null {
+  const moonHouse = planetHouse(chart, "Moon");
+  if (!moonHouse) return null;
+  const secondFromMoon = ((moonHouse + 1 - 1) % 12) + 1;
+  const occ = planetsInHouse(chart, secondFromMoon).filter((p) =>
+    p.name !== "Sun" && p.name !== "Moon",
+  );
+  if (occ.length === 0) return null;
+  const want = flavor === "benefic" ? BENEFICS : MALEFICS;
+  const allMatch = occ.every((p) => want.has(p.name));
+  if (!allMatch) return null;
+  return `Sunapha with only ${flavor}s in 2nd from Moon: ${occ.map((p) => p.name).join(", ")}`;
+}
+
+function detectAnaphaFlavored(
+  flavor: "benefic" | "malefic",
+  chart: ChartResponse,
+): string | null {
+  const moonHouse = planetHouse(chart, "Moon");
+  if (!moonHouse) return null;
+  const twelfthFromMoon = ((moonHouse - 1 - 1 + 12) % 12) + 1;
+  const occ = planetsInHouse(chart, twelfthFromMoon).filter((p) =>
+    p.name !== "Sun" && p.name !== "Moon",
+  );
+  if (occ.length === 0) return null;
+  const want = flavor === "benefic" ? BENEFICS : MALEFICS;
+  const allMatch = occ.every((p) => want.has(p.name));
+  if (!allMatch) return null;
+  return `Anapha with only ${flavor}s in 12th from Moon: ${occ.map((p) => p.name).join(", ")}`;
+}
+
+function detectDuradharaFlavored(
+  flavor: "benefic" | "malefic",
+  chart: ChartResponse,
+): string | null {
+  const s = detectSunaphaFlavored(flavor, chart);
+  const a = detectAnaphaFlavored(flavor, chart);
+  if (!s || !a) return null;
+  return `${s}; ${a}`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Per-ascendant yogakaraka (BPHS Ch 34)
+// ────────────────────────────────────────────────────────────────────────────
+
+function detectAscendantYogakaraka(
+  detector: { ascendant: Sign; planet: string },
+  chart: ChartResponse,
+): string | null {
+  const lagna = chart.lagna as Sign;
+  if (lagna !== detector.ascendant) return null;
+  const pSign = planetSign(chart, detector.planet);
+  const pH = planetHouse(chart, detector.planet);
+  if (!pSign || !pH) return null;
+  // At minimum require the planet to exist in the chart (always true for 7 planets)
+  // Add dignity/placement note to the evidence
+  const dignified = isOwnOrExalted(detector.planet, pSign);
+  const strongPlaced = KENDRAS.includes(pH) || KONAS.includes(pH);
+  const strengthNote = dignified && strongPlaced
+    ? "dignified and well-placed"
+    : dignified
+      ? "dignified"
+      : strongPlaced
+        ? "well-placed in kendra/kona"
+        : `in ${pSign}, H${pH}`;
+  return `For ${detector.ascendant} ascendant: ${detector.planet} (${strengthNote})`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Generic Bhava Yoga (Nth lord in Mth house) — BPHS Ch 34-36
+// ────────────────────────────────────────────────────────────────────────────
+
+function detectBhavaYoga(
+  detector: { lordOf: number; inHouse: number },
+  chart: ChartResponse,
+): string | null {
+  const lagna = chart.lagna as Sign;
+  const lord = lordOf(detector.lordOf, lagna);
+  const lordHouse = planetHouse(chart, lord);
+  if (!lordHouse) return null;
+  if (lordHouse !== detector.inHouse) return null;
+  return `${detector.lordOf}${ord(detector.lordOf)} lord ${lord} is placed in the ${detector.inHouse}${ord(detector.inHouse)} house`;
+}
+
+function ord(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main entry
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1019,6 +1306,18 @@ function dispatch(detector: YogaDetector, chart: ChartResponse): string | null {
     case "neecha_bhanga": return detectNeechaBhanga(chart);
     case "akhanda_samrajya": return detectAkhandaSamrajya(chart);
     case "grahana": return detectGrahana(chart);
+    case "shankh": return detectShankh(chart);
+    case "bhairi": return detectBhairi(chart);
+    case "mridang": return detectMridang(chart);
+    case "shrinath": return detectShrinath(chart);
+    case "khadg": return detectKhadg(chart);
+    case "matsya": return detectMatsya(chart);
+    case "kurma": return detectKurma(chart);
+    case "sunapha_flavored": return detectSunaphaFlavored(detector.flavor, chart);
+    case "anapha_flavored": return detectAnaphaFlavored(detector.flavor, chart);
+    case "duradhara_flavored": return detectDuradharaFlavored(detector.flavor, chart);
+    case "ascendant_yogakaraka": return detectAscendantYogakaraka(detector, chart);
+    case "bhava_yoga": return detectBhavaYoga(detector, chart);
   }
 }
 
