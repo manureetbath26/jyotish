@@ -118,7 +118,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
           </div>
           <div className="text-right">
             <p className="text-[10px] text-slate-500 uppercase tracking-wide">Horizon</p>
-            <p className="text-xs text-slate-300">{report.meta.startDate} \u2192 {report.meta.endDate}</p>
+            <p className="text-xs text-slate-300">{report.meta.startDate} {"\u2192"} {report.meta.endDate}</p>
           </div>
         </div>
 
@@ -137,7 +137,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </section>
 
         {/* 2. Natal signature */}
-        <Section title="Natal Wealth Signature" icon="\u2728">
+        <Section title="Natal Wealth Signature" icon={"\u2728"}>
           <div className="space-y-3">
             {report.natalSignature.dhanaYogas.length === 0 &&
              report.natalSignature.supportingYogas.length === 0 &&
@@ -208,7 +208,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </Section>
 
         {/* 3. House health */}
-        <Section title="Wealth-House Ashtakvarga Health" icon="\u{1F4CA}">
+        <Section title="Wealth-House Ashtakvarga Health" icon={"\u{1F4CA}"}>
           <p className="text-xs text-slate-400 mb-3">{report.houseHealth.summary}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {report.houseHealth.houses.map((h) => (
@@ -233,7 +233,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </Section>
 
         {/* 4. Source profile */}
-        <Section title="Income Source Profile" icon="\u{1F4BC}">
+        <Section title="Income Source Profile" icon={"\u{1F4BC}"}>
           <p className="text-xs text-slate-300 mb-3 leading-relaxed">{report.sourceProfile.narrative}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="bg-slate-800/40 border border-slate-700 rounded-lg p-3">
@@ -256,7 +256,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </Section>
 
         {/* 5. Savings vs expenses */}
-        <Section title="Savings vs Expenses Axis" icon="\u2696\uFE0F">
+        <Section title="Savings vs Expenses Axis" icon={"\u2696\uFE0F"}>
           <p className="text-xs text-slate-300 leading-relaxed mb-2">{report.savingsAxis.narrative}</p>
           <div className="flex items-center gap-4">
             <div className="text-center">
@@ -279,7 +279,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </Section>
 
         {/* 6. Arudha */}
-        <Section title="Jaimini Arudha Analysis" icon="\u{1F52E}">
+        <Section title="Jaimini Arudha Analysis" icon={"\u{1F52E}"}>
           <p className="text-xs text-slate-300 leading-relaxed mb-3">{report.arudhaAnalysis.narrative}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {([
@@ -298,13 +298,13 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         </Section>
 
         {/* 7. Current period */}
-        <Section title="Current Wealth Period" icon="\u{1F4CD}">
+        <Section title="Current Wealth Period" icon={"\u{1F4CD}"}>
           <PeriodCard p={report.currentPeriod} highlight />
         </Section>
 
         {/* 8. Peak windows */}
         {report.peakWindows.length > 0 && (
-          <Section title="Best Wealth Windows (next 5 years)" icon="\u{1F31F}">
+          <Section title="Best Wealth Windows (next 5 years)" icon={"\u{1F31F}"}>
             <div className="space-y-2">
               {report.peakWindows.map((p, i) => (
                 <PeriodCard key={`${p.mahadasha}-${p.antardasha}-${i}`} p={p} />
@@ -315,7 +315,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
 
         {/* 9. Caution windows */}
         {report.cautionWindows.length > 0 && (
-          <Section title="Caution Windows" icon="\u26A0\uFE0F">
+          <Section title="Caution Windows" icon={"\u26A0\uFE0F"}>
             <div className="space-y-2">
               {report.cautionWindows.map((p, i) => (
                 <PeriodCard key={`c-${p.mahadasha}-${p.antardasha}-${i}`} p={p} />
@@ -325,7 +325,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         )}
 
         {/* 10. Timeline — all periods compact */}
-        <Section title="Full 5-Year Timeline" icon="\u{1F4C5}">
+        <Section title="Full 5-Year Timeline" icon={"\u{1F4C5}"}>
           <div className="space-y-1">
             {report.timeline.map((p, i) => (
               <div
@@ -334,7 +334,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
               >
                 <span className={`${TONE_STYLE[p.tone].text} font-semibold w-16`}>{TONE_STYLE[p.tone].label}</span>
                 <span className="text-slate-300 flex-1">{p.mahadasha}-{p.antardasha}</span>
-                <span className="text-slate-500 text-[10px]">{p.startDate.slice(0, 7)} \u2192 {p.endDate.slice(0, 7)}</span>
+                <span className="text-slate-500 text-[10px]">{p.startDate.slice(0, 7)} {"\u2192"} {p.endDate.slice(0, 7)}</span>
                 <span className="text-slate-400 text-[10px] w-8 text-right">{p.score}/10</span>
               </div>
             ))}
@@ -343,7 +343,7 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
 
         {/* 11. Remedies */}
         {report.remedies.length > 0 && (
-          <Section title="Classical Remedies" icon="\u{1F54A}\uFE0F">
+          <Section title="Classical Remedies" icon={"\u{1F54A}\uFE0F"}>
             <div className="space-y-2">
               {report.remedies.map((r, i) => (
                 <div key={i} className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-1">

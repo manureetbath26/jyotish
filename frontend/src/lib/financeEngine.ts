@@ -629,14 +629,20 @@ function buildSavingsAxis(
 
   const gains = two + eleven;
   const expenses = six + twelve;
-  const retentionScore = Math.max(-10, Math.min(10, gains - expenses - 12));
+  // Retention score: classical reading is simply gains − expenses.
+  // Clamped to [-10, +10] for display, but the sign always matches the
+  // direction of gains vs expenses.
+  const rawDelta = gains - expenses;
+  const retentionScore = Math.max(-10, Math.min(10, rawDelta));
 
   const narrative =
-    retentionScore >= 6
-      ? `Strong retention: gains (H2+H11 = ${gains}) significantly exceed expense/debt potential (H6+H12 = ${expenses}). Wealth accumulates rather than drains.`
-      : retentionScore >= 0
-      ? `Balanced axis: gains (${gains}) slightly outpace expenses (${expenses}). Retention works with discipline; watch lifestyle inflation in strong dasha periods.`
-      : `Expense-heavy axis: H6+H12 (${expenses}) is meaningfully above H2+H11 (${gains}). Classical reading: conscious budgeting and debt control are the most impactful financial habits for you, not aggressive earning.`;
+    rawDelta >= 10
+      ? `Strong retention: gains (H2+H11 = ${gains}) significantly exceed expense/debt potential (H6+H12 = ${expenses}) by ${rawDelta} bindus. Wealth accumulates rather than drains.`
+      : rawDelta > 0
+      ? `Net-positive axis: gains (${gains}) outpace expenses (${expenses}) by ${rawDelta} bindus. Retention works with discipline; watch lifestyle inflation in strong dasha periods.`
+      : rawDelta === 0
+      ? `Balanced axis: gains (${gains}) equal expenses (${expenses}). Cash flow is in equilibrium; small habit changes shift the balance either way.`
+      : `Expense-heavy axis: expenses (H6+H12 = ${expenses}) exceed gains (H2+H11 = ${gains}) by ${Math.abs(rawDelta)} bindus. Classical reading: conscious budgeting and debt control are the most impactful financial habits for you, not aggressive earning.`;
 
   return { gainsBindus: gains, expenseBindus: expenses, retentionScore, narrative };
 }
