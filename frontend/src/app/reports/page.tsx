@@ -80,6 +80,23 @@ const REPORT_META: Record<string, { href: string; icon: string; badge?: string; 
       "Natal Career Profile (10H, AmK, A10, Karakamsha)",
     ],
   },
+  yoga: {
+    href: "/reports/yoga",
+    icon: "\u2728",
+    badge: "New",
+    features: [
+      "40+ classical yogas detected automatically",
+      "Pancha Mahapurusha (Ruchaka, Bhadra, Hamsa, Malavya, Sasha)",
+      "Nabhasa — Rajju, Musala, Nala, Maala, Sarpa, Gola, Veena, etc.",
+      "Gaja Kesari, Amala, Parvata, Lakshmi, Chamara, Kalanidhi",
+      "Chandra yogas (Adhi, Sunapha, Anapha, Duradhara, KemaDruma)",
+      "Surya yogas (Vesi, Vosi, Ubhayachari)",
+      "Raja Yogas (Maha Raja, Kendra-Kona)",
+      "Dhana (Wealth) & Daridra (Poverty) yogas",
+      "Doshas: Sarpa, Shakata, Kema Druma, Kala Sarpa, Daridra",
+      "Each yoga: formation, effects, classical source (BPHS Ch. 34-43)",
+    ],
+  },
 };
 
 export default function ReportsPage() {

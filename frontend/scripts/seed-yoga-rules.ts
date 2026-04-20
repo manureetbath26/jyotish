@@ -1,0 +1,660 @@
+/**
+ * Seed the YogaRule table with rules from BPHS chapters 34-43.
+ *
+ * Run: npx tsx scripts/seed-yoga-rules.ts
+ */
+
+import "dotenv/config";
+import { PrismaClient } from "../src/generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
+import type { YogaDetector } from "../src/lib/yogaEngine";
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+});
+
+interface Rule {
+  slug: string;
+  name: string;
+  category: string;
+  chapter: number;
+  source: string;
+  classicalText: string;
+  formation: string;
+  effects: string;
+  importance: number;
+  sortOrder: number;
+  detector: YogaDetector;
+}
+
+const RULES: Rule[] = [
+  // ─── Ch 34 — Yoga Karakas (here: the 5 Mahapurusha yogas which come under
+  // the broader kendra-lord-in-own/exalted category; BPHS Ch 36 details them) ──
+
+  // ─── Ch 35 — Nabhasa Yogas ──────────────────────────────────────────────
+
+  // Asraya (3)
+  {
+    slug: "rajju",
+    name: "Rajju Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.7",
+    classicalText: "All the Grahas in Movable Rasis cause Rajju Yog.",
+    formation: "All 7 classical planets occupy movable signs (Aries, Cancer, Libra, Capricorn).",
+    effects: "Fond of travel and wandering, charming, earns in foreign lands. Can be restless or mischievous.",
+    importance: 3,
+    sortOrder: 1,
+    detector: { type: "nabhasa_asraya", modality: "movable" },
+  },
+  {
+    slug: "musala",
+    name: "Musala Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.7",
+    classicalText: "All the Grahas in Fixed Rasis cause Musala Yog.",
+    formation: "All 7 classical planets occupy fixed signs (Taurus, Leo, Scorpio, Aquarius).",
+    effects: "Honour, wisdom, wealth, many sons, firm in disposition, dear to authority.",
+    importance: 4,
+    sortOrder: 2,
+    detector: { type: "nabhasa_asraya", modality: "fixed" },
+  },
+  {
+    slug: "nala",
+    name: "Nala Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.7",
+    classicalText: "All the Grahas in Dual Rasis cause Nala Yog.",
+    formation: "All 7 classical planets occupy dual signs (Gemini, Virgo, Sagittarius, Pisces).",
+    effects: "Uneven physique, skilful, helpful to relatives, charming, interested in accumulation.",
+    importance: 3,
+    sortOrder: 3,
+    detector: { type: "nabhasa_asraya", modality: "dual" },
+  },
+
+  // Dala (2)
+  {
+    slug: "maala",
+    name: "Maala Yoga (Garland)",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.8",
+    classicalText: "If 3 Kendras are occupied by benefics, Maal Yog is produced.",
+    formation: "Three of the four kendras (1st/4th/7th/10th) are occupied solely by natural benefics (Jupiter, Venus, Mercury, Moon).",
+    effects: "Ever-happy, conveyances and fine clothes, food and pleasures, splendour, the company of many.",
+    importance: 4,
+    sortOrder: 10,
+    detector: { type: "nabhasa_dala", subtype: "maala" },
+  },
+  {
+    slug: "sarpa",
+    name: "Sarpa Yoga (Serpent)",
+    category: "dosha",
+    chapter: 35,
+    source: "BPHS Ch. 35.8",
+    classicalText: "Malefics so placed will cause Bhujang, or Sarpa Yog.",
+    formation: "Three of the four kendras are occupied solely by malefics (Sun, Saturn, Mars, Rahu, Ketu).",
+    effects: "Crooked, cruel, poor, miserable, dependent on others. Challenges in early life that teach detachment.",
+    importance: 4,
+    sortOrder: 11,
+    detector: { type: "nabhasa_dala", subtype: "sarpa" },
+  },
+
+  // Sankhya (7)
+  {
+    slug: "gola",
+    name: "Gola Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If all Grahas are in one Rasi, Gola Yog is formed.",
+    formation: "All 7 classical planets concentrated in a single sign.",
+    effects: "Strong physique but limited wealth and learning, dirty habits, sorrow and miserly tendency. Intense concentration.",
+    importance: 3,
+    sortOrder: 20,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 1 },
+  },
+  {
+    slug: "yuga",
+    name: "Yuga Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 2 Rasis, Yuga Yog is formed.",
+    formation: "All 7 classical planets in exactly 2 signs.",
+    effects: "Heretical in views, low wealth, lack of conventional recognition. Walks own path.",
+    importance: 2,
+    sortOrder: 21,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 2 },
+  },
+  {
+    slug: "sool",
+    name: "Sool Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 3, Sool Yog occurs.",
+    formation: "All 7 classical planets in exactly 3 signs.",
+    effects: "Sharp, valiant, fame through war or conflict. Indolent tendency but forceful when engaged.",
+    importance: 3,
+    sortOrder: 22,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 3 },
+  },
+  {
+    slug: "kedara",
+    name: "Kedara Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 4, Kedara Yog occurs.",
+    formation: "All 7 classical planets in exactly 4 signs.",
+    effects: "Useful to many, truthful, wealth from agriculture or land, happy but somewhat fickle.",
+    importance: 3,
+    sortOrder: 23,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 4 },
+  },
+  {
+    slug: "paash",
+    name: "Paash Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 5, Paash Yog is formed.",
+    formation: "All 7 classical planets in exactly 5 signs.",
+    effects: "Skilled in work, many servants, talks much. May tend toward manipulation.",
+    importance: 3,
+    sortOrder: 24,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 5 },
+  },
+  {
+    slug: "daama",
+    name: "Daama Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 6, Daam Yog occurs.",
+    formation: "All 7 classical planets in exactly 6 signs.",
+    effects: "Helpful, wealth earned righteously, affluent, famous, many sons, courageous.",
+    importance: 4,
+    sortOrder: 25,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 6 },
+  },
+  {
+    slug: "veena",
+    name: "Veena Yoga",
+    category: "nabhasa",
+    chapter: 35,
+    source: "BPHS Ch. 35.16-17",
+    classicalText: "If in 7, Veena Yog is produced.",
+    formation: "All 7 classical planets spread across exactly 7 signs.",
+    effects: "Fondness for music, dance and arts, skilful, happy, wealthy, a leader of cultured society.",
+    importance: 4,
+    sortOrder: 26,
+    detector: { type: "nabhasa_sankhya", signsOccupied: 7 },
+  },
+
+  // ─── Ch 34 & 36 — Pancha Mahapurusha Yogas (5) ─────────────────────────
+  {
+    slug: "ruchaka",
+    name: "Ruchaka Mahapurusha Yoga",
+    category: "mahapurusha",
+    chapter: 34,
+    source: "BPHS (Mahapurusha)",
+    classicalText: "Mars in kendra in own sign or exaltation.",
+    formation: "Mars occupies a kendra house (1/4/7/10) and sits in own sign (Aries, Scorpio) or exaltation (Capricorn).",
+    effects: "Brave, victorious, commanding physique, success through bold action, military or athletic excellence.",
+    importance: 5,
+    sortOrder: 30,
+    detector: { type: "mahapurusha", planet: "Mars" },
+  },
+  {
+    slug: "bhadra",
+    name: "Bhadra Mahapurusha Yoga",
+    category: "mahapurusha",
+    chapter: 34,
+    source: "BPHS (Mahapurusha)",
+    classicalText: "Mercury in kendra in own sign or exaltation.",
+    formation: "Mercury occupies a kendra house and sits in own sign (Gemini, Virgo) or exaltation (Virgo).",
+    effects: "Intellectual brilliance, learned, rich, success in commerce, communication, and analysis.",
+    importance: 5,
+    sortOrder: 31,
+    detector: { type: "mahapurusha", planet: "Mercury" },
+  },
+  {
+    slug: "hamsa",
+    name: "Hamsa Mahapurusha Yoga",
+    category: "mahapurusha",
+    chapter: 34,
+    source: "BPHS (Mahapurusha)",
+    classicalText: "Jupiter in kendra in own sign or exaltation.",
+    formation: "Jupiter occupies a kendra house and sits in own sign (Sagittarius, Pisces) or exaltation (Cancer).",
+    effects: "Religious, fortunate, wealthy, righteous, comforts, devotion, wisdom and reverence.",
+    importance: 5,
+    sortOrder: 32,
+    detector: { type: "mahapurusha", planet: "Jupiter" },
+  },
+  {
+    slug: "malavya",
+    name: "Malavya Mahapurusha Yoga",
+    category: "mahapurusha",
+    chapter: 34,
+    source: "BPHS (Mahapurusha)",
+    classicalText: "Venus in kendra in own sign or exaltation.",
+    formation: "Venus occupies a kendra house and sits in own sign (Taurus, Libra) or exaltation (Pisces).",
+    effects: "Beautiful, refined, wealthy in luxuries, comforts, spouse and vehicles; artistic success.",
+    importance: 5,
+    sortOrder: 33,
+    detector: { type: "mahapurusha", planet: "Venus" },
+  },
+  {
+    slug: "sasha",
+    name: "Sasha Mahapurusha Yoga",
+    category: "mahapurusha",
+    chapter: 34,
+    source: "BPHS (Mahapurusha)",
+    classicalText: "Saturn in kendra in own sign or exaltation.",
+    formation: "Saturn occupies a kendra house and sits in own sign (Capricorn, Aquarius) or exaltation (Libra).",
+    effects: "Authority over servants/workforce, long-lived, wealth through steady effort, leadership in large organisations.",
+    importance: 5,
+    sortOrder: 34,
+    detector: { type: "mahapurusha", planet: "Saturn" },
+  },
+
+  // ─── Ch 36 — Many Other Yogas ────────────────────────────────────────────
+
+  {
+    slug: "gajakesari",
+    name: "Gaja Kesari Yoga",
+    category: "special",
+    chapter: 36,
+    source: "BPHS Ch. 36.3-4",
+    classicalText: "Guru in a Kendra from Lagna or Moon, aspected by benefics, avoiding debilitation.",
+    formation: "Jupiter in a kendra (1/4/7/10) from the Moon or from the Lagna, not debilitated.",
+    effects: "Splendrous, wealthy, intelligent, many laudable virtues; respected and influential; wisdom and authority.",
+    importance: 5,
+    sortOrder: 40,
+    detector: { type: "gajakesari" },
+  },
+  {
+    slug: "amala",
+    name: "Amala Yoga (Unblemished)",
+    category: "special",
+    chapter: 36,
+    source: "BPHS Ch. 36.5-6",
+    classicalText: "Exclusively a benefic in the 10th from Lagna or Moon.",
+    formation: "Only benefic planets (no malefic) occupy the 10th house counted from Lagna, or from the Moon.",
+    effects: "Fame lasting for generations, honoured by authority, charitable, helpful, pious, virtuous.",
+    importance: 4,
+    sortOrder: 41,
+    detector: { type: "amala" },
+  },
+  {
+    slug: "parvata",
+    name: "Parvata Yoga (Mountain)",
+    category: "special",
+    chapter: 36,
+    source: "BPHS Ch. 36.7-8",
+    classicalText: "Benefics in kendras, 6th and 8th vacant or filled only by benefics.",
+    formation: "Benefics in the kendras (1/4/7/10) with the 6th and 8th houses empty or hosting only benefics.",
+    effects: "Wealth, eloquence, charity, learning in scriptures, fondness for celebration, leadership of a city.",
+    importance: 4,
+    sortOrder: 42,
+    detector: { type: "parvata" },
+  },
+  {
+    slug: "chamara",
+    name: "Chamara Yoga",
+    category: "raja",
+    chapter: 36,
+    source: "BPHS Ch. 36.11-12",
+    classicalText: "Lagna lord exalted in a kendra with Jupiter's aspect.",
+    formation: "Lagna lord is exalted and occupies a kendra house, receiving an aspect from Jupiter.",
+    effects: "King-like status, long life, scholarly, eloquent, versed in all arts. Royal favour.",
+    importance: 5,
+    sortOrder: 43,
+    detector: { type: "chamara" },
+  },
+  {
+    slug: "kalanidhi",
+    name: "Kalanidhi Yoga (Treasure of Arts)",
+    category: "special",
+    chapter: 36,
+    source: "BPHS Ch. 36.31-32",
+    classicalText: "Jupiter in 2nd or 5th aspected by/conjunct Mercury and Venus.",
+    formation: "Jupiter placed in the 2nd or 5th house, receiving influence (conjunction or aspect) from both Mercury and Venus.",
+    effects: "Virtuous, honoured by authority, free from disease, happy, wealthy, learned in arts and scriptures.",
+    importance: 4,
+    sortOrder: 44,
+    detector: { type: "kalanidhi" },
+  },
+  {
+    slug: "lakshmi",
+    name: "Lakshmi Yoga",
+    category: "dhana",
+    chapter: 36,
+    source: "BPHS Ch. 36.27-28",
+    classicalText: "9th lord in kendra in Moolatrikon/own/exalt with strong Lagna lord.",
+    formation: "9th lord sits in a kendra house in its moolatrikona/own/exaltation sign, with the Lagna lord also strongly placed.",
+    effects: "Charming, virtuous, kingly status, many sons, abundant wealth, fame and high moral standing.",
+    importance: 5,
+    sortOrder: 45,
+    detector: { type: "lakshmi" },
+  },
+
+  // ─── Ch 37 — Chandra Yogas ───────────────────────────────────────────────
+
+  {
+    slug: "adhi_moon",
+    name: "Adhi Yoga (from Moon)",
+    category: "chandra",
+    chapter: 37,
+    source: "BPHS Ch. 37.5",
+    classicalText: "Benefics occupy the 6th, 7th and 8th from Moon.",
+    formation: "Benefics (Jupiter, Venus, Mercury) present in the 6th, 7th and 8th houses counted from the Moon.",
+    effects: "According to participating planets' strength: king, minister, or army chief. Leadership, trust and command.",
+    importance: 5,
+    sortOrder: 50,
+    detector: { type: "adhi_moon" },
+  },
+  {
+    slug: "sunapha",
+    name: "Sunapha Yoga",
+    category: "chandra",
+    chapter: 37,
+    source: "BPHS Ch. 37.7-10",
+    classicalText: "A planet (not Sun) in the 2nd from Moon.",
+    formation: "Any planet other than the Sun occupies the 2nd house counted from the Moon.",
+    effects: "Kingly or equal to a king; intelligence, wealth, fame, self-earned assets.",
+    importance: 3,
+    sortOrder: 51,
+    detector: { type: "sunapha" },
+  },
+  {
+    slug: "anapha",
+    name: "Anapha Yoga",
+    category: "chandra",
+    chapter: 37,
+    source: "BPHS Ch. 37.7-10",
+    classicalText: "A planet (not Sun) in the 12th from Moon.",
+    formation: "Any planet other than the Sun occupies the 12th house counted from the Moon.",
+    effects: "Kingly status, freedom from disease, virtuous, famous, charming and happy.",
+    importance: 3,
+    sortOrder: 52,
+    detector: { type: "anapha" },
+  },
+  {
+    slug: "duradhara",
+    name: "Duradhara Yoga",
+    category: "chandra",
+    chapter: 37,
+    source: "BPHS Ch. 37.7-10",
+    classicalText: "Planets (not Sun) in both the 2nd and 12th from Moon.",
+    formation: "Planets other than the Sun simultaneously occupy both the 2nd and 12th houses from the Moon.",
+    effects: "Enjoys pleasures, charitable, wealth, conveyances, excellent servants and support.",
+    importance: 4,
+    sortOrder: 53,
+    detector: { type: "duradhara" },
+  },
+  {
+    slug: "kemadruma",
+    name: "Kema Druma Yoga",
+    category: "dosha",
+    chapter: 37,
+    source: "BPHS Ch. 37.11-13",
+    classicalText: "Moon alone — no planets (not Sun) with Moon, in 2nd/12th.",
+    formation: "Moon is isolated: no planet (other than Sun) sits with the Moon, in the 2nd from Moon, or in the 12th from Moon.",
+    effects: "Often reproached, low intelligence or learning, financial struggles and perils. Many classical mitigations — benefic aspects on Moon can cancel.",
+    importance: 4,
+    sortOrder: 54,
+    detector: { type: "kemadruma" },
+  },
+
+  // ─── Ch 38 — Surya Yogas ─────────────────────────────────────────────────
+
+  {
+    slug: "vesi",
+    name: "Vesi Yoga",
+    category: "surya",
+    chapter: 38,
+    source: "BPHS Ch. 38.1-4",
+    classicalText: "A planet other than Moon in the 2nd from Sun.",
+    formation: "Any planet other than the Moon occupies the 2nd house counted from the Sun.",
+    effects: "If benefic: even-sighted, truthful, happy. If malefic: indolent, quarrelsome, limited wealth.",
+    importance: 3,
+    sortOrder: 60,
+    detector: { type: "vesi" },
+  },
+  {
+    slug: "vosi",
+    name: "Vosi Yoga",
+    category: "surya",
+    chapter: 38,
+    source: "BPHS Ch. 38.1-4",
+    classicalText: "A planet other than Moon in the 12th from Sun.",
+    formation: "Any planet other than the Moon occupies the 12th house counted from the Sun.",
+    effects: "If benefic: skilful, charitable, famous, learned, strong. If malefic: difficulties of pride or isolation.",
+    importance: 3,
+    sortOrder: 61,
+    detector: { type: "vosi" },
+  },
+  {
+    slug: "ubhayachari",
+    name: "Ubhayachari Yoga",
+    category: "surya",
+    chapter: 38,
+    source: "BPHS Ch. 38.1-4",
+    classicalText: "Planets in both 2nd and 12th from Sun (not Moon).",
+    formation: "Planets other than the Moon simultaneously occupy both the 2nd and 12th houses from the Sun.",
+    effects: "A king or equal to a king; happy, well-supported. If malefics: learn through adversity.",
+    importance: 4,
+    sortOrder: 62,
+    detector: { type: "ubhayachari" },
+  },
+
+  // ─── Ch 39 — Raj Yog ────────────────────────────────────────────────────
+
+  {
+    slug: "maha_raja",
+    name: "Maha Raj Yoga",
+    category: "raja",
+    chapter: 39,
+    source: "BPHS Ch. 39.6-7",
+    classicalText: "Lagna lord and 5th lord exchange signs.",
+    formation: "The lord of the Lagna sits in the natal sign of the 5th lord, AND the 5th lord sits in the natal sign of the Lagna lord (parivartana).",
+    effects: "Famous and happy. A fundamental Raja yoga — authority, recognition, success in chosen field.",
+    importance: 5,
+    sortOrder: 70,
+    detector: { type: "maha_raja" },
+  },
+  {
+    slug: "raja_kendra_kona",
+    name: "Kendra-Kona Raja Yoga",
+    category: "raja",
+    chapter: 39,
+    source: "BPHS Ch. 34.11-12, Ch. 39",
+    classicalText: "Lord of a Kendra associated with Lord of a Kona.",
+    formation: "A kendra lord (1/4/7/10) and a kona lord (1/5/9) form a relationship through conjunction, mutual 7th aspect, or exchange of signs.",
+    effects: "Royal status, recognition, power and authority. The extent depends on strengths of involved planets.",
+    importance: 5,
+    sortOrder: 71,
+    detector: { type: "raja_kendra_kona" },
+  },
+
+  // ─── Ch 41 — Combinations for Wealth ────────────────────────────────────
+
+  {
+    slug: "dhana_yoga",
+    name: "Dhana Yoga",
+    category: "dhana",
+    chapter: 41,
+    source: "BPHS Ch. 36, 41",
+    classicalText: "Lords of 2/5/9/11 in mutual association.",
+    formation: "Any two or more of the wealth lords (2nd, 5th, 9th, 11th) are conjunct in the same sign.",
+    effects: "Financial prosperity, fulfilled desires, strong income flow, ability to accumulate and retain wealth.",
+    importance: 4,
+    sortOrder: 80,
+    detector: { type: "dhana_yoga" },
+  },
+  {
+    slug: "sun_lagna_wealth",
+    name: "Solar Wealth (Sun in own sign in Lagna)",
+    category: "dhana",
+    chapter: 41,
+    source: "BPHS Ch. 41.9",
+    classicalText: "Sun in Leo identical with Lagna, aspected by/conjunct Mars and Jupiter.",
+    formation: "Sun occupies the Lagna in its own sign (Leo), with Mars and Jupiter conjunct with or aspecting Sun.",
+    effects: "Substantial wealth, leadership roles in authority structures, status and public standing.",
+    importance: 4,
+    sortOrder: 81,
+    detector: { type: "wealth_lagna", planet: "Sun", aspecters: ["Mars", "Jupiter"] },
+  },
+  {
+    slug: "jupiter_lagna_wealth",
+    name: "Jovian Wealth (Jupiter in own sign in Lagna)",
+    category: "dhana",
+    chapter: 41,
+    source: "BPHS Ch. 41.13",
+    classicalText: "Jupiter in its own sign in Lagna, aspected by/conjunct Mercury and Mars.",
+    formation: "Jupiter occupies the Lagna in Sagittarius or Pisces, with Mercury and Mars conjunct or aspecting.",
+    effects: "Wealth through wisdom, teaching, advisory or finance; scholarly success; dharmic prosperity.",
+    importance: 4,
+    sortOrder: 82,
+    detector: { type: "wealth_lagna", planet: "Jupiter", aspecters: ["Mercury", "Mars"] },
+  },
+  {
+    slug: "venus_lagna_wealth",
+    name: "Venusian Wealth (Venus in own sign in Lagna)",
+    category: "dhana",
+    chapter: 41,
+    source: "BPHS Ch. 41.14",
+    classicalText: "Venus in own sign in Lagna, aspected by/conjunct Saturn and Mercury.",
+    formation: "Venus occupies the Lagna in Taurus or Libra, with Saturn and Mercury conjunct or aspecting.",
+    effects: "Wealth through luxury, arts, relationships, refined professions; material comforts in abundance.",
+    importance: 4,
+    sortOrder: 83,
+    detector: { type: "wealth_lagna", planet: "Venus", aspecters: ["Saturn", "Mercury"] },
+  },
+
+  // ─── Ch 42 — Daridra (Poverty) Yogas ────────────────────────────────────
+
+  {
+    slug: "daridra_lagna_12_swap",
+    name: "Daridra Yoga (Poverty)",
+    category: "dosha",
+    chapter: 42,
+    source: "BPHS Ch. 42.2",
+    classicalText: "Lagna lord in 12th and 12th lord in Lagna with Marak Lord.",
+    formation: "Lagna lord sits in the 12th house, AND the 12th lord sits in the Lagna (with maraka influence).",
+    effects: "Financial struggle, expenses exceeding income, difficulty in accumulating wealth. Can often be mitigated by strong dasha of benefics.",
+    importance: 4,
+    sortOrder: 90,
+    detector: { type: "daridra_lagna_12_swap" },
+  },
+
+  // ─── Commonly-sought yogas beyond these chapters (widely accepted) ──────
+
+  {
+    slug: "budhaditya",
+    name: "Budha-Aditya Yoga",
+    category: "special",
+    chapter: 36,
+    source: "BPHS & classical tradition",
+    classicalText: "Sun and Mercury conjunct.",
+    formation: "Sun and Mercury occupy the same house (i.e. the same sign).",
+    effects: "Intelligent, eloquent, influential in communication, analytical and decision-making success. Strongest when Mercury is not too close to Sun (non-combust).",
+    importance: 4,
+    sortOrder: 45,
+    detector: { type: "budhaditya" },
+  },
+  {
+    slug: "chandra_mangal",
+    name: "Chandra-Mangal Yoga",
+    category: "dhana",
+    chapter: 37,
+    source: "Classical tradition (Jataka Parijata)",
+    classicalText: "Moon and Mars conjunct.",
+    formation: "Moon and Mars occupy the same house.",
+    effects: "Earning capacity, entrepreneurship, wealth through trade and property; intensity and drive.",
+    importance: 4,
+    sortOrder: 55,
+    detector: { type: "chandra_mangal" },
+  },
+  {
+    slug: "shakata",
+    name: "Shakata Yoga",
+    category: "dosha",
+    chapter: 37,
+    source: "BPHS & classical tradition",
+    classicalText: "Jupiter in 6/8/12 from Moon.",
+    formation: "Jupiter is placed in the 6th, 8th, or 12th house counted from the Moon.",
+    effects: "Ups-and-downs in fortunes, periodic reversals of status or wealth. Usually mitigated if Jupiter is otherwise dignified.",
+    importance: 3,
+    sortOrder: 91,
+    detector: { type: "shakata" },
+  },
+  {
+    slug: "kala_sarpa",
+    name: "Kala Sarpa Yoga",
+    category: "dosha",
+    chapter: 35,
+    source: "Classical tradition (non-BPHS but widely cited)",
+    classicalText: "All 7 classical planets hemmed between Rahu and Ketu.",
+    formation: "All 7 classical planets (Sun through Saturn) fall on one side of the Rahu-Ketu axis, i.e. between Rahu and Ketu in sign order.",
+    effects: "Life feels karmically 'charged' — obstacles arrive unexpectedly but lead to transformation. Strong dharmic pull; often significant public influence.",
+    importance: 4,
+    sortOrder: 92,
+    detector: { type: "kala_sarpa" },
+  },
+];
+
+async function main() {
+  console.log(`Seeding ${RULES.length} yoga rules...`);
+
+  for (const r of RULES) {
+    await prisma.yogaRule.upsert({
+      where: { slug: r.slug },
+      create: {
+        slug: r.slug,
+        name: r.name,
+        category: r.category,
+        chapter: r.chapter,
+        source: r.source,
+        classicalText: r.classicalText,
+        formation: r.formation,
+        effects: r.effects,
+        importance: r.importance,
+        sortOrder: r.sortOrder,
+        detector: r.detector as unknown as object,
+      },
+      update: {
+        name: r.name,
+        category: r.category,
+        chapter: r.chapter,
+        source: r.source,
+        classicalText: r.classicalText,
+        formation: r.formation,
+        effects: r.effects,
+        importance: r.importance,
+        sortOrder: r.sortOrder,
+        detector: r.detector as unknown as object,
+      },
+    });
+  }
+
+  const byCategory = new Map<string, number>();
+  for (const r of RULES) byCategory.set(r.category, (byCategory.get(r.category) ?? 0) + 1);
+  console.log("Per category:");
+  for (const [cat, n] of byCategory) console.log(`  ${cat.padEnd(12)}: ${n}`);
+  console.log(`Total: ${RULES.length}`);
+}
+
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

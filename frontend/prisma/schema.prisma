@@ -277,6 +277,30 @@ model SarvashtakvargaRule {
   @@index([category])
 }
 
+// ---------------------------------------------------------------------------
+// Yoga rules — planetary combinations from BPHS chapters 34-40.
+// Each rule has a structured detector JSON consumed by the yoga engine to
+// determine whether the yoga is present in a given chart.
+// ---------------------------------------------------------------------------
+model YogaRule {
+  id            String   @id @default(cuid())
+  slug          String   @unique          // "gajakesari", "hamsa_mahapurusha", ...
+  name          String                    // "Gaja Kesari Yoga"
+  category      String                    // "mahapurusha" | "nabhasa" | "chandra" | "surya" | "raja" | "dhana" | "special" | "dosha"
+  chapter       Int                       // BPHS chapter (34-40)
+  source        String                    // "BPHS Ch. 36.3-4"
+  classicalText String                    // classical translation
+  formation     String                    // concise formation rule in plain English
+  effects       String                    // what the yoga delivers
+  importance    Int      @default(3)      // 1-5 for display ordering
+  detector      Json                      // typed detector payload for engine
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+}
+
 model Coupon {
   id        String    @id @default(cuid())
   code      String    @unique
