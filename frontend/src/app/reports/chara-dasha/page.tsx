@@ -311,7 +311,7 @@ function CharaDashaReportContent() {
     }
   };
 
-  const upiLink = buildUpiLink(reportPrice, "Jyotish Chara Dasha Report");
+  const upiLink = buildUpiLink(reportPrice, "Jyotish Marriage & Relationships Report");
 
   if (loading && !chart) {
     return (
@@ -330,10 +330,10 @@ function CharaDashaReportContent() {
       <header className="text-center py-4">
         <h1 className="text-2xl font-bold text-amber-400 flex items-center justify-center gap-2">
           <span className="text-3xl">{"\u{1F52E}"}</span>
-          Jaimini Chara Dasha Report
+          Marriage &amp; Relationships &mdash; Jaimini Chara Dasha
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          Discover your life timeline through Jaimini&apos;s sign-based dasha system
+          Timing of partnership, marriage windows, and relationship quality through Jaimini&apos;s sign-based dasha system
         </p>
       </header>
 
@@ -678,7 +678,7 @@ function CharaDashaReportContent() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <h2 className="text-lg font-semibold text-amber-400">Payment</h2>
           <p className="text-sm text-slate-400">
-            Pay {"\u20B9"}{reportPrice} via UPI to receive your complete Jaimini Chara Dasha Report.
+            Pay {"\u20B9"}{reportPrice} via UPI to receive your complete Marriage &amp; Relationships report.
           </p>
 
           <div className="flex flex-col items-center gap-3 py-4">
