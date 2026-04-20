@@ -1300,11 +1300,107 @@ function generateBhavaYogaRules(): Rule[] {
   return rules;
 }
 
+// ─── Kartari Yogas (per-planet & per-bhava) — permissive Reading B ──────────
+// Permissive rule: at least one benefic in each flanking sign → Shubha Kartari.
+// Same logic for malefics → Papa Kartari. Both flavours can co-exist on the
+// same reference when the flanking is mixed on both sides.
+
+const PLANET_KARTARI_BASE_SORT = 300;
+const BHAVA_KARTARI_BASE_SORT = 350;
+
+const HOUSE_NAMES: Record<number, string> = {
+  1: "Lagna (self)",
+  2: "Dhana (wealth)",
+  3: "Sahaja (siblings)",
+  4: "Sukha (home)",
+  5: "Putra (children)",
+  6: "Ripu (enemies)",
+  7: "Yuvati (marriage)",
+  8: "Ayu (longevity)",
+  9: "Dharma (fortune)",
+  10: "Karma (career)",
+  11: "Labha (gains)",
+  12: "Vyaya (losses)",
+};
+
+const KARTARI_PLANETS = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn"];
+
+function generateKartariRules(): Rule[] {
+  const rules: Rule[] = [];
+  let sort = PLANET_KARTARI_BASE_SORT;
+
+  // Per-planet: each of 7 classical planets × Shubha + Papa
+  for (const planet of KARTARI_PLANETS) {
+    rules.push({
+      slug: `shubha_kartari_${planet.toLowerCase()}`,
+      name: `Shubha Kartari Yoga (${planet})`,
+      category: "special",
+      chapter: 36,
+      source: "Classical tradition; permissive reading per Sanatan Veda, Astroyogi, Indastro",
+      classicalText: `${planet} is flanked by benefic planets in the adjacent signs.`,
+      formation: `At least one benefic occupies the 12th from ${planet}'s sign AND at least one benefic occupies the 2nd from ${planet}'s sign.`,
+      effects: `${planet}'s significations are protected and supported by benefic influences on both sides — even when ${planet} is structurally weak, results tend to be cushioned.`,
+      importance: 3,
+      sortOrder: sort++,
+      detector: { type: "kartari_planet", benefic: true, planet },
+    });
+    rules.push({
+      slug: `papa_kartari_${planet.toLowerCase()}`,
+      name: `Papa Kartari Yoga (${planet})`,
+      category: "dosha",
+      chapter: 36,
+      source: "Classical tradition; permissive reading per Sanatan Veda, Astroyogi, Indastro",
+      classicalText: `${planet} is flanked by malefic planets in the adjacent signs.`,
+      formation: `At least one malefic occupies the 12th from ${planet}'s sign AND at least one malefic occupies the 2nd from ${planet}'s sign.`,
+      effects: `${planet}'s significations face friction and obstruction — the planet's results come with effort, delay, or pressure from authority/conflict/disruption depending on which malefics flank it.`,
+      importance: 3,
+      sortOrder: sort++,
+      detector: { type: "kartari_planet", benefic: false, planet },
+    });
+  }
+
+  // Per-bhava: each of 12 bhavas × Shubha + Papa
+  sort = BHAVA_KARTARI_BASE_SORT;
+  for (let bhava = 1; bhava <= 12; bhava++) {
+    const houseName = HOUSE_NAMES[bhava];
+    rules.push({
+      slug: `shubha_kartari_bhava_${bhava}`,
+      name: `Shubha Kartari Yoga (${bhava}${ordinal(bhava)} House)`,
+      category: "special",
+      chapter: 36,
+      source: "Classical tradition; permissive reading per modern Vedic synthesizers",
+      classicalText: `The ${bhava}${ordinal(bhava)} bhava is flanked by benefics in the adjacent signs.`,
+      formation: `At least one benefic occupies the 12th from the ${bhava}${ordinal(bhava)} bhava AND at least one benefic occupies the 2nd from it.`,
+      effects: `${houseName} themes are protected and uplifted by benefic influence from both directions — incoming and outgoing energies in this life area carry grace.`,
+      importance: bhava === 1 || bhava === 7 || bhava === 10 ? 4 : 3,
+      sortOrder: sort++,
+      detector: { type: "kartari_bhava", benefic: true, bhava },
+    });
+    rules.push({
+      slug: `papa_kartari_bhava_${bhava}`,
+      name: `Papa Kartari Yoga (${bhava}${ordinal(bhava)} House)`,
+      category: "dosha",
+      chapter: 36,
+      source: "Classical tradition; permissive reading per modern Vedic synthesizers",
+      classicalText: `The ${bhava}${ordinal(bhava)} bhava is flanked by malefics in the adjacent signs.`,
+      formation: `At least one malefic occupies the 12th from the ${bhava}${ordinal(bhava)} bhava AND at least one malefic occupies the 2nd from it.`,
+      effects: `${houseName} themes face squeeze from malefic influences on both sides — friction in maintaining and acquiring within this life area; growth comes through navigating these pressures.`,
+      importance: bhava === 1 || bhava === 7 || bhava === 10 ? 4 : 3,
+      sortOrder: sort++,
+      detector: { type: "kartari_bhava", benefic: false, bhava },
+    });
+  }
+  return rules;
+}
+
 async function main() {
   const bhavaRules = generateBhavaYogaRules();
   RULES.push(...bhavaRules);
 
-  console.log(`Seeding ${RULES.length} yoga rules (including ${bhavaRules.length} bhava yogas)...`);
+  const kartariRules = generateKartariRules();
+  RULES.push(...kartariRules);
+
+  console.log(`Seeding ${RULES.length} yoga rules (including ${bhavaRules.length} bhava yogas, ${kartariRules.length} kartari extensions)...`);
 
   let implicationsSeeded = 0;
   let implicationsMissing = 0;

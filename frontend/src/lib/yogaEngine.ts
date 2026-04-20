@@ -116,7 +116,15 @@ export type YogaDetector =
   // Vipareet Raja Yogas — Nth lord in 6/8/12 houses
   | { type: "vipareet_raja"; house: 6 | 8 | 12 }  // Harsha / Sarala / Vimala
   // Papa/Shubha Kartari — malefics/benefics flanking a reference (Lagna or Moon)
+  // Permissive reading: fires when there is AT LEAST one of the relevant
+  // class (benefic/malefic) in BOTH the 12th and 2nd from the reference.
+  // The two flavours can co-exist on the same reference if both classes are
+  // represented on each flanking side.
   | { type: "kartari"; benefic: boolean; reference: "lagna" | "moon" }
+  // Per-planet Kartari — same flanking logic but reference is a specific planet's sign
+  | { type: "kartari_planet"; benefic: boolean; planet: string }
+  // Per-bhava Kartari — flanking the sign of bhava N
+  | { type: "kartari_bhava"; benefic: boolean; bhava: number }
   // Yogakaraka planet — a planet that lords both a Kendra and a Kona
   | { type: "yogakaraka" }
   // Dhana via mutual 7th aspect between wealth lords
@@ -853,6 +861,55 @@ function detectVipareetRaja(houseLorded: 6 | 8 | 12, chart: ChartResponse): stri
   return `${yogaName}: ${houseLorded}th lord ${lord} is in the ${placementHouse}th house (dusthana) and has no blocking connection with the Lagna/5th/9th lord — the classical cancellation does not apply, so the yoga delivers full results`;
 }
 
+/**
+ * Permissive Kartari detection. Fires when there is at least one planet of
+ * the relevant class (benefic for Shubha, malefic for Papa) in BOTH the
+ * 12th and 2nd houses from the reference. Records purity ("pure" if every
+ * occupant on both sides matches the class; "mixed" if the opposite class
+ * also appears on either side).
+ *
+ * Common targets: lagna (H1), Moon, any classical planet (its sign), any
+ * bhava (its sign).
+ */
+function detectKartariByHouse(
+  benefic: boolean,
+  refHouse: number,
+  refLabel: string,
+  chart: ChartResponse,
+  excludePlanetFromCount?: string,
+): string | null {
+  const second = ((refHouse + 1 - 1) % 12) + 1;
+  const twelfth = ((refHouse - 1 - 1 + 12) % 12) + 1;
+  const targetSet = benefic ? BENEFICS : MALEFICS;
+  const oppositeSet = benefic ? MALEFICS : BENEFICS;
+
+  const secondOcc = planetsInHouse(chart, second).filter(
+    (p) => !excludePlanetFromCount || p.name !== excludePlanetFromCount,
+  );
+  const twelfthOcc = planetsInHouse(chart, twelfth).filter(
+    (p) => !excludePlanetFromCount || p.name !== excludePlanetFromCount,
+  );
+
+  const secondMatches = secondOcc.filter((p) => targetSet.has(p.name));
+  const twelfthMatches = twelfthOcc.filter((p) => targetSet.has(p.name));
+
+  // Permissive rule: at least one match in EACH flanking house
+  if (secondMatches.length === 0 || twelfthMatches.length === 0) return null;
+
+  // Purity: pure if NO opposite-class planets appear in either flanking house
+  const secondHasOpposite = secondOcc.some((p) => oppositeSet.has(p.name));
+  const twelfthHasOpposite = twelfthOcc.some((p) => oppositeSet.has(p.name));
+  const isPure = !secondHasOpposite && !twelfthHasOpposite;
+
+  const className = benefic ? "benefic" : "malefic";
+  const purityNote = isPure ? "pure" : "mixed (opposite class also present)";
+  return `${refLabel} flanked by ${className}s: ${twelfthMatches
+    .map((p) => p.name)
+    .join(", ")} in H${twelfth} (12th from ${refLabel}) and ${secondMatches
+    .map((p) => p.name)
+    .join(", ")} in H${second} (2nd from ${refLabel}) \u2014 ${purityNote}`;
+}
+
 function detectKartari(
   benefic: boolean,
   reference: "lagna" | "moon",
@@ -860,23 +917,46 @@ function detectKartari(
 ): string | null {
   const refHouse = reference === "lagna" ? 1 : planetHouse(chart, "Moon");
   if (!refHouse) return null;
-  const second = ((refHouse + 1 - 1) % 12) + 1;
-  const twelfth = ((refHouse - 1 - 1 + 12) % 12) + 1;
-  const set = benefic ? BENEFICS : MALEFICS;
-
-  const secondOcc = planetsInHouse(chart, second).filter((p) =>
-    reference === "moon" ? p.name !== "Moon" : true,
+  const refLabel = reference === "lagna" ? `Lagna (H${refHouse})` : `Moon (H${refHouse})`;
+  return detectKartariByHouse(
+    benefic,
+    refHouse,
+    refLabel,
+    chart,
+    reference === "moon" ? "Moon" : undefined,
   );
-  const twelfthOcc = planetsInHouse(chart, twelfth).filter((p) =>
-    reference === "moon" ? p.name !== "Moon" : true,
+}
+
+function detectKartariPlanet(
+  benefic: boolean,
+  planet: string,
+  chart: ChartResponse,
+): string | null {
+  const ph = planetHouse(chart, planet);
+  if (!ph) return null;
+  return detectKartariByHouse(
+    benefic,
+    ph,
+    `${planet} (H${ph})`,
+    chart,
+    // Exclude the planet itself if it happens to count in its own flanking
+    // (it doesn't classically since adjacency is by sign not by self-sign,
+    // but defensive against rare cases).
+    planet,
   );
+}
 
-  if (secondOcc.length === 0 || twelfthOcc.length === 0) return null;
-  const secondMatch = secondOcc.every((p) => set.has(p.name));
-  const twelfthMatch = twelfthOcc.every((p) => set.has(p.name));
-  if (!secondMatch || !twelfthMatch) return null;
-
-  return `${reference === "lagna" ? "Lagna" : "Moon"} (H${refHouse}) is flanked by ${benefic ? "benefics" : "malefics"}: ${secondOcc.map((p) => p.name).join(",")} in H${second} and ${twelfthOcc.map((p) => p.name).join(",")} in H${twelfth}`;
+function detectKartariBhava(
+  benefic: boolean,
+  bhava: number,
+  chart: ChartResponse,
+): string | null {
+  return detectKartariByHouse(
+    benefic,
+    bhava,
+    `Bhava ${bhava}`,
+    chart,
+  );
 }
 
 function detectYogakaraka(chart: ChartResponse): string | null {
@@ -1368,6 +1448,8 @@ function dispatch(detector: YogaDetector, chart: ChartResponse): string | null {
     case "kala_sarpa": return detectKalaSarpa(chart);
     case "vipareet_raja": return detectVipareetRaja(detector.house, chart);
     case "kartari": return detectKartari(detector.benefic, detector.reference, chart);
+    case "kartari_planet": return detectKartariPlanet(detector.benefic, detector.planet, chart);
+    case "kartari_bhava": return detectKartariBhava(detector.benefic, detector.bhava, chart);
     case "yogakaraka": return detectYogakaraka(chart);
     case "dhana_mutual_aspect": return detectDhanaMutualAspect(chart);
     case "parivartana_general": return detectParivartanaGeneral(chart);
@@ -1510,6 +1592,21 @@ function getChartContext(rule: YogaRule, chart: ChartResponse): ChartContext {
       return {
         keyHouse: h, keyPlanets: [det.planet], keySign: planetSign(chart, det.planet) ?? undefined,
         formationInChart: `For ${det.ascendant} lagna, ${det.planet} lords both a kendra and a trikona — a natural yoga-karaka. In your chart it sits in ${planetSign(chart, det.planet)} in house ${h}.`,
+      };
+    }
+    case "kartari_planet": {
+      const h = safeHouse(chart, det.planet);
+      const flavour = det.benefic ? "Shubha (benefic)" : "Papa (malefic)";
+      return {
+        keyHouse: h, keyPlanets: [det.planet], keySign: planetSign(chart, det.planet) ?? undefined,
+        formationInChart: `${det.planet} sits in ${planetSign(chart, det.planet)} (your ${h}${h ? ord(h) : ""} house) and is flanked by ${det.benefic ? "benefic" : "malefic"} planets in the adjacent signs — ${flavour} Kartari.`,
+      };
+    }
+    case "kartari_bhava": {
+      const flavour = det.benefic ? "Shubha (benefic)" : "Papa (malefic)";
+      return {
+        keyHouse: det.bhava,
+        formationInChart: `Your ${det.bhava}${ord(det.bhava)} house is flanked by ${det.benefic ? "benefic" : "malefic"} planets in the 12th and 2nd from it — ${flavour} Kartari to this bhava.`,
       };
     }
     case "amala": {
@@ -1831,6 +1928,7 @@ function yogaD9Planets(rule: YogaRule, detected: DetectedYoga): string[] | null 
     case "vipareet_raja": return detected.keyPlanets ?? null;
     case "amala": return detected.keyPlanets ?? null;
     case "yogakaraka": return null;
+    case "kartari_planet": return [det.planet];
     default: return null;
   }
 }
