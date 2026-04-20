@@ -639,11 +639,20 @@ function detectShakata(chart: ChartResponse): string | null {
   const moonHouse = planetHouse(chart, "Moon");
   const jupH = planetHouse(chart, "Jupiter");
   if (!moonHouse || !jupH) return null;
-  const offset = ((jupH - moonHouse + 12) % 12) + 1;
-  if (offset === 6 || offset === 8 || offset === 12) {
-    return `Jupiter in ${offset}th from Moon`;
+
+  // Classical rule (Phaladeepika, Mantreswara; B.V. Raman):
+  //   Shakata Yoga forms when the Moon is in the 6th, 8th, or 12th
+  //   house from Jupiter.
+  const moonFromJupiter = ((moonHouse - jupH + 12) % 12) + 1;
+  if (moonFromJupiter !== 6 && moonFromJupiter !== 8 && moonFromJupiter !== 12) {
+    return null;
   }
-  return null;
+
+  // Cancellation: if the Moon is in a kendra from the Lagna, the yoga
+  // is nullified (and in some texts becomes Mukuta Yoga).
+  if (KENDRAS.includes(moonHouse)) return null;
+
+  return `Moon is in ${moonFromJupiter}th from Jupiter (and Moon is not in a kendra from Lagna)`;
 }
 
 function detectKalaSarpa(chart: ChartResponse): string | null {
