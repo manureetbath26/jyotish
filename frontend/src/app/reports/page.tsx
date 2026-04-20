@@ -106,6 +106,33 @@ export default function ReportsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [catalogEntries, setCatalogEntries] = useState<CatalogEntry[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(myReports.map((r) => r.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setConfirmBulkDelete(false);
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -120,6 +147,27 @@ export default function ReportsPage() {
       setDeletingId(null);
       setConfirmDeleteId(null);
     }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    // Fire deletes in parallel; tolerate individual failures.
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/reports/purchase/${id}`, { method: "DELETE" }).then((r) => ({ id, ok: r.ok })),
+      ),
+    );
+    const deleted = new Set<string>();
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.ok) deleted.add(r.value.id);
+    }
+    setMyReports((prev) => prev.filter((r) => !deleted.has(r.id)));
+    setBulkDeleting(false);
+    setConfirmBulkDelete(false);
+    setSelectedIds(new Set());
+    setSelectMode(false);
   }
 
   useEffect(() => {
@@ -153,7 +201,78 @@ export default function ReportsPage() {
       {/* My Reports (logged-in users) */}
       {session && myReports.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-amber-400">My Reports</h2>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-semibold text-amber-400">My Reports</h2>
+            {!selectMode ? (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-600 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Select &amp; delete
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">
+                  {selectedIds.size} selected
+                </span>
+                {selectedIds.size < myReports.length && (
+                  <button
+                    onClick={selectAll}
+                    className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    Select all
+                  </button>
+                )}
+                {selectedIds.size > 0 && (
+                  <button
+                    onClick={clearSelection}
+                    className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={() => setConfirmBulkDelete(true)}
+                  disabled={selectedIds.size === 0}
+                  className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Delete selected
+                </button>
+                <button
+                  onClick={exitSelectMode}
+                  className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Bulk delete confirmation bar */}
+          {confirmBulkDelete && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm text-red-200">
+                Permanently delete <strong>{selectedIds.size}</strong> report{selectedIds.size === 1 ? "" : "s"}? This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="px-3 py-1.5 bg-red-500/30 text-red-100 border border-red-500/50 rounded-lg text-xs font-medium hover:bg-red-500/40 transition-colors disabled:opacity-50"
+                >
+                  {bulkDeleting ? "Deleting..." : "Yes, delete"}
+                </button>
+                <button
+                  onClick={() => setConfirmBulkDelete(false)}
+                  disabled={bulkDeleting}
+                  className="px-3 py-1.5 bg-slate-800 text-slate-400 border border-slate-700 rounded-lg text-xs font-medium hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {myReports.map((r) => {
               const meta = REPORT_META[r.reportType];
@@ -161,11 +280,30 @@ export default function ReportsPage() {
               const catalogEntry = catalogEntries.find((c) => c.slug === r.reportType);
               const isConfirming = confirmDeleteId === r.id;
               const isDeleting = deletingId === r.id;
+              const isSelected = selectedIds.has(r.id);
               return (
               <div
                 key={r.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors relative"
+                onClick={selectMode ? () => toggleSelected(r.id) : undefined}
+                className={`bg-slate-900 border rounded-xl p-4 transition-colors relative ${
+                  selectMode
+                    ? isSelected
+                      ? "border-amber-500 ring-1 ring-amber-500/40 cursor-pointer"
+                      : "border-slate-800 hover:border-amber-500/40 cursor-pointer"
+                    : "border-slate-800 hover:border-amber-500/30"
+                }`}
               >
+                {selectMode && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(r.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 accent-amber-500 cursor-pointer"
+                    />
+                  </div>
+                )}
                 {/* Confirm delete overlay */}
                 {isConfirming && (
                   <div className="absolute inset-0 bg-slate-900/95 rounded-xl flex items-center justify-center z-10 p-4">
@@ -191,6 +329,30 @@ export default function ReportsPage() {
                   </div>
                 )}
 
+                {selectMode ? (
+                  <div className={`flex items-start justify-between ${selectMode ? "pl-6" : ""}`}>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">
+                        {catalogEntry?.name ?? r.reportType}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {r.birthName ? `${r.birthName} \u00B7 ` : ""}
+                        {r.birthData.date} {"\u00B7"} {r.birthData.place?.split(",")[0]}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        {new Date(r.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5">
+                      Purchased
+                    </span>
+                  </div>
+                ) : (
+                  <>
                 <Link href={reportHref}>
                   <div className="flex items-start justify-between">
                     <div>
@@ -198,8 +360,8 @@ export default function ReportsPage() {
                         {catalogEntry?.name ?? r.reportType}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {r.birthName ? `${r.birthName} · ` : ""}
-                        {r.birthData.date} · {r.birthData.place?.split(",")[0]}
+                        {r.birthName ? `${r.birthName} \u00B7 ` : ""}
+                        {r.birthData.date} {"\u00B7"} {r.birthData.place?.split(",")[0]}
                       </p>
                       <p className="text-xs text-slate-600 mt-1">
                         {new Date(r.createdAt).toLocaleDateString("en-IN", {
@@ -231,6 +393,8 @@ export default function ReportsPage() {
                     <line x1="14" y1="11" x2="14" y2="17" />
                   </svg>
                 </button>
+                  </>
+                )}
               </div>
               );
             })}

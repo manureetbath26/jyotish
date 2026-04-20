@@ -4,6 +4,7 @@ import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ActiveProfileProvider } from "@/contexts/ActiveProfileContext";
+import { ReportLockProvider } from "@/contexts/ReportLockContext";
 import { ProfileTabs } from "@/components/ProfileTabs";
 import { Navbar } from "@/components/Navbar";
 import { PremiumProvider } from "@/components/PremiumLock";
@@ -80,13 +81,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <SessionProvider>
             <ActiveProfileProvider>
-              <PremiumProvider>
-                <Navbar />
-                <ProfileTabs />
-                <main className="max-w-7xl mx-auto px-4 py-8">
-                  {children}
-                </main>
-              </PremiumProvider>
+              <ReportLockProvider>
+                <PremiumProvider>
+                  <Navbar />
+                  <ProfileTabs />
+                  <main className="max-w-7xl mx-auto px-4 py-8">
+                    {children}
+                  </main>
+                </PremiumProvider>
+              </ReportLockProvider>
             </ActiveProfileProvider>
           </SessionProvider>
         </ThemeProvider>

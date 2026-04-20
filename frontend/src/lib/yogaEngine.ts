@@ -159,7 +159,45 @@ export interface DetectedYoga {
   rule: YogaRule;
   detected: true;
   evidence: string;
+  /** Primary house this yoga acts through (if identifiable). */
+  keyHouse?: number;
+  /** Primary planets involved in this yoga's formation. */
+  keyPlanets?: string[];
+  /** Rashi (sign) where the yoga is seated, when relevant. */
+  keySign?: Sign;
+  /** Plain-English description of how this yoga is formed in *this* chart. */
+  formationInChart?: string;
+  /** Nuanced note on what this yoga means when anchored in its key house. */
+  houseContextNote?: string;
+  /** Overall verdict for this yoga given the house it sits in. */
+  houseVerdict?: "favorable" | "mixed" | "challenging";
+  /** D9 (Navamsa) strength check — only populated for applicable yogas. */
+  d9Analysis?: D9Analysis;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// House significations (used for house-context explanations)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const HOUSE_SIGNIFICATIONS: Record<number, { name: string; significations: string }> = {
+  1:  { name: "Lagna (Self)",        significations: "self, body, vitality, personality, head, overall life direction" },
+  2:  { name: "Dhana Bhava (Wealth)",significations: "wealth, family, speech, food, values, face" },
+  3:  { name: "Sahaja (Siblings)",   significations: "courage, younger siblings, skills, short travel, self-effort, communication" },
+  4:  { name: "Sukha (Home)",        significations: "home, mother, vehicles, inner peace, property, early education" },
+  5:  { name: "Putra (Children)",    significations: "children, intelligence, creativity, romance, speculation, past-life merit (poorva punya)" },
+  6:  { name: "Ripu (Enemies)",      significations: "enemies, debts, disease, daily work, service, obstacles overcome" },
+  7:  { name: "Yuvati (Marriage)",   significations: "spouse, marriage, business partnerships, public dealings, open enemies" },
+  8:  { name: "Ayu (Longevity)",     significations: "longevity, transformation, secrets, inheritance, occult, sudden events, in-laws" },
+  9:  { name: "Dharma (Fortune)",    significations: "dharma, fortune, father, higher learning, long journeys, guru, spirituality" },
+  10: { name: "Karma (Career)",      significations: "career, public image, status, authority, action in the world" },
+  11: { name: "Labha (Gains)",       significations: "gains, friends, elder siblings, fulfilment of desires, networks" },
+  12: { name: "Vyaya (Losses)",      significations: "expenses, foreign lands, moksha, seclusion, bed pleasures, hidden enemies" },
+};
+
+const TRIK_HOUSES = [6, 8, 12];
+const KENDRA_HOUSES = [1, 4, 7, 10];
+const TRIKONA_HOUSES = [1, 5, 9];
+const UPACHAYA_HOUSES = [3, 6, 10, 11];
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -192,6 +230,37 @@ const EXALTATION_SIGN: Record<string, Sign> = {
   Jupiter: "Cancer",
   Venus: "Pisces",
   Saturn: "Libra",
+};
+
+const DEBILITATION_SIGN: Record<string, Sign> = {
+  Sun: "Libra",
+  Moon: "Scorpio",
+  Mars: "Cancer",
+  Mercury: "Pisces",
+  Jupiter: "Capricorn",
+  Venus: "Virgo",
+  Saturn: "Aries",
+};
+
+// Naisargika (natural) planetary friendships per Parashara (BPHS Ch 3)
+const PLANET_FRIENDS: Record<string, string[]> = {
+  Sun:     ["Moon", "Mars", "Jupiter"],
+  Moon:    ["Sun", "Mercury"],
+  Mars:    ["Sun", "Moon", "Jupiter"],
+  Mercury: ["Sun", "Venus"],
+  Jupiter: ["Sun", "Moon", "Mars"],
+  Venus:   ["Mercury", "Saturn"],
+  Saturn:  ["Mercury", "Venus"],
+};
+
+const PLANET_ENEMIES: Record<string, string[]> = {
+  Sun:     ["Venus", "Saturn"],
+  Moon:    [],
+  Mars:    ["Mercury"],
+  Mercury: ["Moon"],
+  Jupiter: ["Mercury", "Venus"],
+  Venus:   ["Sun", "Moon"],
+  Saturn:  ["Sun", "Moon", "Mars"],
 };
 
 const MODALITY: Record<Sign, "movable" | "fixed" | "dual"> = {
@@ -1323,13 +1392,477 @@ function dispatch(detector: YogaDetector, chart: ChartResponse): string | null {
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Chart-context derivation (key house / key planets / house verdict)
+// ────────────────────────────────────────────────────────────────────────────
+
+interface ChartContext {
+  keyHouse?: number;
+  keyPlanets?: string[];
+  keySign?: Sign;
+  formationInChart?: string;
+}
+
+function safeHouse(chart: ChartResponse, planet: string): number | undefined {
+  const h = planetHouse(chart, planet);
+  return h ?? undefined;
+}
+
+function placementPhrase(chart: ChartResponse, planets: string[]): string {
+  return planets
+    .map((p) => {
+      const s = planetSign(chart, p);
+      const h = planetHouse(chart, p);
+      if (!s || !h) return p;
+      return `${p} in ${s} (house ${h})`;
+    })
+    .join(", ");
+}
+
+/** Derive keyHouse/keyPlanets/formation string from detector type + chart. */
+function getChartContext(rule: YogaRule, chart: ChartResponse): ChartContext {
+  const det = rule.detector;
+  const lagna = chart.lagna as Sign;
+  switch (det.type) {
+    case "mahapurusha": {
+      const h = safeHouse(chart, det.planet);
+      const s = planetSign(chart, det.planet) ?? undefined;
+      return {
+        keyHouse: h, keyPlanets: [det.planet], keySign: s,
+        formationInChart: `${det.planet} sits in ${s} in your ${h}${h ? ord(h) : ""} house — ${EXALTATION_SIGN[det.planet] === s ? "its exaltation sign" : "its own sign"} and a kendra, the exact configuration classical texts require.`,
+      };
+    }
+    case "gajakesari": {
+      const h = safeHouse(chart, "Jupiter");
+      return {
+        keyHouse: h, keyPlanets: ["Jupiter", "Moon"],
+        formationInChart: `${placementPhrase(chart, ["Jupiter", "Moon"])} — Jupiter is in a kendra from the Moon (or Lagna), seating wisdom over emotion.`,
+      };
+    }
+    case "budhaditya": {
+      const h = safeHouse(chart, "Sun");
+      return {
+        keyHouse: h, keyPlanets: ["Sun", "Mercury"],
+        formationInChart: `${placementPhrase(chart, ["Sun", "Mercury"])} — Sun and Mercury are in the same sign, fusing authority with intellect.`,
+      };
+    }
+    case "chandra_mangal": {
+      const h = safeHouse(chart, "Moon");
+      return {
+        keyHouse: h, keyPlanets: ["Moon", "Mars"],
+        formationInChart: `${placementPhrase(chart, ["Moon", "Mars"])} — Moon conjoins Mars, blending instinct with drive.`,
+      };
+    }
+    case "planet_conjunction": {
+      const a = chart.planets.find((p) => p.name === det.planetA);
+      const b = chart.planets.find((p) => p.name === det.planetB);
+      if (a && b && a.house === b.house) {
+        return {
+          keyHouse: a.house, keyPlanets: [det.planetA, det.planetB], keySign: a.rashi as Sign,
+          formationInChart: `${det.planetA} and ${det.planetB} are conjunct in ${a.rashi} in your ${a.house}${ord(a.house)} house.`,
+        };
+      }
+      return {};
+    }
+    case "grahana": {
+      // Find first eclipse pair
+      for (const lum of ["Sun", "Moon"]) {
+        const lh = safeHouse(chart, lum);
+        if (!lh) continue;
+        for (const node of ["Rahu", "Ketu"]) {
+          if (safeHouse(chart, node) === lh) {
+            return {
+              keyHouse: lh, keyPlanets: [lum, node], keySign: (planetSign(chart, lum) ?? undefined),
+              formationInChart: `${lum} is conjunct ${node} in ${planetSign(chart, lum)} in your ${lh}${ord(lh)} house — a shadowed luminary.`,
+            };
+          }
+        }
+      }
+      return {};
+    }
+    case "shakata": {
+      const h = safeHouse(chart, "Moon");
+      const jh = safeHouse(chart, "Jupiter");
+      if (!h || !jh) return {};
+      const off = ((h - jh + 12) % 12) + 1;
+      return {
+        keyHouse: h, keyPlanets: ["Moon", "Jupiter"],
+        formationInChart: `Your Moon is in ${planetSign(chart, "Moon")} (house ${h}), which is the ${off}${ord(off)} from your Jupiter in ${planetSign(chart, "Jupiter")} (house ${jh}).`,
+      };
+    }
+    case "vipareet_raja": {
+      const lord = lordOf(det.house, lagna);
+      const lh = safeHouse(chart, lord);
+      return {
+        keyHouse: lh, keyPlanets: [lord],
+        formationInChart: `${det.house}${ord(det.house)} lord ${lord} sits in your ${lh}${lh ? ord(lh) : ""} house — a dusthana lord gone into another dusthana, the exact reversal configuration.`,
+      };
+    }
+    case "bhava_yoga": {
+      const lord = lordOf(det.lordOf, lagna);
+      return {
+        keyHouse: det.inHouse, keyPlanets: [lord],
+        formationInChart: `Your ${det.lordOf}${ord(det.lordOf)} lord is ${lord}, and it sits in your ${det.inHouse}${ord(det.inHouse)} house in ${planetSign(chart, lord)}.`,
+      };
+    }
+    case "ascendant_yogakaraka": {
+      const h = safeHouse(chart, det.planet);
+      return {
+        keyHouse: h, keyPlanets: [det.planet], keySign: planetSign(chart, det.planet) ?? undefined,
+        formationInChart: `For ${det.ascendant} lagna, ${det.planet} lords both a kendra and a trikona — a natural yoga-karaka. In your chart it sits in ${planetSign(chart, det.planet)} in house ${h}.`,
+      };
+    }
+    case "amala": {
+      const tenth = planetsInHouse(chart, 10).filter((p) => BENEFICS.has(p.name));
+      if (tenth.length > 0) {
+        return {
+          keyHouse: 10, keyPlanets: tenth.map((p) => p.name),
+          formationInChart: `Only benefic${tenth.length > 1 ? "s" : ""} (${tenth.map((p) => p.name).join(", ")}) occupy your 10th house — no malefic shadow over your career-karma axis.`,
+        };
+      }
+      return { keyHouse: 10 };
+    }
+    case "kalanidhi": {
+      const h = safeHouse(chart, "Jupiter");
+      return {
+        keyHouse: h, keyPlanets: ["Jupiter", "Mercury", "Venus"],
+        formationInChart: `Jupiter in your ${h}${h ? ord(h) : ""} house, with both Mercury and Venus either joining or aspecting it.`,
+      };
+    }
+    case "saraswati": {
+      return {
+        keyPlanets: ["Jupiter", "Venus", "Mercury"],
+        formationInChart: `Jupiter, Venus, and Mercury together occupy a kendra, a trikona, or the 2nd, with Jupiter strong — the classical seat of learning and arts.`,
+      };
+    }
+    case "yogakaraka": {
+      return {
+        formationInChart: `Your chart carries a planet that lords both a kendra and a trikona — the single most potent Raja-yoga signature in Parashara.`,
+      };
+    }
+    default:
+      return {};
+  }
+}
+
+/**
+ * Generate a nuanced "this yoga in this house" interpretation.
+ * Combines house significations with the yoga's tone (benefic/malefic/dosha)
+ * and special per-yoga overrides for a few key combinations.
+ */
+function getHouseContextNote(
+  rule: YogaRule,
+  keyHouse: number,
+): string {
+  const hs = HOUSE_SIGNIFICATIONS[keyHouse];
+  if (!hs) return "";
+  const isDosha = rule.category === "dosha";
+  const isRaja = rule.category === "raja" || rule.category === "mahapurusha";
+  const inTrik = TRIK_HOUSES.includes(keyHouse);
+  const inKendra = KENDRA_HOUSES.includes(keyHouse);
+  const inTrikona = TRIKONA_HOUSES.includes(keyHouse);
+  const inUpachaya = UPACHAYA_HOUSES.includes(keyHouse);
+
+  // Special per-yoga, per-house overrides for high-impact cases
+  const key = `${rule.slug}|${keyHouse}`;
+  const override = YOGA_HOUSE_OVERRIDES[key];
+  if (override) return override;
+
+  // Dosha in trik = often mitigated ("dosha cancels dosha")
+  if (isDosha && inTrik) {
+    return `This yoga's dosha lands in the ${keyHouse}${ord(keyHouse)} house of ${hs.significations}. Because this is itself a dusthana, the classical principle "dusthana in dusthana" softens the harm — the difficulty still plays out through ${hs.significations.split(",")[0]}, but it often purifies rather than destroys, especially after maturity.`;
+  }
+
+  if (isDosha && inKendra) {
+    return `This dosha sits in the ${keyHouse}${ord(keyHouse)} house, which governs ${hs.significations}. Kendras are the pillars of the chart, so the disturbance is felt more visibly here — these are life areas that will need conscious handling, remedies, and maturity to settle.`;
+  }
+
+  if (isDosha && inTrikona) {
+    return `This dosha falls in the ${keyHouse}${ord(keyHouse)} — a trikona, one of the most auspicious houses. Classically the trikona's good fortune absorbs much of the dosha, redirecting what could be loss into learning. Expect friction in ${hs.significations.split(",")[0]}, but look for growth underneath.`;
+  }
+
+  if (isRaja && (inKendra || inTrikona)) {
+    return `This Raja-yoga anchors in the ${keyHouse}${ord(keyHouse)} house (${hs.significations}). A Raja yoga seated in a kendra or trikona is working at full strength — status, authority, and recognition will most clearly express through these themes.`;
+  }
+
+  if (isRaja && inUpachaya && keyHouse !== 6) {
+    return `This Raja-yoga sits in the ${keyHouse}${ord(keyHouse)} (${hs.significations}). Upachaya houses grow stronger with time, so this yoga delivers gradually rather than at once — its full fruit tends to arrive after the first Saturn return.`;
+  }
+
+  if (isRaja && inTrik) {
+    return `This Raja-yoga lands in the ${keyHouse}${ord(keyHouse)} — a dusthana (${hs.significations}). The classical reading is that the yoga's dignity is compromised unless strong aspect or cancellation repairs it; results come through struggle, service, or after a crisis.`;
+  }
+
+  // Dhana / wealth yogas
+  if (rule.category === "dhana") {
+    if ([2, 5, 9, 11].includes(keyHouse)) {
+      return `This wealth yoga expresses through the ${keyHouse}${ord(keyHouse)} (${hs.significations}) — one of the natural wealth axes, so gains flow cleanly through these themes.`;
+    }
+    return `Wealth yoga anchored in the ${keyHouse}${ord(keyHouse)} (${hs.significations}) — the money will come coloured by these life areas rather than through direct income streams.`;
+  }
+
+  // Generic fallback
+  return `This yoga operates through the ${keyHouse}${ord(keyHouse)} house — ${hs.significations}. Its effects will most visibly show up in these life themes.`;
+}
+
+/** Targeted overrides for high-impact yoga/house combinations. */
+const YOGA_HOUSE_OVERRIDES: Record<string, string> = {
+  // Guru Chandala (Jupiter + Rahu conjunction) per house
+  "guru-chandala|1": "Guru Chandala on the ascendant: wisdom and identity wrestle with unorthodox impulses. The native's worldview is original and magnetic but can drift from traditional dharma — strong remedies (Jupiter mantra, charity, guru worship) are classical.",
+  "guru-chandala|2": "Guru Chandala in the 2nd (wealth & speech): teaching, preaching, or finance can bring sudden rises and falls. Watch for exaggerated speech and questionable counsel — verified knowledge matters more than confident delivery.",
+  "guru-chandala|3": "Guru Chandala in the 3rd: communications, writing, and short travel carry mixed karma. Ideas spread wide but with flaws attached — peer review and editorial discipline transform the yoga into a reformer's voice.",
+  "guru-chandala|4": "Guru Chandala in the 4th (home, mother, inner peace): philosophy-of-life confusion, unconventional upbringing, or foreign/mixed cultural roots. Spiritual restlessness at home is common until the native finds their own dharma.",
+  "guru-chandala|5": "Guru Chandala in the 5th (children, intelligence, purva-punya): unconventional intelligence and original creativity, but shaky classical ethics. Risk of wrong counsel, speculation losses, or philosophical scandals — the remedy is a real living guru.",
+  "guru-chandala|6": "Guru Chandala in the 6th (enemies, debt, disease, service): this is classically the LEAST harmful house for the combination. The 6th absorbs the dosha — it may show as unusual immune or metabolic issues, or a controversial service/teaching role, but often turns into a reformer's chart that fights what mainstream Jupiter would endorse.",
+  "guru-chandala|7": "Guru Chandala in the 7th (marriage, partnerships): spouse or partner from a different culture, religion, or value system — powerful if consciously chosen, turbulent if not. Idealistic expectations of the partner must be watched.",
+  "guru-chandala|8": "Guru Chandala in the 8th (occult, transformation, longevity): deep interest in taboo subjects, mysticism, research — a natural occultist's placement. Sudden philosophical rebirths. Health: watch liver and endocrine system.",
+  "guru-chandala|9": "Guru Chandala in the 9th (dharma, father, guru): THE most charged house for this yoga. Classical religion clashes with personal truth; relationship with father or teacher is complicated. The native often rejects and later reclaims tradition on their own terms.",
+  "guru-chandala|10": "Guru Chandala in the 10th (career, reputation): rises through unconventional authority — may teach, preach, publish, or consult on disruptive ideas. Reputation can swing between visionary and fraudulent; strict ethics protect the career.",
+  "guru-chandala|11": "Guru Chandala in the 11th (gains, network, desires): large, unusual networks and sudden gains from group activity, publishing, or mass movements. Guard against get-rich-quick schemes dressed as wisdom.",
+  "guru-chandala|12": "Guru Chandala in the 12th (moksha, foreign, seclusion): foreign spiritual lineages, ashram life, unorthodox moksha-paths — or the opposite, wasted years on false teachers. This placement rewards genuine surrender and punishes cult-following.",
+
+  // Kala Sarpa-style nodal placements often anchor in specific houses —
+  // these are examples; more can be added as needed.
+  "grahana|1": "Grahana in the 1st: identity itself feels eclipsed — an inward, introspective personality that often comes into full self-expression only in the second half of life.",
+  "grahana|10": "Grahana in the 10th (career): authority and public image carry karmic weight — visibility comes in waves, with periods of obscurity followed by breakthroughs. Remedies for Sun/Moon plus the node strengthen the 10th significantly.",
+};
+
+/** Overall favourable/mixed/challenging verdict for this yoga in its key house. */
+function getHouseVerdict(
+  rule: YogaRule,
+  keyHouse: number,
+): "favorable" | "mixed" | "challenging" {
+  const isDosha = rule.category === "dosha";
+  const inTrik = TRIK_HOUSES.includes(keyHouse);
+  const inKendra = KENDRA_HOUSES.includes(keyHouse);
+  const inTrikona = TRIKONA_HOUSES.includes(keyHouse);
+
+  if (isDosha) {
+    if (inTrik) return "mixed"; // dosha-in-dusthana often cancels
+    if (inKendra || inTrikona) return "challenging";
+    return "mixed";
+  }
+  // Positive yogas
+  if (inKendra || inTrikona) return "favorable";
+  if (inTrik) return "challenging";
+  return "mixed";
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// D9 (Navamsa) strength check
+// ────────────────────────────────────────────────────────────────────────────
+
+export type D9Dignity =
+  | "vargottama"
+  | "exalted"
+  | "own"
+  | "friendly"
+  | "neutral"
+  | "enemy"
+  | "debilitated"
+  | "unknown";
+
+const D9_DIGNITY_SCORE: Record<D9Dignity, number> = {
+  vargottama: 3, exalted: 3, own: 2, friendly: 1,
+  neutral: 0, enemy: -1, debilitated: -2, unknown: 0,
+};
+
+const D9_DIGNITY_LABEL: Record<D9Dignity, string> = {
+  vargottama: "Vargottama (same sign in D1 & D9)",
+  exalted: "Exalted in D9",
+  own: "Own sign in D9",
+  friendly: "Friendly sign in D9",
+  neutral: "Neutral sign in D9",
+  enemy: "Enemy sign in D9",
+  debilitated: "Debilitated in D9",
+  unknown: "D9 position unavailable",
+};
+
+export interface D9PlanetStrength {
+  planet: string;
+  d1Sign?: Sign;
+  d9Sign?: Sign;
+  d9House?: number;
+  dignity: D9Dignity;
+  score: number;
+  note: string;
+}
+
+export interface D9Analysis {
+  planets: D9PlanetStrength[];
+  /** Sum of dignity scores across all analysed planets. */
+  totalScore: number;
+  /** Sun↔Mercury longitude gap if both are in the analysis set (for combustion). */
+  combustionGap?: number;
+  combustionNote?: string;
+  verdict: "strong" | "moderate" | "weak";
+  summary: string;
+}
+
+function getD9Position(chart: ChartResponse, planet: string): { sign?: Sign; house?: number } {
+  const np = chart.navamsa_planets?.find((p) => p.name === planet);
+  if (!np) return {};
+  return { sign: np.rashi as Sign, house: np.house };
+}
+
+function classifyD9Dignity(planet: string, d1Sign?: Sign, d9Sign?: Sign): D9Dignity {
+  if (!d9Sign) return "unknown";
+  if (d1Sign && d9Sign === d1Sign) return "vargottama";
+  if (EXALTATION_SIGN[planet] === d9Sign) return "exalted";
+  if (OWN_SIGNS[planet]?.includes(d9Sign)) return "own";
+  if (DEBILITATION_SIGN[planet] === d9Sign) return "debilitated";
+  const d9Lord = SIGN_LORD[d9Sign];
+  if (d9Lord === planet) return "own"; // defensive (should have been caught above)
+  if (PLANET_FRIENDS[planet]?.includes(d9Lord)) return "friendly";
+  if (PLANET_ENEMIES[planet]?.includes(d9Lord)) return "enemy";
+  return "neutral";
+}
+
+/**
+ * Compute D9 dignity for a set of planets and produce an overall verdict.
+ * Pass the full ChartResponse — this function reads from `chart.planets`
+ * (D1 signs) and `chart.navamsa_planets` (D9 positions).
+ */
+export function computeD9Analysis(
+  chart: ChartResponse,
+  planetNames: string[],
+): D9Analysis {
+  const planets: D9PlanetStrength[] = planetNames.map((name) => {
+    const d1Sign = planetSign(chart, name) ?? undefined;
+    const { sign: d9Sign, house: d9House } = getD9Position(chart, name);
+    const dignity = classifyD9Dignity(name, d1Sign, d9Sign);
+    return {
+      planet: name,
+      d1Sign,
+      d9Sign,
+      d9House,
+      dignity,
+      score: D9_DIGNITY_SCORE[dignity],
+      note: d9Sign
+        ? `${name}: D1 ${d1Sign ?? "?"} \u2192 D9 ${d9Sign} (H${d9House ?? "?"}) \u2014 ${D9_DIGNITY_LABEL[dignity]}`
+        : `${name}: D9 position unavailable`,
+    };
+  });
+
+  const totalScore = planets.reduce((sum, p) => sum + p.score, 0);
+
+  // Combustion gap for Sun↔Mercury pair
+  let combustionGap: number | undefined;
+  let combustionNote: string | undefined;
+  const hasSun = planetNames.includes("Sun");
+  const hasMercury = planetNames.includes("Mercury");
+  if (hasSun && hasMercury) {
+    const sun = chart.planets.find((p) => p.name === "Sun");
+    const merc = chart.planets.find((p) => p.name === "Mercury");
+    if (sun && merc) {
+      const gap = Math.abs(sun.longitude - merc.longitude);
+      combustionGap = Math.min(gap, 360 - gap);
+      if (combustionGap < 6) {
+        combustionNote = `Mercury is only ${combustionGap.toFixed(1)}\u00B0 from the Sun \u2014 deeply combust. Classical texts treat this as a "paper yoga" that fails to fructify unless the D9 strongly repairs it.`;
+      } else if (combustionGap < 14) {
+        combustionNote = `Mercury is ${combustionGap.toFixed(1)}\u00B0 from the Sun \u2014 within the 14\u00B0 combustion zone. The yoga's functional strength is reduced; D9 dignity becomes the deciding factor.`;
+      } else {
+        combustionNote = `Mercury is ${combustionGap.toFixed(1)}\u00B0 from the Sun \u2014 clear of the 14\u00B0 combustion range. The conjunction holds its functional vitality.`;
+      }
+    }
+  }
+
+  // Overall verdict
+  const anyDebilitated = planets.some((p) => p.dignity === "debilitated");
+  const deeplyCombust = combustionGap != null && combustionGap < 6;
+  const d9Strong = planets.some((p) => p.dignity === "vargottama" || p.dignity === "exalted" || p.dignity === "own");
+
+  let verdict: "strong" | "moderate" | "weak";
+  if (anyDebilitated || (deeplyCombust && !d9Strong)) {
+    verdict = "weak";
+  } else if (totalScore >= 3 && !deeplyCombust) {
+    verdict = "strong";
+  } else if (totalScore >= 0) {
+    verdict = "moderate";
+  } else {
+    verdict = "weak";
+  }
+
+  // Summary line
+  const parts: string[] = [];
+  const strongOnes = planets.filter((p) => p.score >= 2).map((p) => p.planet);
+  const weakOnes = planets.filter((p) => p.score < 0).map((p) => p.planet);
+  if (strongOnes.length) parts.push(`${strongOnes.join(", ")} well-dignified in D9`);
+  if (weakOnes.length) parts.push(`${weakOnes.join(", ")} compromised in D9`);
+  if (!parts.length) parts.push("D9 dignities are neutral");
+  let summary = parts.join("; ") + ". ";
+  if (verdict === "strong") {
+    summary += "The yoga's promise is classically confirmed \u2014 results manifest fully.";
+  } else if (verdict === "moderate") {
+    summary += "Partial manifestation \u2014 the yoga delivers but not at full classical strength.";
+  } else {
+    summary += "The yoga may stay as a paper formation \u2014 look for dasha/transit triggers and remedies rather than automatic fruit.";
+  }
+
+  return {
+    planets,
+    totalScore,
+    combustionGap,
+    combustionNote,
+    verdict,
+    summary,
+  };
+}
+
+/**
+ * Decide whether a given yoga's detector benefits from a D9 strength check.
+ * Structural yogas (nabhasa, kartari, kala sarpa) do not \u2014 they're defined
+ * by geometry, not by any single planet's dignity.
+ */
+function yogaD9Planets(rule: YogaRule, detected: DetectedYoga): string[] | null {
+  const det = rule.detector;
+  switch (det.type) {
+    case "mahapurusha": return [det.planet];
+    case "gajakesari": return ["Jupiter", "Moon"];
+    case "budhaditya": return ["Sun", "Mercury"];
+    case "chandra_mangal": return ["Moon", "Mars"];
+    case "planet_conjunction": return [det.planetA, det.planetB];
+    case "grahana": return detected.keyPlanets ?? null;
+    case "shakata": return ["Moon", "Jupiter"];
+    case "kalanidhi": return ["Jupiter", "Mercury", "Venus"];
+    case "saraswati": return ["Jupiter", "Venus", "Mercury"];
+    case "ascendant_yogakaraka": return [det.planet];
+    case "bhava_yoga": return detected.keyPlanets ?? null;
+    case "vipareet_raja": return detected.keyPlanets ?? null;
+    case "amala": return detected.keyPlanets ?? null;
+    case "yogakaraka": return null;
+    default: return null;
+  }
+}
+
 export function detectYogas(chart: ChartResponse, rules: YogaRule[]): DetectedYoga[] {
   const result: DetectedYoga[] = [];
   for (const rule of rules) {
     try {
       const evidence = dispatch(rule.detector, chart);
       if (evidence) {
-        result.push({ rule, detected: true, evidence });
+        const ctx = getChartContext(rule, chart);
+        const houseContextNote = ctx.keyHouse != null ? getHouseContextNote(rule, ctx.keyHouse) : undefined;
+        const houseVerdict = ctx.keyHouse != null ? getHouseVerdict(rule, ctx.keyHouse) : undefined;
+        const detected: DetectedYoga = {
+          rule,
+          detected: true,
+          evidence,
+          keyHouse: ctx.keyHouse,
+          keyPlanets: ctx.keyPlanets,
+          keySign: ctx.keySign,
+          formationInChart: ctx.formationInChart,
+          houseContextNote,
+          houseVerdict,
+        };
+        const d9Targets = yogaD9Planets(rule, detected);
+        if (d9Targets && d9Targets.length > 0) {
+          const onlyClassical = d9Targets.filter((n) => CLASSICAL_PLANETS.includes(n));
+          if (onlyClassical.length > 0) {
+            detected.d9Analysis = computeD9Analysis(chart, onlyClassical);
+          }
+        }
+        result.push(detected);
       }
     } catch {
       // skip broken rules

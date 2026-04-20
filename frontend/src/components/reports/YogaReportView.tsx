@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChartResponse } from "@/lib/api";
 import { fetchLifetimeTransits } from "@/lib/api";
-import { detectYogas, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
+import { detectYogas, HOUSE_SIGNIFICATIONS, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
+import { ReportShell } from "@/components/ReportShell";
+
+const VERDICT_STYLE: Record<"favorable" | "mixed" | "challenging", { label: string; bg: string; text: string; border: string }> = {
+  favorable:   { label: "Favourable placement",  bg: "bg-emerald-500/10", text: "text-emerald-300", border: "border-emerald-500/30" },
+  mixed:       { label: "Mixed / often mitigated", bg: "bg-sky-500/10",   text: "text-sky-300",     border: "border-sky-500/30" },
+  challenging: { label: "Needs care",           bg: "bg-rose-500/10",   text: "text-rose-300",    border: "border-rose-500/30" },
+};
 
 const CATEGORY_LABEL: Record<YogaCategory, string> = {
   mahapurusha: "Pancha Mahapurusha",
@@ -82,16 +89,12 @@ export function YogaReportView({ chart, userName, onBack }: Props) {
   const doshaCount = detected.filter((d) => d.rule.category === "dosha").length;
 
   return (
+    <ReportShell
+      onBack={onBack}
+      title={`Yoga Report${userName ? ` \u00B7 ${userName}` : ""}`}
+      lockReason="Profile switching is disabled while viewing this report. Go back first to switch to another chart."
+    >
     <div className="space-y-5">
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="text-sm text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors"
-        >
-          {"\u2190"} Back
-        </button>
-      )}
-
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold text-amber-400 flex items-center justify-center gap-2">
           <span className="text-3xl">{"\u2728"}</span>
@@ -188,6 +191,7 @@ export function YogaReportView({ chart, userName, onBack }: Props) {
         good astrologer reads them in the context of the full chart.
       </p>
     </div>
+    </ReportShell>
   );
 }
 
@@ -231,8 +235,98 @@ function YogaCard({
       </button>
       {isExpanded && (
         <div className="px-3 pb-3 pt-1 space-y-3 border-t border-slate-800/50">
+          {/* How it forms in THIS chart */}
+          {(yoga.formationInChart || yoga.keyPlanets || yoga.keyHouse) && (
+            <div className="bg-slate-800/40 border border-slate-700/50 rounded-md p-2.5">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1 font-semibold">
+                {"\uD83D\uDD0D"} How this forms in your chart
+              </p>
+              {yoga.formationInChart && (
+                <p className="text-xs text-slate-200 leading-relaxed">{yoga.formationInChart}</p>
+              )}
+              {(yoga.keyPlanets?.length || yoga.keyHouse || yoga.keySign) && (
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  {yoga.keyPlanets && yoga.keyPlanets.length > 0 && (
+                    <span>Planets: <span className="text-slate-300">{yoga.keyPlanets.join(", ")}</span></span>
+                  )}
+                  {yoga.keyHouse && (
+                    <span>{yoga.keyPlanets?.length ? " \u00B7 " : ""}House: <span className="text-slate-300">{yoga.keyHouse}</span></span>
+                  )}
+                  {yoga.keySign && (
+                    <span>{" \u00B7 "}Sign: <span className="text-slate-300">{yoga.keySign}</span></span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* D9 (Navamsa) strength check */}
+          {yoga.d9Analysis && (
+            <div className={`border rounded-md p-2.5 ${
+              yoga.d9Analysis.verdict === "strong"   ? "bg-emerald-500/10 border-emerald-500/30" :
+              yoga.d9Analysis.verdict === "moderate" ? "bg-sky-500/10 border-sky-500/30" :
+                                                       "bg-rose-500/10 border-rose-500/30"
+            }`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className={`text-[10px] uppercase tracking-wide font-semibold ${
+                  yoga.d9Analysis.verdict === "strong"   ? "text-emerald-300" :
+                  yoga.d9Analysis.verdict === "moderate" ? "text-sky-300" :
+                                                           "text-rose-300"
+                }`}>
+                  {"\u2699\uFE0F"} D9 (Navamsa) strength check
+                </p>
+                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                  yoga.d9Analysis.verdict === "strong"   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" :
+                  yoga.d9Analysis.verdict === "moderate" ? "bg-sky-500/20 text-sky-300 border-sky-500/40" :
+                                                           "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                }`}>
+                  {yoga.d9Analysis.verdict === "strong" ? "Fructifies fully" :
+                   yoga.d9Analysis.verdict === "moderate" ? "Partial manifestation" :
+                   "Paper yoga / weak"}
+                </span>
+              </div>
+              <ul className="text-[11px] text-slate-300 leading-relaxed space-y-0.5 mb-1.5">
+                {yoga.d9Analysis.planets.map((p) => (
+                  <li key={p.planet}>
+                    <span className="text-slate-400">{"\u2022"}</span> {p.note}
+                  </li>
+                ))}
+              </ul>
+              {yoga.d9Analysis.combustionNote && (
+                <p className="text-[11px] text-slate-400 italic mb-1.5">
+                  {yoga.d9Analysis.combustionNote}
+                </p>
+              )}
+              <p className="text-xs text-slate-200 leading-relaxed">
+                {yoga.d9Analysis.summary}
+              </p>
+            </div>
+          )}
+
+          {/* House-context interpretation */}
+          {yoga.keyHouse && yoga.houseContextNote && (
+            <div className={`${yoga.houseVerdict ? VERDICT_STYLE[yoga.houseVerdict].bg : "bg-slate-800/40"} border ${yoga.houseVerdict ? VERDICT_STYLE[yoga.houseVerdict].border : "border-slate-700/50"} rounded-md p-2.5`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className={`text-[10px] uppercase tracking-wide font-semibold ${yoga.houseVerdict ? VERDICT_STYLE[yoga.houseVerdict].text : "text-slate-400"}`}>
+                  {"\uD83C\uDFE0"} House {yoga.keyHouse} context &mdash; {HOUSE_SIGNIFICATIONS[yoga.keyHouse]?.name}
+                </p>
+                {yoga.houseVerdict && (
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${VERDICT_STYLE[yoga.houseVerdict].bg} ${VERDICT_STYLE[yoga.houseVerdict].text} border ${VERDICT_STYLE[yoga.houseVerdict].border}`}>
+                    {VERDICT_STYLE[yoga.houseVerdict].label}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 italic mb-1.5">
+                {HOUSE_SIGNIFICATIONS[yoga.keyHouse]?.significations}
+              </p>
+              <p className="text-xs text-slate-200 leading-relaxed">
+                {yoga.houseContextNote}
+              </p>
+            </div>
+          )}
+
           <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Formation</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Classical formation rule</p>
             <p className="text-xs text-slate-300 leading-relaxed">{yoga.rule.formation}</p>
           </div>
           <div>

@@ -3,11 +3,13 @@
 import React, { useState } from "react";
 import { ChartResponse } from "@/lib/api";
 import { AyurvedicReport } from "@/lib/ayurvedicReport";
+import { ReportShell } from "@/components/ReportShell";
 
 interface Props {
   report: AyurvedicReport;
   chart: ChartResponse;
   name?: string;
+  onBack?: () => void;
 }
 
 // ─── PDF Generation ─────────────────────────────────────────────────────────
@@ -542,7 +544,7 @@ function StrengthBadge({ strength }: { strength: string }) {
   );
 }
 
-export function AyurvedicReportView({ report, chart, name }: Props) {
+export function AyurvedicReportView({ report, chart, name, onBack }: Props) {
   const doshaColors: Record<string, string> = {
     Vata: "bg-blue-500",
     Pitta: "bg-red-500",
@@ -550,6 +552,11 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
   };
 
   return (
+    <ReportShell
+      onBack={onBack ?? (() => window.history.back())}
+      title={`Ayurvedic Wellness Report${name ? ` \u00B7 ${name}` : ""}`}
+      onDownload={() => downloadReportPdf(report, chart, name)}
+    >
     <div className="space-y-5">
       {/* Report header */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-2">
@@ -895,5 +902,6 @@ export function AyurvedicReportView({ report, chart, name }: Props) {
         </button>
       </div>
     </div>
+    </ReportShell>
   );
 }

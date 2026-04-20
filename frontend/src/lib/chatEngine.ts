@@ -125,7 +125,37 @@ const QUESTION_CATEGORIES: QuestionCategory[] = [
 ];
 
 // Past-specific keywords — only show past events if user explicitly asks
-const PAST_KEYWORDS = ["past", "before", "earlier", "previous", "ago", "happened", "did i", "was there", "last year", "back then", "history", "already"];
+const PAST_KEYWORDS = [
+  "past", "before", "earlier", "previous", "ago", "happened", "did i", "was there",
+  "last year", "back then", "history", "already",
+  // past-tense verbs & phrasings
+  " did ", " was ", " were ", " had ", "used to", "meant to", "supposed to",
+  "taught", "teach me", "learn", "learned", "learnt", "lesson", "experienced",
+  "went through", "have been", "has been", "went ", "came ", "felt ",
+  "looking back", "in hindsight", "retrospect",
+];
+
+// Detect explicit year / year-range references (e.g. "2015", "2015-2020", "between 2015 and 2020")
+const YEAR_RANGE_RE = /\b(19|20)\d{2}\b/g;
+
+function extractYearRange(question: string): { start?: number; end?: number } | null {
+  const matches = question.match(YEAR_RANGE_RE);
+  if (!matches || matches.length === 0) return null;
+  const years = matches.map(y => parseInt(y, 10)).sort((a, b) => a - b);
+  return { start: years[0], end: years[years.length - 1] };
+}
+
+function highlightsInYearRange(highlights: LifeHighlight[], range: { start?: number; end?: number }): LifeHighlight[] {
+  if (!range.start) return highlights;
+  return highlights.filter(h => {
+    const years = (h.window || "").match(YEAR_RANGE_RE);
+    if (!years) return false;
+    const hStart = parseInt(years[0], 10);
+    const hEnd = parseInt(years[years.length - 1], 10);
+    // overlap test
+    return hEnd >= (range.start ?? 0) && hStart <= (range.end ?? 9999);
+  });
+}
 
 // ─── Classification ─────────────────────────────────────────────────────────
 
@@ -135,10 +165,13 @@ interface ClassificationResult {
   planets: string[];
   isGeneral: boolean;
   askingAboutPast: boolean;
+  yearRange?: { start?: number; end?: number };
 }
 
 function classifyQuestion(question: string): ClassificationResult {
   const lower = question.toLowerCase();
+  // Pad with spaces so keywords like " did " with word boundaries match at start/end
+  const padded = ` ${lower} `;
   const matched: QuestionCategory[] = [];
 
   for (const cat of QUESTION_CATEGORIES) {
@@ -150,17 +183,20 @@ function classifyQuestion(question: string): ClassificationResult {
     }
   }
 
-  const askingAboutPast = PAST_KEYWORDS.some(kw => lower.includes(kw));
+  const yearRange = extractYearRange(lower) ?? undefined;
+  const currentYear = new Date().getFullYear();
+  const yearSuggestsPast = !!(yearRange && yearRange.start && yearRange.start < currentYear);
+  const askingAboutPast = yearSuggestsPast || PAST_KEYWORDS.some(kw => padded.includes(kw));
 
   if (matched.length === 0) {
-    return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast };
+    return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast, yearRange };
   }
 
   const categories = [...new Set(matched.map(m => m.id))];
   const houses = [...new Set(matched.flatMap(m => m.houses))];
   const planets = [...new Set(matched.flatMap(m => m.planets))];
 
-  return { categories, houses, planets, isGeneral: false, askingAboutPast };
+  return { categories, houses, planets, isGeneral: false, askingAboutPast, yearRange };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -222,6 +258,7 @@ function buildCategoryAnswer(
   planets: string[],
   askingAboutPast: boolean,
   enriched?: EnrichedChatContext,
+  yearRange?: { start?: number; end?: number },
 ): string {
   const parts: string[] = [];
   const categories = getRelevantCategories(report, categoryIds);
@@ -269,12 +306,25 @@ function buildCategoryAnswer(
 
   // Past — ONLY if user explicitly asked
   if (askingAboutPast) {
-    const past = getRelevantHighlights(report.pastHighlights, categoryIds, 2);
+    let pastPool = report.pastHighlights;
+    if (yearRange && yearRange.start) {
+      const filtered = highlightsInYearRange(pastPool, yearRange);
+      if (filtered.length > 0) pastPool = filtered;
+    }
+    const limit = yearRange ? 5 : 2;
+    const past = getRelevantHighlights(pastPool, categoryIds, limit);
     if (past.length > 0) {
+      const rangeLabel = yearRange && yearRange.start
+        ? (yearRange.end && yearRange.end !== yearRange.start
+            ? ` between ${yearRange.start}-${yearRange.end}`
+            : ` around ${yearRange.start}`)
+        : "";
       const pastTexts = past.map(h =>
         `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
       );
-      parts.push(`Looking back at past periods:\n${pastTexts.join("\n")}`);
+      parts.push(`Looking back at past periods${rangeLabel}:\n${pastTexts.join("\n")}`);
+    } else if (yearRange && yearRange.start) {
+      parts.push(`I don't have strong specific indicators from your chart's pre-computed highlights for **${yearRange.start}${yearRange.end && yearRange.end !== yearRange.start ? `-${yearRange.end}` : ""}** in this area. The dasha that ran during that window would still be the key — happy to walk through it if you tell me which life area to focus on.`);
     }
   }
 
@@ -514,6 +564,7 @@ export function answerAstrologyQuestion(
       classification.planets,
       classification.askingAboutPast,
       enriched,
+      classification.yearRange,
     );
 
     // If answer is too thin, add a gentle general nudge
@@ -530,5 +581,165 @@ export function answerAstrologyQuestion(
       planets: classification.planets,
       isGeneral: classification.isGeneral,
     },
+  };
+}
+
+// ─── Fact Extraction (for LLM composer) ─────────────────────────────────────
+
+/**
+ * Structured, JSON-friendly facts about the user's chart relevant to the
+ * question. The LLM composer serializes these into its prompt — the model
+ * ONLY uses these facts (never invents) and composes natural prose around them.
+ */
+export interface AnswerFacts {
+  question: string;
+  askingAboutPast: boolean;
+  yearRange?: { start?: number; end?: number };
+  isDashaQuestion: boolean;
+  isGeneral: boolean;
+  categories: string[];
+  categoryFacts: {
+    id: string;
+    name: string;
+    outlook: string;
+    summary: string;
+  }[];
+  currentPeriod?: {
+    mahadasha: string;
+    antardasha: string;
+    endDate: string;
+    themes: string;
+    relevantPredictions: string[];
+  };
+  relevantPlanets: {
+    name: string;
+    house: number;
+    dignity?: string | null;
+    interpretation: string;
+  }[];
+  upcomingWindows: {
+    window: string;
+    dashaContext: string;
+    likelihood: string;
+    reasoning: string;
+    category: string;
+  }[];
+  pastWindows: {
+    window: string;
+    dashaContext: string;
+    reasoning: string;
+    category: string;
+  }[];
+  relevantYogas: {
+    name: string;
+    impact: string;
+  }[];
+  enrichedNote?: string;
+  generalSnapshot?: {
+    lagna: string;
+    lagnaLord: string;
+    topStrengths: { planet: string; note: string }[];
+  };
+}
+
+export function extractAnswerFacts(
+  question: string,
+  chart: ChartResponse,
+  report: LifeEventsReport,
+  enriched?: EnrichedChatContext,
+): AnswerFacts {
+  const lower = question.toLowerCase();
+  const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
+  const classification = classifyQuestion(question);
+
+  const categoryIds = classification.categories;
+  const categories = getRelevantCategories(report, categoryIds);
+  const currentDashaPred = getCurrentDashaPrediction(report);
+  const cpa = report.currentPeriodAnalysis;
+  const relevantPlanets = getRelevantPlanets(report, classification.planets);
+
+  const upcoming = getRelevantHighlights(report.upcomingHighlights, categoryIds, 4);
+
+  let pastPool = report.pastHighlights;
+  if (classification.yearRange?.start) {
+    const filtered = highlightsInYearRange(pastPool, classification.yearRange);
+    if (filtered.length > 0) pastPool = filtered;
+  }
+  const past = classification.askingAboutPast
+    ? getRelevantHighlights(pastPool, categoryIds, classification.yearRange ? 5 : 3)
+    : [];
+
+  const yogas = getRelevantYogas(report, classification.houses, classification.planets);
+
+  const enrichedNote = enriched
+    ? buildEnrichedSection(enriched, categoryIds, classification.houses) || undefined
+    : undefined;
+
+  const currentPeriod = cpa
+    ? {
+        mahadasha: cpa.mahadasha,
+        antardasha: cpa.antardasha,
+        endDate: cpa.endDate,
+        themes: Array.isArray(currentDashaPred?.themes)
+          ? currentDashaPred?.themes.join(", ") ?? ""
+          : (currentDashaPred?.themes as unknown as string) ?? "",
+        relevantPredictions: (currentDashaPred?.eventPredictions ?? [])
+          .filter((ep) => categoryIds.includes(ep.category))
+          .slice(0, 3)
+          .map((ep) => ep.description),
+      }
+    : undefined;
+
+  // General snapshot for open-ended questions
+  const generalSnapshot = classification.isGeneral
+    ? {
+        lagna: chart.lagna,
+        lagnaLord: report.planetaryStrengths[0]?.planet ?? "",
+        topStrengths: report.planetaryStrengths
+          .filter((p) => p.strength === "strong")
+          .slice(0, 3)
+          .map((p) => ({ planet: p.planet, note: p.interpretation })),
+      }
+    : undefined;
+
+  return {
+    question,
+    askingAboutPast: classification.askingAboutPast,
+    yearRange: classification.yearRange,
+    isDashaQuestion,
+    isGeneral: classification.isGeneral,
+    categories: categoryIds,
+    categoryFacts: categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      outlook: c.overallOutlook,
+      summary: c.summary,
+    })),
+    currentPeriod,
+    relevantPlanets: relevantPlanets.map((p) => ({
+      name: p.planet,
+      house: p.house,
+      dignity: p.dignity ?? null,
+      interpretation: p.interpretation,
+    })),
+    upcomingWindows: upcoming.map((h) => ({
+      window: h.window,
+      dashaContext: h.dashaContext,
+      likelihood: h.likelihood,
+      reasoning: trimReasoning(h.reasoning),
+      category: h.category,
+    })),
+    pastWindows: past.map((h) => ({
+      window: h.window,
+      dashaContext: h.dashaContext,
+      reasoning: trimReasoning(h.reasoning),
+      category: h.category,
+    })),
+    relevantYogas: yogas.slice(0, 3).map((y) => ({
+      name: y.name,
+      impact: y.lifeEventImpact,
+    })),
+    enrichedNote,
+    generalSnapshot,
   };
 }

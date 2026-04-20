@@ -3,8 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ChartResponse } from "@/lib/api";
 import { generateLifeEventsReport } from "@/lib/lifeEventsReport";
-import { answerAstrologyQuestion } from "@/lib/chatEngine";
+import { answerAstrologyQuestion, extractAnswerFacts } from "@/lib/chatEngine";
 import { computeChatEnrichment } from "@/lib/chatEnrichment";
+import { composeNaturalAnswer, isLlmComposerAvailable } from "@/lib/llmComposer";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +124,27 @@ export async function POST(req: NextRequest) {
     enriched = undefined;
   }
 
-  const { answer, metadata } = answerAstrologyQuestion(trimmedQuestion, chartData, report, enriched);
+  // Deterministic extraction first — this is our source of truth and our
+  // fallback if the LLM composer is unavailable or fails.
+  const { answer: templateAnswer, metadata } = answerAstrologyQuestion(
+    trimmedQuestion,
+    chartData,
+    report,
+    enriched,
+  );
+  let answer = templateAnswer;
+  let composer: "openai" | "template" = "template";
+
+  if (isLlmComposerAvailable()) {
+    try {
+      const facts = extractAnswerFacts(trimmedQuestion, chartData, report, enriched);
+      answer = await composeNaturalAnswer(facts, chartData);
+      composer = "openai";
+    } catch (err) {
+      console.warn("[chat] LLM composer failed, using template:", err);
+      // answer already holds templateAnswer; composer stays "template"
+    }
+  }
 
   // Save assistant message
   const assistantMessage = await prisma.chatMessage.create({
@@ -131,7 +152,7 @@ export async function POST(req: NextRequest) {
       sessionId,
       role: "assistant",
       content: answer,
-      metadata: metadata as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
+      metadata: { ...metadata, composer } as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
     },
   });
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ChartResponse } from "@/lib/api";
+import { ReportShell } from "@/components/ReportShell";
 import { fetchLifetimeTransits } from "@/lib/api";
 import { preparePredictionInput } from "@/lib/jaiminiPredictiveEngine";
 import {
@@ -168,17 +169,11 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
   }, [chart]);
 
   return (
+    <ReportShell
+      onBack={onBack}
+      title={`Career Report${userName ? ` \u00B7 ${userName}` : ""}`}
+    >
     <div className="space-y-5">
-      {/* Back */}
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="text-sm text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors"
-        >
-          {"\u2190"} Back
-        </button>
-      )}
-
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold text-blue-400 flex items-center justify-center gap-2">
@@ -239,6 +234,7 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
         )}
       </Section>
     </div>
+    </ReportShell>
   );
 }
 

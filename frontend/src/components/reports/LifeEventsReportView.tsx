@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ChartResponse } from "@/lib/api";
+import { ReportShell } from "@/components/ReportShell";
 import {
   LifeEventsReport,
   EventCategory,
@@ -332,35 +333,13 @@ async function downloadReportPdf(report: LifeEventsReport, chart: ChartResponse,
 /* ── Main Component ───────────────────────────────────────────────────────── */
 
 export function LifeEventsReportView({ report, chart, name, isAdmin, onBack }: Props) {
-  const stickyBar = (
-    <div className="sticky top-14 z-30 bg-slate-950/90 backdrop-blur border-b border-slate-800 -mx-4 px-4 py-2.5 flex items-center justify-between print:hidden">
-      <button
-        onClick={onBack || (() => window.history.back())}
-        className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
-      >
-        <span>{"\u2190"}</span> Back to Reports
-      </button>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => downloadReportPdf(report, chart, name, isAdmin)}
-          className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-4 py-1.5 rounded-lg transition-colors text-xs"
-        >
-          {"\u{1F4E5}"} Save PDF
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors"
-        >
-          {"\u{1F5A8}\uFE0F"} Print
-        </button>
-      </div>
-    </div>
-  );
-
   return (
+    <ReportShell
+      onBack={onBack ?? (() => window.history.back())}
+      title={`Life Events Report${name ? ` \u00B7 ${name}` : ""}`}
+      onDownload={() => downloadReportPdf(report, chart, name, isAdmin)}
+    >
     <div className="space-y-5">
-      {stickyBar}
-
       {/* Report header */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-2">
         <p className="text-2xl">{"\u{1F52E}"}</p>
@@ -712,5 +691,6 @@ export function LifeEventsReportView({ report, chart, name, isAdmin, onBack }: P
         </button>
       </div>
     </div>
+    </ReportShell>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useActiveProfile } from "@/contexts/ActiveProfileContext";
+import { useReportLock } from "@/contexts/ReportLockContext";
 
 /**
  * Profile tab strip shown below the main navbar for signed-in users.
@@ -18,6 +19,7 @@ export function ProfileTabs() {
   const { status } = useSession();
   const { profiles, activeProfile, setActiveProfileId, hasOwnProfile, loading } =
     useActiveProfile();
+  const { locked, lockReason } = useReportLock();
   const [dismissed, setDismissed] = useState(false);
 
   // Only render for authenticated users
@@ -67,8 +69,9 @@ export function ProfileTabs() {
   }
 
   // Has profiles — render the tab strip
+  const lockTooltip = lockReason ?? "Profile switching is disabled while viewing a report.";
   return (
-    <div className="border-b border-slate-800 bg-slate-900/30">
+    <div className={`profile-tabs-strip border-b border-slate-800 bg-slate-900/30 ${locked ? "opacity-60" : ""}`}>
       <div className="max-w-7xl mx-auto px-4 h-11 flex items-center gap-1 overflow-x-auto">
         <span className="text-[10px] text-slate-500 uppercase tracking-widest mr-2 flex-shrink-0">
           Profile
@@ -79,24 +82,33 @@ export function ProfileTabs() {
           return (
             <button
               key={p.id}
-              onClick={() => setActiveProfileId(p.id)}
+              onClick={() => {
+                if (locked) return;
+                setActiveProfileId(p.id);
+              }}
+              disabled={locked && !isActive}
               className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-md border transition-colors ${
                 isActive
                   ? "bg-amber-500 text-black border-amber-500 font-semibold"
+                  : locked
+                  ? "bg-slate-800/40 text-slate-500 border-slate-800 cursor-not-allowed"
                   : "bg-slate-800/40 text-slate-300 border-slate-700 hover:border-amber-500/40 hover:text-amber-400"
               }`}
-              title={`${p.name} — ${p.dateOfBirth} ${p.timeOfBirth}`}
+              title={locked && !isActive ? lockTooltip : `${p.name} — ${p.dateOfBirth} ${p.timeOfBirth}`}
             >
               {p.isOwn && <span className="mr-1">{"\u2B50"}</span>}
               {p.name}
               {p.relationship && p.relationship !== "self" && (
                 <span className="opacity-60 ml-1">({p.relationship})</span>
               )}
+              {locked && isActive && (
+                <span className="ml-1.5 text-[9px]" title={lockTooltip}>{"\uD83D\uDD12"}</span>
+              )}
             </button>
           );
         })}
 
-        {!hasOwnProfile && (
+        {!hasOwnProfile && !locked && (
           <Link
             href="/profiles"
             className="flex-shrink-0 text-xs px-3 py-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 font-semibold ml-1"
@@ -105,13 +117,20 @@ export function ProfileTabs() {
           </Link>
         )}
 
-        <Link
-          href="/profiles"
-          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:border-slate-600 ml-1"
-          title="Add, edit or delete profiles"
-        >
-          {"\u2630"} Show all profiles
-        </Link>
+        {!locked && (
+          <Link
+            href="/profiles"
+            className="flex-shrink-0 text-xs px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800/40 text-slate-400 hover:text-slate-200 hover:border-slate-600 ml-1"
+            title="Add, edit or delete profiles"
+          >
+            {"\u2630"} Show all profiles
+          </Link>
+        )}
+        {locked && (
+          <span className="flex-shrink-0 text-[11px] text-slate-500 italic ml-2" title={lockTooltip}>
+            {"\uD83D\uDD12"} Locked while viewing report
+          </span>
+        )}
 
         {activeProfile && (
           <div className="flex-shrink-0 ml-auto text-[10px] text-slate-500 hidden sm:block">

@@ -53,6 +53,7 @@ const CHART_COLORS = {
     centerText: "#334155",
     centerSub: "#1e3a5f",
     defaultPlanet: "#94a3b8",
+    degreeText: "#64748b",
   },
   light: {
     bg: "#FFF5E6",
@@ -65,6 +66,7 @@ const CHART_COLORS = {
     centerText: "#5C3D18",
     centerSub: "#7A5628",
     defaultPlanet: "#422A0E",
+    degreeText: "#8B6B3A",
   },
 };
 
@@ -247,22 +249,32 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
                 {houseInfo?.lord ? `(${PLANET_ABBR[houseInfo.lord] ?? houseInfo.lord.slice(0, 2)})` : ""}
               </text>
 
-              {/* Planets */}
+              {/* Planets with degrees */}
               {occupants.map((p, idx) => {
                 const yPos = cy + topOffset + 34 + idx * 12;
                 const color = p.dignity ? DIGNITY_COLOR[p.dignity] : c.defaultPlanet;
+                const deg = `${Math.floor(p.degree_in_rashi)}\u00B0`;
                 return (
-                  <text
-                    key={p.name}
-                    x={cx} y={yPos}
-                    textAnchor="middle"
-                    fontSize={planetSize}
-                    fontWeight="700"
-                    fill={color}
-                  >
-                    {PLANET_ABBR[p.name] ?? p.name.slice(0, 2)}
-                    {p.is_retrograde ? "ᴿ" : ""}
-                  </text>
+                  <g key={p.name}>
+                    <text
+                      x={cx - 2} y={yPos}
+                      textAnchor="end"
+                      fontSize={planetSize}
+                      fontWeight="700"
+                      fill={color}
+                    >
+                      {PLANET_ABBR[p.name] ?? p.name.slice(0, 2)}
+                      {p.is_retrograde ? "ᴿ" : ""}
+                    </text>
+                    <text
+                      x={cx} y={yPos}
+                      textAnchor="start"
+                      fontSize={planetSize - 2}
+                      fill={c.degreeText}
+                    >
+                      {deg}
+                    </text>
+                  </g>
                 );
               })}
             </g>
