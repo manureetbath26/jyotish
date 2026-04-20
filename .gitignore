@@ -35,6 +35,9 @@ interest-emails.json
 backend/*.se1
 backend/ephe/
 
+# Geocode cache — written at runtime
+backend/geocode_cache.json
+
 # OS
 .DS_Store
 Thumbs.db

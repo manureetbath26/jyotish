@@ -163,7 +163,21 @@ function CharaDashaReportContent() {
     setLoading(true);
     setError(null);
     try {
-      const result = await calculateChart({ date, time, place });
+      let result: ChartResponse;
+
+      // Use cached chart for saved profile (avoids re-geocoding).
+      if (selectedProfileId) {
+        const res = await fetch(`/api/profiles/${selectedProfileId}/chart`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Failed" }));
+          throw new Error(err.error || `Chart cache fetch failed (${res.status})`);
+        }
+        const data = await res.json();
+        result = data.chartData as ChartResponse;
+      } else {
+        result = await calculateChart({ date, time, place });
+      }
+
       setChart(result);
       const rpt = generateCharaDashaReport(result, { name, gender, maritalStatus });
       setReport(rpt);

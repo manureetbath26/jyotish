@@ -155,7 +155,24 @@ function CareerReportContent() {
     setLoading(true);
     setError(null);
     try {
-      const result = await calculateChart({ date, time, place });
+      let result: ChartResponse;
+
+      // If a saved profile is selected, use the cached chart endpoint —
+      // this avoids re-geocoding on every report generation (which hits
+      // Nominatim rate limits).
+      if (selectedProfileId) {
+        const res = await fetch(`/api/profiles/${selectedProfileId}/chart`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Failed" }));
+          throw new Error(err.error || `Chart cache fetch failed (${res.status})`);
+        }
+        const data = await res.json();
+        result = data.chartData as ChartResponse;
+      } else {
+        // Manual entry — go straight to backend (will geocode)
+        result = await calculateChart({ date, time, place });
+      }
+
       setChart(result);
       setStep("preview");
     } catch (err) {
