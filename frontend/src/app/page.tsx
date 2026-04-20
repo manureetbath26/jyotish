@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { BirthForm } from "@/components/BirthForm";
 import { ChartDisplay } from "@/components/ChartDisplay";
 import { calculateChart, saveChart, BirthDataInput, ChartResponse } from "@/lib/api";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://jyotish-two.vercel.app";
 
@@ -52,6 +53,7 @@ const FAQ_ITEMS = [
 
 export default function HomePage() {
   const { data: session } = useSession();
+  const { activeProfile } = useActiveProfile();
   const [chart, setChart] = useState<ChartResponse | null>(null);
   const [chartName, setChartName] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -67,6 +69,28 @@ export default function HomePage() {
     try {
       const result = await calculateChart(data);
       setChart(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadActiveProfile = async () => {
+    if (!activeProfile) return;
+    setLoading(true);
+    setError(null);
+    setSaved(false);
+    setChart(null);
+    setChartName(activeProfile.name);
+    try {
+      const res = await fetch(`/api/profiles/${activeProfile.id}/chart`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setChart(data.chartData as ChartResponse);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -202,6 +226,31 @@ export default function HomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Form column */}
           <div className="lg:col-span-1 space-y-4">
+            {/* Quick-load from active profile */}
+            {activeProfile && !chart && !loading && (
+              <button
+                type="button"
+                onClick={handleLoadActiveProfile}
+                className="w-full bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50 rounded-xl p-3 text-left transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">{"\u26A1"}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-300">
+                      Load chart for {activeProfile.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500 truncate">
+                      {activeProfile.dateOfBirth} &middot; {activeProfile.timeOfBirth} &middot;{" "}
+                      {activeProfile.placeOfBirth.split(",").slice(0, 2).join(",")}
+                    </p>
+                  </div>
+                  <span className="text-amber-400 group-hover:translate-x-0.5 transition-transform">
+                    {"\u2192"}
+                  </span>
+                </div>
+              </button>
+            )}
+
             <BirthForm onSubmit={handleSubmit} loading={loading} />
 
             {error && (

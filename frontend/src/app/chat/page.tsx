@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { calculateChart, ChartResponse } from "@/lib/api";
 import { ChatInterface } from "@/components/chat/ChatInterface";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 const UPI_ID = "9872653657@ybl";
 
@@ -66,6 +67,7 @@ export default function ChatPage() {
 function ChatPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { activeProfile } = useActiveProfile();
 
   const [step, setStep] = useState<Step>("birth");
 
@@ -282,6 +284,49 @@ function ChatPageContent() {
       </p>
 
       {/* ═══ STEP 1: BIRTH DETAILS ═══ */}
+      {step === "birth" && activeProfile && (
+        <button
+          type="button"
+          onClick={async () => {
+            setChartLoading(true);
+            setChartError(null);
+            try {
+              const res = await fetch(`/api/profiles/${activeProfile.id}/chart`);
+              if (!res.ok) throw new Error("Failed to load chart");
+              const data = await res.json();
+              setName(activeProfile.name);
+              setDate(activeProfile.dateOfBirth);
+              setTime(activeProfile.timeOfBirth);
+              setPlace(activeProfile.placeOfBirth);
+              setChart(data.chartData as ChartResponse);
+              setStep("plan");
+            } catch (err) {
+              setChartError(err instanceof Error ? err.message : "Failed");
+            } finally {
+              setChartLoading(false);
+            }
+          }}
+          disabled={chartLoading}
+          className="w-full mb-4 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50 rounded-xl p-3 text-left transition-colors group disabled:opacity-60"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-lg">{"\u26A1"}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-300">
+                Use {activeProfile.name}&apos;s chart
+              </p>
+              <p className="text-[10px] text-slate-500 truncate">
+                {activeProfile.dateOfBirth} &middot; {activeProfile.timeOfBirth} &middot;{" "}
+                {activeProfile.placeOfBirth.split(",").slice(0, 2).join(",")}
+              </p>
+            </div>
+            <span className="text-amber-400 group-hover:translate-x-0.5 transition-transform">
+              {"\u2192"}
+            </span>
+          </div>
+        </button>
+      )}
+
       {step === "birth" && (
         <form onSubmit={handleCalculateChart} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <div>
