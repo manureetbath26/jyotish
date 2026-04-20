@@ -36,6 +36,7 @@ interface ChatSessionData {
   questionLimit: number;
   questionsUsed: number;
   status: string;
+  birthData?: { date: string; time: string; place: string; name?: string } | null;
   messages: Array<{
     id: string;
     role: "user" | "assistant";
@@ -64,10 +65,17 @@ export default function ChatPage() {
   );
 }
 
+type Mode = "profile" | "new_chart";
+
 function ChatPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { activeProfile } = useActiveProfile();
+
+  // Mode selects which tab is active.
+  // - "profile": auto-load active profile's chart and resume/start a chat
+  // - "new_chart": show birth form to ask about someone else
+  const [mode, setMode] = useState<Mode>("profile");
 
   const [step, setStep] = useState<Step>("birth");
 
@@ -111,6 +119,83 @@ function ChatPageContent() {
       })
       .catch(() => {});
   }, []);
+
+  // Auto-load chart + resume session for active profile
+  useEffect(() => {
+    let cancelled = false;
+    if (mode !== "profile" || !activeProfile || status !== "authenticated") return;
+
+    async function run() {
+      setChartLoading(true);
+      setChartError(null);
+      try {
+        // 1. Load cached chart
+        const res = await fetch(`/api/profiles/${activeProfile!.id}/chart`);
+        if (!res.ok) {
+          throw new Error("Failed to load chart for this profile");
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const chartData = data.chartData as ChartResponse;
+        setName(activeProfile!.name);
+        setDate(activeProfile!.dateOfBirth);
+        setTime(activeProfile!.timeOfBirth);
+        setPlace(activeProfile!.placeOfBirth);
+        setChart(chartData);
+
+        // 2. Look for an existing active chat session for this chart.
+        //    Match by birthData.date + time + place.
+        const sessionsRes = await fetch("/api/chat/session");
+        if (sessionsRes.ok) {
+          const sessions = await sessionsRes.json();
+          if (Array.isArray(sessions)) {
+            const match = sessions.find((s: ChatSessionData) => {
+              const b = s.birthData;
+              if (!b || s.status !== "active") return false;
+              return (
+                b.date === activeProfile!.dateOfBirth &&
+                b.time === activeProfile!.timeOfBirth &&
+                b.place === activeProfile!.placeOfBirth
+              );
+            });
+            if (match && !cancelled) {
+              setChatSession(match);
+              setStep("chat");
+              return;
+            }
+          }
+        }
+
+        // No existing session — go to plan selection
+        if (!cancelled) setStep("plan");
+      } catch (err) {
+        if (!cancelled) {
+          setChartError(err instanceof Error ? err.message : "Failed to load chart");
+        }
+      } finally {
+        if (!cancelled) setChartLoading(false);
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, activeProfile?.id, status]);
+
+  // When user switches mode to new_chart, reset everything
+  useEffect(() => {
+    if (mode === "new_chart") {
+      setChart(null);
+      setChatSession(null);
+      setName("");
+      setDate("");
+      setTime("");
+      setPlace("");
+      setStep("birth");
+      setChartError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   // Place search
   const handlePlaceChange = (val: string) => {
@@ -279,55 +364,72 @@ function ChatPageContent() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-amber-400 mb-1">Ask Your Chart</h1>
-      <p className="text-slate-500 text-sm mb-6">
+      <p className="text-slate-500 text-sm mb-4">
         Get personalized Vedic astrology insights powered by your birth chart analysis engine.
       </p>
 
-      {/* ═══ STEP 1: BIRTH DETAILS ═══ */}
-      {step === "birth" && activeProfile && (
-        <button
-          type="button"
-          onClick={async () => {
-            setChartLoading(true);
-            setChartError(null);
-            try {
-              const res = await fetch(`/api/profiles/${activeProfile.id}/chart`);
-              if (!res.ok) throw new Error("Failed to load chart");
-              const data = await res.json();
-              setName(activeProfile.name);
-              setDate(activeProfile.dateOfBirth);
-              setTime(activeProfile.timeOfBirth);
-              setPlace(activeProfile.placeOfBirth);
-              setChart(data.chartData as ChartResponse);
-              setStep("plan");
-            } catch (err) {
-              setChartError(err instanceof Error ? err.message : "Failed");
-            } finally {
-              setChartLoading(false);
-            }
-          }}
-          disabled={chartLoading}
-          className="w-full mb-4 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50 rounded-xl p-3 text-left transition-colors group disabled:opacity-60"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-lg">{"\u26A1"}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-amber-300">
-                Use {activeProfile.name}&apos;s chart
-              </p>
-              <p className="text-[10px] text-slate-500 truncate">
-                {activeProfile.dateOfBirth} &middot; {activeProfile.timeOfBirth} &middot;{" "}
-                {activeProfile.placeOfBirth.split(",").slice(0, 2).join(",")}
-              </p>
-            </div>
-            <span className="text-amber-400 group-hover:translate-x-0.5 transition-transform">
-              {"\u2192"}
-            </span>
-          </div>
-        </button>
+      {/* Tab strip */}
+      {status === "authenticated" && (
+        <div className="flex items-center gap-1 mb-6 border-b border-slate-800">
+          {activeProfile && (
+            <button
+              type="button"
+              onClick={() => setMode("profile")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                mode === "profile"
+                  ? "border-amber-500 text-amber-400"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {activeProfile.isOwn && <span className="mr-1">{"\u2B50"}</span>}
+              {activeProfile.name}&apos;s chart
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMode("new_chart")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              mode === "new_chart"
+                ? "border-amber-500 text-amber-400"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {"\u002B"} New birth chart
+          </button>
+        </div>
       )}
 
-      {step === "birth" && (
+      {/* Active profile loading state */}
+      {mode === "profile" && chartLoading && (
+        <div className="flex items-center justify-center gap-3 py-10">
+          <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-400">Loading chart...</span>
+        </div>
+      )}
+
+      {mode === "profile" && !activeProfile && status === "authenticated" && (
+        <div className="bg-amber-500/5 border-2 border-dashed border-amber-500/30 rounded-xl p-6 text-center space-y-3">
+          <p className="text-sm text-amber-300">No active profile selected</p>
+          <p className="text-xs text-slate-400">
+            Pick a profile from the tab strip above, or add your kundli to use this feature quickly.
+          </p>
+          <a
+            href="/profiles"
+            className="inline-block bg-amber-500 hover:bg-amber-400 text-black font-semibold text-sm px-4 py-2 rounded-lg"
+          >
+            Manage profiles
+          </a>
+        </div>
+      )}
+
+      {mode === "profile" && chartError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400 mb-4">
+          {chartError}
+        </div>
+      )}
+
+      {/* Birth form — only in new_chart mode */}
+      {mode === "new_chart" && step === "birth" && (
         <form onSubmit={handleCalculateChart} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
           <div>
             <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">Your Name</label>
@@ -415,10 +517,17 @@ function ChatPageContent() {
                 <p className="text-xs text-slate-500">{chart.lagna} Lagna • {chart.current_dasha?.planet}-{chart.current_antardasha?.planet} Dasha</p>
               </div>
               <button
-                onClick={() => setStep("birth")}
+                onClick={() => {
+                  if (mode === "profile") {
+                    // Switching profile is done via the top tab strip
+                    setMode("new_chart");
+                  } else {
+                    setStep("birth");
+                  }
+                }}
                 className="text-xs text-slate-500 hover:text-slate-300"
               >
-                Change
+                {mode === "profile" ? "Use different chart" : "Change"}
               </button>
             </div>
           </div>
