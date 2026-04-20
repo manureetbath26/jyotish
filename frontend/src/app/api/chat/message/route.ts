@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ChartResponse } from "@/lib/api";
 import { generateLifeEventsReport } from "@/lib/lifeEventsReport";
 import { answerAstrologyQuestion } from "@/lib/chatEngine";
+import { computeChatEnrichment } from "@/lib/chatEnrichment";
 
 export const dynamic = "force-dynamic";
 
@@ -107,10 +108,22 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Generate answer using the engine
+  // Generate answer using the engine — enriched with Jaimini + Ashtakvarga
   const chartData = chatSession.chartData as unknown as ChartResponse;
   const report = generateLifeEventsReport(chartData);
-  const { answer, metadata } = answerAstrologyQuestion(trimmedQuestion, chartData, report);
+
+  // Compute enriched context (Jaimini marriage/career windows + Ashtakvarga
+  // house-level SAV + karaka BAV). Fails open — chat still works if this
+  // throws, answer just lacks the "Jaimini + Ashtakvarga check" section.
+  let enriched;
+  try {
+    enriched = await computeChatEnrichment(chartData);
+  } catch (err) {
+    console.warn("[chat] enrichment failed:", err);
+    enriched = undefined;
+  }
+
+  const { answer, metadata } = answerAstrologyQuestion(trimmedQuestion, chartData, report, enriched);
 
   // Save assistant message
   const assistantMessage = await prisma.chatMessage.create({

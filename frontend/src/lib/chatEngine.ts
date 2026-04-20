@@ -14,6 +14,7 @@ import {
   PlanetStrength,
   YogaInfluence,
 } from "@/lib/lifeEventsReport";
+import type { EnrichedChatContext } from "@/lib/chatEnrichment";
 
 // ─── Question Classification ────────────────────────────────────────────────
 
@@ -220,6 +221,7 @@ function buildCategoryAnswer(
   houses: number[],
   planets: string[],
   askingAboutPast: boolean,
+  enriched?: EnrichedChatContext,
 ): string {
   const parts: string[] = [];
   const categories = getRelevantCategories(report, categoryIds);
@@ -283,7 +285,126 @@ function buildCategoryAnswer(
     parts.push(`Worth noting — you have **${topYoga.name}** in your chart, which ${topYoga.lifeEventImpact.charAt(0).toLowerCase()}${topYoga.lifeEventImpact.slice(1)}`);
   }
 
+  // Enriched insights from Jaimini + Ashtakvarga engines
+  if (enriched) {
+    const enrichedSection = buildEnrichedSection(enriched, categoryIds, houses);
+    if (enrichedSection) parts.push(enrichedSection);
+  }
+
   return parts.join("\n\n");
+}
+
+// ─── Enriched Insights (Jaimini + Ashtakvarga) ──────────────────────────────
+
+/**
+ * Build a "From Jaimini & Ashtakvarga" section that corroborates the main
+ * answer with insights from the specialized engines. Picks the right
+ * signals for each question category.
+ */
+function buildEnrichedSection(
+  enriched: EnrichedChatContext,
+  categoryIds: string[],
+  houses: number[],
+): string {
+  const lines: string[] = [];
+
+  // Marriage / romance — Jaimini marriage windows + 7th house SAV + karaka BAV
+  if (
+    (categoryIds.includes("marriage") || categoryIds.includes("romance")) &&
+    enriched.marriage
+  ) {
+    const m = enriched.marriage;
+    const parts: string[] = [];
+
+    if (m.peakWindow) {
+      const pw = m.peakWindow;
+      parts.push(
+        `Jaimini engine: peak marriage window is **${pw.startMonth} – ${pw.endMonth}** (${pw.peakScore}/6 rules met — ${pw.peakScore >= 5 ? "strong" : "moderate"}).`,
+      );
+      if (m.upcomingWindows.length > 1) {
+        parts.push(
+          `${m.upcomingWindows.length} supportive windows sighted in the next 5 years.`,
+        );
+      }
+    } else {
+      parts.push("Jaimini engine: no strong marriage window in the next 5 years; natal factors matter more than transits here.");
+    }
+
+    const sevenLabel =
+      m.seventhSav > 28 ? "well-supported (maraka — ideal range 23-28)"
+      : m.seventhSav >= 23 ? "balanced (ideal range for a maraka house)"
+      : "below threshold";
+    parts.push(
+      `Ashtakvarga: 7th house ${m.seventhSav} bindus (${sevenLabel}), Upa-Pada ${m.ulSav}, 2nd-from-UL ${m.secondFromUlSav}. Venus ${m.venusIn7}/8 & Jupiter ${m.jupiterIn7}/8 in the 7th sign. Overall natal rating: **${m.overallNatal}**.`,
+    );
+
+    if (m.saturnIn7 >= 5) {
+      parts.push("Saturn is strong in the 7th sign — expect timing to unfold later rather than earlier, with enduring bonds once formed.");
+    }
+
+    lines.push(`**Jaimini + Ashtakvarga check:**\n${parts.join(" ")}`);
+  }
+
+  // Career / new_business / wealth — Jaimini career + 10th/11th/A10 SAV + AmK
+  if (
+    (categoryIds.includes("career_growth") ||
+      categoryIds.includes("new_business") ||
+      categoryIds.includes("wealth")) &&
+    enriched.career
+  ) {
+    const c = enriched.career;
+    const parts: string[] = [];
+
+    if (c.peakWindow) {
+      parts.push(
+        `Jaimini engine: peak career window is **${c.peakWindow.startMonth} – ${c.peakWindow.endMonth}** (${c.peakWindow.peakScore}/6 rules — ${c.peakWindow.peakScore >= 5 ? "strong" : "moderate"}).`,
+      );
+    }
+    parts.push(
+      `Ashtakvarga: 10th house ${c.tenthSav} bindus, 11th ${c.eleventhSav}, A10 (reputation) ${c.a10Sav}. Overall natal: **${c.overallNatal}**.`,
+    );
+
+    if (c.businessVsJob > 0) {
+      parts.push(
+        `Classical rule: 11th (${c.eleventhSav}) > 10th (${c.tenthSav}) — business/entrepreneurial paths are well-supported.`,
+      );
+    } else if (c.businessVsJob < 0) {
+      parts.push(
+        `Classical rule: 10th (${c.tenthSav}) > 11th (${c.eleventhSav}) — structured employment path recommended.`,
+      );
+    }
+
+    parts.push(
+      `Your Amatya Karaka is **${c.amkPlanet}** (${c.amkIn10}/8 bindus in 10th sign).`,
+    );
+
+    lines.push(`**Jaimini + Ashtakvarga check:**\n${parts.join(" ")}`);
+  }
+
+  // Generic house-level SAV for other categories (children, property, education, etc.)
+  if (lines.length === 0 && enriched.houseSav.length > 0 && houses.length > 0) {
+    const primary = houses[0];
+    const row = enriched.houseSav.find((h) => h.house === primary);
+    if (row) {
+      const descriptor =
+        row.strength === "Strong"
+          ? "strongly supported — this house carries solid natal blessings"
+          : row.strength === "Average"
+            ? "balanced — neither strained nor overflowing"
+            : "below the classical threshold — this life area benefits from conscious effort and favourable transits";
+      lines.push(
+        `**Ashtakvarga check:** Your ${primary}${ord(primary)} house (${row.sign}) has **${row.bindus} bindus**, which is ${descriptor}.`,
+      );
+    }
+  }
+
+  return lines.join("\n\n");
+}
+
+function ord(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
 }
 
 function buildGeneralAnswer(report: LifeEventsReport): string {
@@ -372,6 +493,7 @@ export function answerAstrologyQuestion(
   question: string,
   chart: ChartResponse,
   report: LifeEventsReport,
+  enriched?: EnrichedChatContext,
 ): ChatAnswer {
   const lower = question.toLowerCase();
   const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
@@ -391,6 +513,7 @@ export function answerAstrologyQuestion(
       classification.houses,
       classification.planets,
       classification.askingAboutPast,
+      enriched,
     );
 
     // If answer is too thin, add a gentle general nudge
