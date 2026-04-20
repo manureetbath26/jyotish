@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { ActiveProfileProvider } from "@/contexts/ActiveProfileContext";
+import { ProfileTabs } from "@/components/ProfileTabs";
 import { Navbar } from "@/components/Navbar";
 import { PremiumProvider } from "@/components/PremiumLock";
 
@@ -77,12 +79,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-slate-950 text-slate-100 transition-colors duration-300">
         <ThemeProvider>
           <SessionProvider>
-            <PremiumProvider>
-              <Navbar />
-              <main className="max-w-7xl mx-auto px-4 py-8">
-                {children}
-              </main>
-            </PremiumProvider>
+            <ActiveProfileProvider>
+              <PremiumProvider>
+                <Navbar />
+                <ProfileTabs />
+                <main className="max-w-7xl mx-auto px-4 py-8">
+                  {children}
+                </main>
+              </PremiumProvider>
+            </ActiveProfileProvider>
           </SessionProvider>
         </ThemeProvider>
       </body>

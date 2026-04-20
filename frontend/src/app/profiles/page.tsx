@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Profile } from "@/components/ProfileSelector";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 async function searchPlaces(query: string): Promise<string[]> {
   if (query.length < 3) return [];
@@ -32,6 +33,7 @@ function formatDate(dateStr: string) {
 
 export default function ProfilesPage() {
   const { data: session, status } = useSession();
+  const { refetch: refetchActiveProfile } = useActiveProfile();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<EditorMode>(null);
@@ -44,6 +46,8 @@ export default function ProfilesPage() {
       if (res.ok) {
         setProfiles(await res.json());
       }
+      // Also refresh the global active-profile context so the tabs update
+      await refetchActiveProfile();
     } finally {
       setLoading(false);
     }

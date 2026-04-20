@@ -7,6 +7,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { calculateChart, ChartResponse } from "@/lib/api";
 import { CareerReportView } from "@/components/reports/CareerReportView";
 import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 const UPI_ID = "9872653657@ybl";
 const DEFAULT_REPORT_PRICE = 500;
@@ -44,11 +45,14 @@ function CareerReportContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const reportId = searchParams.get("id");
+  const { refetch: refetchProfiles, setActiveProfileId } = useActiveProfile();
 
   const [step, setStep] = useState<Step>("birth");
 
   // Profile selection
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [saveAsProfile, setSaveAsProfile] = useState(false);
+  const [saveRelationship, setSaveRelationship] = useState("other");
 
   // Birth form
   const [name, setName] = useState("");
@@ -169,8 +173,35 @@ function CareerReportContent() {
         const data = await res.json();
         result = data.chartData as ChartResponse;
       } else {
-        // Manual entry — go straight to backend (will geocode)
+        // Manual entry — calculate chart first
         result = await calculateChart({ date, time, place });
+
+        // Optionally save as new profile and make it the active one
+        if (saveAsProfile && name && session?.user) {
+          try {
+            const profileRes = await fetch("/api/profiles", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name.trim(),
+                dateOfBirth: date,
+                timeOfBirth: time,
+                placeOfBirth: place.trim(),
+                gender,
+                relationship: saveRelationship,
+                isOwn: false,
+              }),
+            });
+            if (profileRes.ok) {
+              const created = await profileRes.json();
+              setSelectedProfileId(created.id);
+              await refetchProfiles();
+              setActiveProfileId(created.id);
+            }
+          } catch {
+            // best-effort — don't block report generation if saving fails
+          }
+        }
       }
 
       setChart(result);
@@ -420,6 +451,45 @@ function CareerReportContent() {
               <option value="other">Other</option>
             </select>
           </div>
+
+          {/* Save-as-profile option (manual entry, signed in only) */}
+          {!selectedProfileId && session?.user && (
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 space-y-2">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={saveAsProfile}
+                  onChange={(e) => setSaveAsProfile(e.target.checked)}
+                  className="mt-0.5 accent-blue-500"
+                />
+                <div className="flex-1">
+                  <span className="text-xs font-semibold text-slate-200">
+                    Save as a new profile
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Get one-click reports and charts for this person next time
+                  </p>
+                </div>
+              </label>
+              {saveAsProfile && (
+                <div className="flex items-center gap-2 pl-6">
+                  <label className="text-[11px] text-slate-500">Relationship:</label>
+                  <select
+                    value={saveRelationship}
+                    onChange={(e) => setSaveRelationship(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
+                  >
+                    <option value="spouse">Spouse / Partner</option>
+                    <option value="parent">Parent</option>
+                    <option value="child">Child</option>
+                    <option value="sibling">Sibling</option>
+                    <option value="friend">Friend</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">{error}</div>

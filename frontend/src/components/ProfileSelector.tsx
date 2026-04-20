@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 export interface Profile {
   id: string;
@@ -36,37 +37,14 @@ interface Props {
  * Requires the user to be signed in to see saved profiles.
  */
 export function ProfileSelector({ accent = "amber", onSelect, selectedProfileId }: Props) {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { profiles, activeProfile, loading } = useActiveProfile();
 
+  // Auto-select the global active profile if nothing is selected yet
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/profiles")
-      .then((r) => {
-        if (!r.ok) {
-          if (r.status === 401) {
-            if (!cancelled) setLoading(false);
-            return null;
-          }
-          throw new Error(`${r.status}`);
-        }
-        return r.json();
-      })
-      .then((data) => {
-        if (cancelled || !data) return;
-        setProfiles(data);
-        // Auto-select own profile on first load if nothing selected
-        if (!selectedProfileId && data.length > 0) {
-          const own = data.find((p: Profile) => p.isOwn) || data[0];
-          onSelect({ kind: "profile", profile: own });
-        }
-      })
-      .catch(() => !cancelled && setError(true))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
+    if (selectedProfileId || !activeProfile) return;
+    onSelect({ kind: "profile", profile: activeProfile });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeProfile?.id]);
 
   const accentClasses: Record<string, { active: string; inactive: string }> = {
     amber: {
@@ -145,7 +123,7 @@ export function ProfileSelector({ accent = "amber", onSelect, selectedProfileId 
             selectedProfileId === null ? cls.active : cls.inactive
           }`}
         >
-          {"\u270E"} Enter manually
+          {"\u002B"} New person
         </button>
       </div>
       <p className="text-[10px] text-slate-600">

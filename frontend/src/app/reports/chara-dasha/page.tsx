@@ -8,6 +8,7 @@ import { calculateChart, ChartResponse } from "@/lib/api";
 import { generateCharaDashaReport, CharaDashaReport } from "@/lib/charaDashaEngine";
 import { CharaDashaReportView } from "@/components/reports/CharaDashaReportView";
 import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
+import { useActiveProfile } from "@/contexts/ActiveProfileContext";
 
 const UPI_ID = "9872653657@ybl";
 const DEFAULT_REPORT_PRICE = 500;
@@ -45,11 +46,14 @@ function CharaDashaReportContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const reportId = searchParams.get("id");
+  const { refetch: refetchProfiles, setActiveProfileId } = useActiveProfile();
 
   const [step, setStep] = useState<Step>("birth");
 
   // Profile selection
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [saveAsProfile, setSaveAsProfile] = useState(false);
+  const [saveRelationship, setSaveRelationship] = useState("other");
 
   // Birth form
   const [name, setName] = useState("");
@@ -176,6 +180,33 @@ function CharaDashaReportContent() {
         result = data.chartData as ChartResponse;
       } else {
         result = await calculateChart({ date, time, place });
+
+        // Optionally save as new profile
+        if (saveAsProfile && name && session?.user) {
+          try {
+            const profileRes = await fetch("/api/profiles", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name.trim(),
+                dateOfBirth: date,
+                timeOfBirth: time,
+                placeOfBirth: place.trim(),
+                gender,
+                relationship: saveRelationship,
+                isOwn: false,
+              }),
+            });
+            if (profileRes.ok) {
+              const created = await profileRes.json();
+              setSelectedProfileId(created.id);
+              await refetchProfiles();
+              setActiveProfileId(created.id);
+            }
+          } catch {
+            // best-effort
+          }
+        }
       }
 
       setChart(result);
@@ -444,6 +475,45 @@ function CharaDashaReportContent() {
               </select>
             </div>
           </div>
+
+          {/* Save-as-profile (manual entry, signed in only) */}
+          {!selectedProfileId && session?.user && (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-2">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={saveAsProfile}
+                  onChange={(e) => setSaveAsProfile(e.target.checked)}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <div className="flex-1">
+                  <span className="text-xs font-semibold text-slate-200">
+                    Save as a new profile
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Get one-click reports and charts for this person next time
+                  </p>
+                </div>
+              </label>
+              {saveAsProfile && (
+                <div className="flex items-center gap-2 pl-6">
+                  <label className="text-[11px] text-slate-500">Relationship:</label>
+                  <select
+                    value={saveRelationship}
+                    onChange={(e) => setSaveRelationship(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
+                  >
+                    <option value="spouse">Spouse / Partner</option>
+                    <option value="parent">Parent</option>
+                    <option value="child">Child</option>
+                    <option value="sibling">Sibling</option>
+                    <option value="friend">Friend</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm text-red-400">{error}</div>
