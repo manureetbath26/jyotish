@@ -344,15 +344,105 @@ function ChatPageContent() {
 
   if (!session) {
     return (
-      <div className="max-w-xl mx-auto px-4 py-12 text-center">
-        <h1 className="text-2xl font-bold text-amber-400 mb-3">Ask Your Chart</h1>
-        <p className="text-slate-400 mb-6">Sign in to ask questions about your Vedic birth chart.</p>
-        <button
-          onClick={() => router.push("/auth/signin")}
-          className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2 rounded-lg transition-colors"
-        >
-          Sign In
-        </button>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold text-amber-400 mb-1">Ask Your Chart</h1>
+        <p className="text-slate-500 text-sm mb-6">
+          Get personalized Vedic astrology insights powered by your birth chart analysis engine.
+        </p>
+
+        {/* Disabled tab strip — visual preview only */}
+        <div className="flex items-center gap-1 mb-6 border-b border-slate-800 opacity-50 pointer-events-none select-none">
+          <button
+            type="button"
+            disabled
+            className="px-4 py-2 text-sm font-medium border-b-2 border-amber-500 text-amber-400 -mb-px cursor-not-allowed"
+          >
+            {"\u2B50"} Your chart
+          </button>
+          <button
+            type="button"
+            disabled
+            className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-400 -mb-px cursor-not-allowed"
+          >
+            {"\u002B"} New birth chart
+          </button>
+        </div>
+
+        {/* Frozen preview card */}
+        <div className="relative bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-4 select-none">
+          <div className="opacity-30 pointer-events-none space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-slate-700" />
+              <div className="flex-1">
+                <div className="h-3 w-32 bg-slate-700 rounded mb-2" />
+                <div className="h-2 w-48 bg-slate-800 rounded" />
+              </div>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2">
+              <div className="h-2 w-full bg-amber-500/30 rounded" />
+              <div className="h-2 w-4/5 bg-amber-500/30 rounded" />
+              <div className="h-2 w-3/4 bg-amber-500/30 rounded" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1 h-10 bg-slate-800 rounded-lg" />
+              <div className="w-20 h-10 bg-amber-500/30 rounded-lg" />
+            </div>
+          </div>
+
+          {/* Lock overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
+            <div className="bg-slate-900/95 border border-amber-500/40 rounded-xl px-6 py-5 shadow-2xl backdrop-blur text-center max-w-sm">
+              <div className="text-3xl mb-2">{"\u{1F512}"}</div>
+              <p className="text-sm font-semibold text-slate-100 mb-1">
+                Log in to ask questions about your life
+              </p>
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                Ask any question — career, marriage, health, timing. Answers are grounded in your
+                birth chart, dasha, Ashtakvarga, and yoga analysis. Save your kundli once, then
+                ask anytime.
+              </p>
+              <div className="flex gap-2 justify-center">
+                <button
+                  onClick={() => router.push("/auth/signin")}
+                  className="bg-amber-500 hover:bg-amber-400 text-black font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                >
+                  Sign in
+                </button>
+                <button
+                  onClick={() => router.push("/auth/register")}
+                  className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium text-sm px-4 py-2 rounded-lg transition-colors"
+                >
+                  Create account
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Helper bullets explaining the value */}
+        <div className="bg-slate-800/30 border border-slate-800 rounded-xl p-4">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-2">
+            What you can ask
+          </p>
+          <ul className="space-y-1.5 text-xs text-slate-400">
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">{"\u2022"}</span>
+              <span>&ldquo;When will I get married?&rdquo; — grounded in 7th house, UL, DK, and transit analysis</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">{"\u2022"}</span>
+              <span>&ldquo;Can I start a business?&rdquo; — 10th vs 11th, AmK, and Jaimini career windows</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">{"\u2022"}</span>
+              <span>&ldquo;What does my current dasha bring?&rdquo; — running Mahadasha and Antardasha effects</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">{"\u2022"}</span>
+              <span>&ldquo;Am I in a good period for major decisions?&rdquo; — transit + dasha timing</span>
+            </li>
+          </ul>
+        </div>
       </div>
     );
   }
