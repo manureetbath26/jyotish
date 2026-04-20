@@ -110,7 +110,32 @@ export type YogaDetector =
   // Shakata — Jupiter in 6/8/12 from Moon
   | { type: "shakata" }
   // Kala Sarpa — all 7 classical planets between Rahu and Ketu
-  | { type: "kala_sarpa" };
+  | { type: "kala_sarpa" }
+  // Vipareet Raja Yogas — Nth lord in 6/8/12 houses
+  | { type: "vipareet_raja"; house: 6 | 8 | 12 }  // Harsha / Sarala / Vimala
+  // Papa/Shubha Kartari — malefics/benefics flanking a reference (Lagna or Moon)
+  | { type: "kartari"; benefic: boolean; reference: "lagna" | "moon" }
+  // Yogakaraka planet — a planet that lords both a Kendra and a Kona
+  | { type: "yogakaraka" }
+  // Dhana via mutual 7th aspect between wealth lords
+  | { type: "dhana_mutual_aspect" }
+  // Parivartana — exchange between any two house lords
+  | { type: "parivartana_general" }
+  // Saraswati — Jupiter + Venus + Mercury in kendra/kona/2nd, Jupiter strong
+  | { type: "saraswati" }
+  // Amala (10th from Moon variant) — benefic only in 10th from Moon
+  // (covered by existing "amala")
+  // Vasumati — benefics in upachayas (3/6/10/11) from Lagna or Sun
+  | { type: "vasumati" }
+  // Planet-pair conjunction doshas/special yogas
+  | { type: "planet_conjunction"; planetA: string; planetB: string }
+  // Neecha Bhanga — debilitated planet with cancellation
+  | { type: "neecha_bhanga" }
+  // Akhanda Samrajya — 2L, 9L, 11L related with Jupiter influence
+  | { type: "akhanda_samrajya" }
+  // Sunapha/Anapha all-benefic or all-malefic subtype (flavours existing rules)
+  // Grahana (eclipse) — Sun or Moon conjunct Rahu or Ketu
+  | { type: "grahana" };
 
 export interface DetectedYoga {
   rule: YogaRule;
@@ -650,6 +675,232 @@ function detectKalaSarpa(chart: ChartResponse): string | null {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Extended detectors (phase 2 additions)
+// ────────────────────────────────────────────────────────────────────────────
+
+const DUSTHANAS = [6, 8, 12];
+
+function detectVipareetRaja(houseLorded: 6 | 8 | 12, chart: ChartResponse): string | null {
+  const lagna = chart.lagna as Sign;
+  const lord = lordOf(houseLorded, lagna);
+  const placementHouse = planetHouse(chart, lord);
+  if (!placementHouse) return null;
+  if (!DUSTHANAS.includes(placementHouse)) return null;
+  const yogaName =
+    houseLorded === 6 ? "Harsha" : houseLorded === 8 ? "Sarala" : "Vimala";
+  return `${yogaName}: ${houseLorded}th lord ${lord} is in the ${placementHouse}th house (a dusthana — the evil houses cancel each other)`;
+}
+
+function detectKartari(
+  benefic: boolean,
+  reference: "lagna" | "moon",
+  chart: ChartResponse,
+): string | null {
+  const refHouse = reference === "lagna" ? 1 : planetHouse(chart, "Moon");
+  if (!refHouse) return null;
+  const second = ((refHouse + 1 - 1) % 12) + 1;
+  const twelfth = ((refHouse - 1 - 1 + 12) % 12) + 1;
+  const set = benefic ? BENEFICS : MALEFICS;
+
+  const secondOcc = planetsInHouse(chart, second).filter((p) =>
+    reference === "moon" ? p.name !== "Moon" : true,
+  );
+  const twelfthOcc = planetsInHouse(chart, twelfth).filter((p) =>
+    reference === "moon" ? p.name !== "Moon" : true,
+  );
+
+  if (secondOcc.length === 0 || twelfthOcc.length === 0) return null;
+  const secondMatch = secondOcc.every((p) => set.has(p.name));
+  const twelfthMatch = twelfthOcc.every((p) => set.has(p.name));
+  if (!secondMatch || !twelfthMatch) return null;
+
+  return `${reference === "lagna" ? "Lagna" : "Moon"} (H${refHouse}) is flanked by ${benefic ? "benefics" : "malefics"}: ${secondOcc.map((p) => p.name).join(",")} in H${second} and ${twelfthOcc.map((p) => p.name).join(",")} in H${twelfth}`;
+}
+
+function detectYogakaraka(chart: ChartResponse): string | null {
+  const lagna = chart.lagna as Sign;
+  // Find planets that lord a kendra AND a kona
+  const found: string[] = [];
+  for (const planet of CLASSICAL_PLANETS) {
+    if (planet === "Sun" || planet === "Moon") continue; // only lord ONE sign each
+    const lordedHouses: number[] = [];
+    for (let h = 1; h <= 12; h++) {
+      if (lordOf(h, lagna) === planet) lordedHouses.push(h);
+    }
+    const isKendra = lordedHouses.some((h) => KENDRAS.includes(h));
+    const isKona = lordedHouses.some((h) => KONAS.includes(h));
+    // Exclude if it ALSO owns 1st only (that's just lagna lord with another)
+    if (isKendra && isKona && !(lordedHouses.length === 1 && lordedHouses[0] === 1)) {
+      found.push(`${planet} (lords H${lordedHouses.join(",H")})`);
+    }
+  }
+  if (found.length === 0) return null;
+  return `Yogakaraka planet(s): ${found.join("; ")}`;
+}
+
+function detectDhanaMutualAspect(chart: ChartResponse): string | null {
+  const lagna = chart.lagna as Sign;
+  const dhanaHouses = [2, 5, 9, 11];
+  for (let i = 0; i < dhanaHouses.length; i++) {
+    for (let j = i + 1; j < dhanaHouses.length; j++) {
+      const hA = dhanaHouses[i];
+      const hB = dhanaHouses[j];
+      const lA = lordOf(hA, lagna);
+      const lB = lordOf(hB, lagna);
+      if (lA === lB) continue;
+      const hLA = planetHouse(chart, lA);
+      const hLB = planetHouse(chart, lB);
+      if (!hLA || !hLB) continue;
+      // Mutual 7th aspect
+      const offset = ((hLB - hLA + 12) % 12) + 1;
+      if (offset === 7) {
+        return `${hA}th lord ${lA} (H${hLA}) and ${hB}th lord ${lB} (H${hLB}) in mutual 7th aspect`;
+      }
+    }
+  }
+  return null;
+}
+
+function detectParivartanaGeneral(chart: ChartResponse): string | null {
+  const lagna = chart.lagna as Sign;
+  // Build sign → house-number map
+  const found: string[] = [];
+  for (let h1 = 1; h1 <= 12; h1++) {
+    for (let h2 = h1 + 1; h2 <= 12; h2++) {
+      const l1 = lordOf(h1, lagna);
+      const l2 = lordOf(h2, lagna);
+      if (l1 === l2) continue;
+      const natalSignOfH1 = signOffset(lagna, h1);
+      const natalSignOfH2 = signOffset(lagna, h2);
+      const l1Sign = planetSign(chart, l1);
+      const l2Sign = planetSign(chart, l2);
+      if (!l1Sign || !l2Sign) continue;
+      if (l1Sign === natalSignOfH2 && l2Sign === natalSignOfH1) {
+        found.push(`${h1}th lord ${l1} ↔ ${h2}th lord ${l2}`);
+      }
+    }
+  }
+  if (found.length === 0) return null;
+  // Deduplicate pairs
+  return `Parivartana (sign exchange): ${found.slice(0, 3).join("; ")}`;
+}
+
+function detectSaraswati(chart: ChartResponse): string | null {
+  // Jupiter + Venus + Mercury all in kendra (1/4/7/10), kona (1/5/9), or 2nd house
+  const valid = [1, 2, 4, 5, 7, 9, 10];
+  const jH = planetHouse(chart, "Jupiter");
+  const vH = planetHouse(chart, "Venus");
+  const mH = planetHouse(chart, "Mercury");
+  if (!jH || !vH || !mH) return null;
+  if (!valid.includes(jH) || !valid.includes(vH) || !valid.includes(mH)) return null;
+  // Jupiter must be in own/exalt/friend (simplified: own or exalt)
+  const jSign = planetSign(chart, "Jupiter");
+  if (!jSign) return null;
+  const jOwn = OWN_SIGNS["Jupiter"]?.includes(jSign) ?? false;
+  const jExalt = EXALTATION_SIGN["Jupiter"] === jSign;
+  if (!jOwn && !jExalt) return null;
+  return `Jupiter (${jSign}, H${jH}), Venus (H${vH}), and Mercury (H${mH}) all in kendra/kona/2nd with Jupiter dignified`;
+}
+
+function detectVasumati(chart: ChartResponse): string | null {
+  // Benefics in upachaya (3, 6, 10, 11) from Lagna
+  const upachayas = [3, 6, 10, 11];
+  const beneficsInUpachaya: string[] = [];
+  for (const h of upachayas) {
+    for (const p of planetsInHouse(chart, h)) {
+      if (BENEFICS.has(p.name)) beneficsInUpachaya.push(`${p.name}@H${h}`);
+    }
+  }
+  // Classical: all 3 benefics (Jup, Ven, Mer) in upachayas. Relax to >= 2.
+  const uniqueBenefics = new Set(
+    beneficsInUpachaya.map((s) => s.split("@")[0]),
+  );
+  if (uniqueBenefics.size < 2) return null;
+  return `Benefics in upachaya houses from Lagna: ${beneficsInUpachaya.join(", ")}`;
+}
+
+function detectPlanetConjunction(
+  planetA: string,
+  planetB: string,
+  chart: ChartResponse,
+): string | null {
+  const a = chart.planets.find((p) => p.name === planetA);
+  const b = chart.planets.find((p) => p.name === planetB);
+  if (!a || !b) return null;
+  if (a.house !== b.house) return null;
+  return `${planetA} and ${planetB} conjunct in ${a.rashi} (house ${a.house})`;
+}
+
+function detectNeechaBhanga(chart: ChartResponse): string | null {
+  // Find any debilitated planet
+  const debilitations: Record<string, Sign> = {
+    Sun: "Libra", Moon: "Scorpio", Mars: "Cancer", Mercury: "Pisces",
+    Jupiter: "Capricorn", Venus: "Virgo", Saturn: "Aries",
+  };
+  for (const [planet, debSign] of Object.entries(debilitations)) {
+    const p = chart.planets.find((pl) => pl.name === planet);
+    if (!p || p.rashi !== debSign) continue;
+    // Cancellation condition: the lord of the debilitation sign, OR the planet that
+    // would be exalted in that sign, is in a kendra from the Lagna or Moon.
+    const cancellers: string[] = [];
+    const debSignLord = SIGN_LORD[debSign];
+    const exalter = Object.entries(EXALTATION_SIGN).find(([, s]) => s === debSign)?.[0];
+    const cancellerPlanets = [debSignLord, exalter].filter(Boolean) as string[];
+    const moonHouse = planetHouse(chart, "Moon");
+    for (const c of cancellerPlanets) {
+      const h = planetHouse(chart, c);
+      if (!h) continue;
+      if (KENDRAS.includes(h)) cancellers.push(`${c} in kendra from Lagna (H${h})`);
+      if (moonHouse) {
+        const fromMoon = ((h - moonHouse + 12) % 12) + 1;
+        if (KENDRAS.includes(fromMoon)) cancellers.push(`${c} in kendra from Moon (${fromMoon}th)`);
+      }
+    }
+    if (cancellers.length > 0) {
+      return `${planet} debilitated in ${debSign}, cancelled by: ${cancellers[0]}`;
+    }
+  }
+  return null;
+}
+
+function detectAkhandaSamrajya(chart: ChartResponse): string | null {
+  const lagna = chart.lagna as Sign;
+  const l2 = lordOf(2, lagna);
+  const l9 = lordOf(9, lagna);
+  const l11 = lordOf(11, lagna);
+  // Simplified: 2L/9L/11L any two in same sign (related) + Jupiter aspect
+  const h2 = planetHouse(chart, l2);
+  const h9 = planetHouse(chart, l9);
+  const h11 = planetHouse(chart, l11);
+  if (!h2 || !h9 || !h11) return null;
+  const grouped = h2 === h9 || h9 === h11 || h2 === h11;
+  if (!grouped) return null;
+  // Jupiter aspect on any of them
+  const jupAspects =
+    planetAspectsHouse(chart, "Jupiter", h2) ||
+    planetAspectsHouse(chart, "Jupiter", h9) ||
+    planetAspectsHouse(chart, "Jupiter", h11);
+  if (!jupAspects) return null;
+  return `2L, 9L, 11L related (at least two conjunct) with Jupiter's aspect`;
+}
+
+function detectGrahana(chart: ChartResponse): string | null {
+  const findings: string[] = [];
+  for (const luminary of ["Sun", "Moon"]) {
+    const lumH = planetHouse(chart, luminary);
+    if (!lumH) continue;
+    for (const node of ["Rahu", "Ketu"]) {
+      const nodeH = planetHouse(chart, node);
+      if (nodeH === lumH) {
+        findings.push(`${luminary} conjunct ${node} in house ${lumH}`);
+      }
+    }
+  }
+  if (findings.length === 0) return null;
+  return `Grahana (eclipse) yoga: ${findings.join(", ")}`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main entry
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -682,6 +933,17 @@ function dispatch(detector: YogaDetector, chart: ChartResponse): string | null {
     case "daridra_lagna_12_swap": return detectDaridraLagna12Swap(chart);
     case "shakata": return detectShakata(chart);
     case "kala_sarpa": return detectKalaSarpa(chart);
+    case "vipareet_raja": return detectVipareetRaja(detector.house, chart);
+    case "kartari": return detectKartari(detector.benefic, detector.reference, chart);
+    case "yogakaraka": return detectYogakaraka(chart);
+    case "dhana_mutual_aspect": return detectDhanaMutualAspect(chart);
+    case "parivartana_general": return detectParivartanaGeneral(chart);
+    case "saraswati": return detectSaraswati(chart);
+    case "vasumati": return detectVasumati(chart);
+    case "planet_conjunction": return detectPlanetConjunction(detector.planetA, detector.planetB, chart);
+    case "neecha_bhanga": return detectNeechaBhanga(chart);
+    case "akhanda_samrajya": return detectAkhandaSamrajya(chart);
+    case "grahana": return detectGrahana(chart);
   }
 }
 
