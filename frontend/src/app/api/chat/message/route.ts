@@ -3,9 +3,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ChartResponse } from "@/lib/api";
 import { generateLifeEventsReport } from "@/lib/lifeEventsReport";
-import { answerAstrologyQuestion, extractAnswerFacts } from "@/lib/chatEngine";
+import { answerAstrologyQuestion, extractAnswerFacts, type DailyContext } from "@/lib/chatEngine";
 import { computeChatEnrichment } from "@/lib/chatEnrichment";
 import { composeNaturalAnswer, isLlmComposerAvailable } from "@/lib/llmComposer";
+import { extractDailyFacts } from "@/lib/dailyEngine";
+import { computeAshtakvarga, type AshtakvargaRule } from "@/lib/ashtakvargaEngine";
+import type { CurrentTransitResponse } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +141,18 @@ export async function POST(req: NextRequest) {
   if (isLlmComposerAvailable()) {
     try {
       const facts = extractAnswerFacts(trimmedQuestion, chartData, report, enriched);
+
+      // If the user asked about "today"/"this week"/etc., augment with
+      // today's transit-level context so the LLM can actually answer the
+      // time-scoped question instead of reciting the general category.
+      if (facts.timeScope === "today" || facts.timeScope === "thisWeek") {
+        try {
+          facts.dailyContext = await fetchDailyContextForChat(chartData);
+        } catch (err) {
+          console.warn("[chat] daily context fetch failed:", err);
+        }
+      }
+
       answer = await composeNaturalAnswer(facts, chartData);
       composer = "openai";
     } catch (err) {
@@ -180,4 +195,54 @@ export async function POST(req: NextRequest) {
     questionsUsed: chatSession.questionsUsed,
     questionLimit: chatSession.questionLimit,
   });
+}
+
+
+/**
+ * Compute today's transit-level context for chat questions that mention
+ * "today"/"this week"/etc. Reuses the Daily Perspective pipeline so the
+ * chat engine and daily reading stay in sync.
+ */
+async function fetchDailyContextForChat(
+  chartData: ChartResponse,
+): Promise<DailyContext | undefined> {
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const transitRes = await fetch(`${backendUrl}/api/chart/current-transits`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ayanamsha_value: chartData.ayanamsha_value,
+      natal_lagna_degree: chartData.lagna_degree,
+    }),
+  });
+  if (!transitRes.ok) return undefined;
+  const transits = (await transitRes.json()) as CurrentTransitResponse;
+
+  const rulesRaw = await prisma.ashtakvargaRule.findMany();
+  const rules: AshtakvargaRule[] = rulesRaw.map((r) => ({
+    planet: r.planet as AshtakvargaRule["planet"],
+    source: r.source as AshtakvargaRule["source"],
+    houses: r.houses,
+  }));
+  const ashtakvarga = computeAshtakvarga(chartData, rules);
+
+  const dailyFacts = extractDailyFacts(chartData, transits, ashtakvarga, "");
+
+  return {
+    date: dailyFacts.date,
+    moonSign: dailyFacts.moonPulse.sign,
+    moonNakshatra: dailyFacts.moonPulse.nakshatra || undefined,
+    moonHouseFromLagna: dailyFacts.moonPulse.houseFromLagna,
+    moonHouseTheme: dailyFacts.moonPulse.houseTheme,
+    activeTransits: dailyFacts.activeTransits.map((t) => ({
+      planet: t.planet,
+      transitSign: t.transitSign,
+      houseFromLagna: t.houseFromLagna,
+      houseTheme: t.houseTheme,
+      nature: t.nature,
+      effect: t.effectIfActive,
+      bav: t.bav || undefined,
+      threshold: t.threshold || undefined,
+    })),
+  };
 }

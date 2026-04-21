@@ -159,6 +159,23 @@ function highlightsInYearRange(highlights: LifeHighlight[], range: { start?: num
 
 // ─── Classification ─────────────────────────────────────────────────────────
 
+export type TimeScope = "today" | "thisWeek" | "thisMonth" | "general";
+
+// Near-term time-scope keywords. Ordered by specificity — first match wins.
+const TIME_SCOPE_KEYWORDS: { scope: TimeScope; keywords: string[] }[] = [
+  { scope: "today", keywords: ["today", "tonight", "right now", "this morning", "this afternoon", "this evening", "tomorrow"] },
+  { scope: "thisWeek", keywords: ["this week", "next week", "this weekend", "coming days", "next few days"] },
+  { scope: "thisMonth", keywords: ["this month", "next month", "coming weeks"] },
+];
+
+function detectTimeScope(question: string): TimeScope {
+  const lower = question.toLowerCase();
+  for (const { scope, keywords } of TIME_SCOPE_KEYWORDS) {
+    if (keywords.some((k) => lower.includes(k))) return scope;
+  }
+  return "general";
+}
+
 interface ClassificationResult {
   categories: string[];
   houses: number[];
@@ -166,6 +183,7 @@ interface ClassificationResult {
   isGeneral: boolean;
   askingAboutPast: boolean;
   yearRange?: { start?: number; end?: number };
+  timeScope: TimeScope;
 }
 
 function classifyQuestion(question: string): ClassificationResult {
@@ -187,16 +205,17 @@ function classifyQuestion(question: string): ClassificationResult {
   const currentYear = new Date().getFullYear();
   const yearSuggestsPast = !!(yearRange && yearRange.start && yearRange.start < currentYear);
   const askingAboutPast = yearSuggestsPast || PAST_KEYWORDS.some(kw => padded.includes(kw));
+  const timeScope = detectTimeScope(question);
 
   if (matched.length === 0) {
-    return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast, yearRange };
+    return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast, yearRange, timeScope };
   }
 
   const categories = [...new Set(matched.map(m => m.id))];
   const houses = [...new Set(matched.flatMap(m => m.houses))];
   const planets = [...new Set(matched.flatMap(m => m.planets))];
 
-  return { categories, houses, planets, isGeneral: false, askingAboutPast, yearRange };
+  return { categories, houses, planets, isGeneral: false, askingAboutPast, yearRange, timeScope };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -597,6 +616,13 @@ export interface AnswerFacts {
   yearRange?: { start?: number; end?: number };
   isDashaQuestion: boolean;
   isGeneral: boolean;
+  timeScope: TimeScope;
+  /**
+   * Today's transit-level context. Populated by the route (not this
+   * function) when timeScope is "today" or "thisWeek" — requires a backend
+   * call for current transits. Absent for general/historical questions.
+   */
+  dailyContext?: DailyContext;
   categories: string[];
   categoryFacts: {
     id: string;
@@ -640,6 +666,24 @@ export interface AnswerFacts {
     lagnaLord: string;
     topStrengths: { planet: string; note: string }[];
   };
+}
+
+export interface DailyContext {
+  date: string;
+  moonSign: string;
+  moonNakshatra?: string;
+  moonHouseFromLagna: number;
+  moonHouseTheme: string;
+  activeTransits: {
+    planet: string;
+    transitSign: string;
+    houseFromLagna: number;
+    houseTheme: string;
+    nature: "benefic" | "malefic";
+    effect: string;
+    bav?: number;
+    threshold?: number;
+  }[];
 }
 
 export function extractAnswerFacts(
@@ -708,6 +752,7 @@ export function extractAnswerFacts(
     yearRange: classification.yearRange,
     isDashaQuestion,
     isGeneral: classification.isGeneral,
+    timeScope: classification.timeScope,
     categories: categoryIds,
     categoryFacts: categories.map((c) => ({
       id: c.id,

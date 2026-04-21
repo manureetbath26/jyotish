@@ -29,21 +29,35 @@ export function isLlmComposerAvailable(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
-const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with a client whose chart you've already studied. Your job is to answer their question in NATURAL, CONVERSATIONAL prose grounded ONLY in the structured facts provided.
+const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with a client whose chart you've already studied. Your job is to answer THEIR SPECIFIC QUESTION in natural, conversational prose, grounded ONLY in the structured facts provided.
 
 STRICT RULES:
-1. NEVER invent chart data, planetary positions, houses, dashas, yogas, or windows that aren't in the facts. If the facts don't cover something, say so honestly.
-2. Do NOT use bullet lists, markdown headers, or bolded labels like "**Current period:**". Weave everything into flowing paragraphs.
-3. Vary your openings question-to-question — never start two answers with the same phrase.
-4. Keep total length under 220 words. Prefer two or three short paragraphs over one wall of text.
-5. Use plain language. You may keep Vedic terms (dasha, lagna, yoga, Jupiter, Venus, etc.) but explain them briefly if the user seems new.
-6. Match the user's tone — casual question gets a casual answer, reflective question gets a reflective answer.
-7. When naming a dasha period, mention it in-line naturally (e.g. "You're in your Jupiter–Saturn period until April 2027…") not as a labelled field.
-8. If asked about a specific past window (year range in facts), address THAT window first.
-9. If the enrichedNote is present, weave its insights in — don't just quote it.
-10. End with a gentle, grounded closing — not a sales pitch, not generic advice.
+1. ANSWER THE USER'S QUESTION DIRECTLY. Do not recite the full category summary. Select only the facts that genuinely help answer THIS question at its stated time-scope.
+2. NEVER invent chart data, planetary positions, houses, dashas, yogas, or windows that aren't in the facts. If the facts don't cover something the user asked about, say so honestly in one line.
+3. Do NOT use bullet lists, markdown headers, or bolded field labels ("**Current period:**" etc.). Weave everything into flowing paragraphs.
+4. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs is the usual shape.
+5. Plain language. Vedic terms are fine; gloss them briefly when useful. Avoid jargon when the user's phrasing is casual.
+6. Vary your openings question-to-question — never start two answers with the same phrase.
 
-You are never diagnostic or fatalistic. The tone is: a knowledgeable friend who sees the pattern and names it.`;
+TIME-SCOPE RULES:
+- If timeScope is "today" AND dailyContext is present, PRIORITISE dailyContext over long-range predictions. Talk about today's Moon, today's active transits, and what's happening for the user right now. The user asked about today — give them today.
+- If timeScope is "today" but dailyContext is absent, say honestly that you don't have today's transit detail and offer to give a longer-horizon answer instead.
+- If timeScope is "thisWeek"/"thisMonth", blend dailyContext (if any) with the nearest upcoming window.
+- If timeScope is "general", use categoryFacts + upcoming windows naturally.
+- If asked about a specific past year, address THAT window first.
+
+STRUCTURE for time-scoped answers:
+  Open with today's/this-week's pulse (Moon + any active transits).
+  Then 1 sentence of standing context (current dasha as background).
+  Then the practical takeaway for the stated question.
+
+STRUCTURE for general/category answers:
+  Open with a direct take on the user's specific question.
+  One sentence on the key planet(s) or current dasha.
+  Mention ONE most-relevant upcoming window if and only if the user's question is time-sensitive.
+  Optional closing line with one grounded piece of advice.
+
+You are never diagnostic or fatalistic. Tone: a knowledgeable friend who sees the pattern and names it.`;
 
 function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
   const lines: string[] = [];
@@ -51,6 +65,12 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
   lines.push(`CHART: ${chart.lagna} lagna, born ${chart.date} ${chart.time}, ${chart.place}.`);
   if (facts.categories.length) {
     lines.push(`DETECTED THEMES: ${facts.categories.join(", ")}`);
+  }
+  lines.push(`TIME SCOPE: ${facts.timeScope}`);
+  if (facts.timeScope === "today" && !facts.dailyContext) {
+    lines.push(
+      `(User asked about today but today's transit data could not be computed; answer briefly and honestly.)`,
+    );
   }
   if (facts.isDashaQuestion) {
     lines.push(`USER IS ASKING ABOUT TIMING / DASHAS.`);
@@ -77,10 +97,29 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
     }
   }
 
+  if (facts.dailyContext) {
+    const dc = facts.dailyContext;
+    lines.push("");
+    lines.push(`TODAY (${dc.date}) — USE THIS FIRST when timeScope is "today":`);
+    lines.push(
+      `- Moon is in ${dc.moonSign}${dc.moonNakshatra ? ` / ${dc.moonNakshatra}` : ""}, the user's ${dc.moonHouseFromLagna}th house (${dc.moonHouseTheme}). This is the day's emotional pulse.`,
+    );
+    if (dc.activeTransits.length > 0) {
+      lines.push("  Active transits today (passed BAV gochara threshold):");
+      for (const t of dc.activeTransits.slice(0, 5)) {
+        lines.push(
+          `    - ${t.planet} transiting ${t.transitSign} (user's ${t.houseFromLagna}th, ${t.houseTheme}) \u2014 ${t.nature} \u2014 ${t.effect}`,
+        );
+      }
+    } else {
+      lines.push("  No transits above BAV threshold today \u2014 a quiet day.");
+    }
+  }
+
   if (facts.currentPeriod) {
     lines.push("");
     lines.push(
-      `CURRENT DASHA: ${facts.currentPeriod.mahadasha}–${facts.currentPeriod.antardasha} until ${facts.currentPeriod.endDate.slice(0, 7)}.`,
+      `CURRENT DASHA (standing background, not today-specific): ${facts.currentPeriod.mahadasha}\u2013${facts.currentPeriod.antardasha} until ${facts.currentPeriod.endDate.slice(0, 7)}.`,
     );
     if (facts.currentPeriod.themes) lines.push(`  Themes: ${facts.currentPeriod.themes}`);
     if (facts.currentPeriod.relevantPredictions.length) {
