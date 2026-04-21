@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChartResponse } from "@/lib/api";
 import { fetchLifetimeTransits } from "@/lib/api";
 import { detectYogas, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
-import { HOUSE_SIGNIFICATIONS } from "@/lib/houseSignifications";
+import { useHouseSignifications } from "@/hooks/useHouseSignifications";
 import { ReportShell } from "@/components/ReportShell";
 
 const VERDICT_STYLE: Record<"favorable" | "mixed" | "challenging", { label: string; bg: string; text: string; border: string }> = {
@@ -46,6 +46,7 @@ export function YogaReportView({ chart, userName, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const HOUSE_SIGNIFICATIONS = useHouseSignifications();
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +227,9 @@ function YogaCard({
   onToggle: () => void;
   styles: { badge: string; bar: string; accent: string };
 }) {
+  // Cached hook — free after the parent's first call since we share a
+  // module-level fetch cache.
+  const HOUSE_SIGNIFICATIONS = useHouseSignifications();
   return (
     <div className="border border-slate-800 bg-slate-900/60 rounded-lg overflow-hidden">
       <button

@@ -412,7 +412,17 @@ export default function AdminPage() {
   // ── Render ──
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-amber-400">Admin Panel</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-amber-400">Admin Panel</h1>
+        <div className="flex items-center gap-2 text-xs">
+          <a
+            href="/admin/house-significations"
+            className="text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {"\u{1F3E0}"} House Significations
+          </a>
+        </div>
+      </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-slate-800">
