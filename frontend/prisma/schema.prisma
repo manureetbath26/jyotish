@@ -243,9 +243,12 @@ model ChatMessage {
   role      String           // "user" or "assistant"
   content   String
   metadata  Json?            // engine data used to generate answer
+  saved     Boolean  @default(false) // user-bookmarked; survives "clear chat"
   createdAt DateTime @default(now())
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, saved])
 }
 
 // ---------------------------------------------------------------------------

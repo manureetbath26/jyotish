@@ -42,6 +42,7 @@ interface ChatSessionData {
     role: "user" | "assistant";
     content: string;
     createdAt: string;
+    saved?: boolean;
   }>;
 }
 

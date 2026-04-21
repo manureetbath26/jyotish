@@ -7,6 +7,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  saved?: boolean;
 }
 
 interface ChatInterfaceProps {
@@ -39,6 +40,9 @@ export function ChatInterface({
   const [loading, setLoading] = useState(false);
   const [questionsUsed, setQuestionsUsed] = useState(initialUsed);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -109,24 +113,113 @@ export function ChatInterface({
     }
   };
 
+  const toggleSaved = async (msg: Message) => {
+    if (msg.role !== "assistant" || msg.id.startsWith("temp-")) return;
+    const next = !msg.saved;
+    setTogglingId(msg.id);
+    // Optimistic update
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, saved: next } : m)));
+    try {
+      const res = await fetch(`/api/chat/message/${msg.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saved: next }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+    } catch {
+      // Revert on error
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, saved: !next } : m)));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleClearChat = async () => {
+    setClearing(true);
+    try {
+      const res = await fetch(`/api/chat/session/${sessionId}/messages`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to clear");
+      // Keep only saved assistant messages + the user question that preceded each
+      setMessages((prev) => {
+        const keepIds = new Set<string>();
+        for (let i = 0; i < prev.length; i++) {
+          const m = prev[i];
+          if (m.role === "assistant" && m.saved) {
+            keepIds.add(m.id);
+            for (let j = i - 1; j >= 0; j--) {
+              if (prev[j].role === "user") {
+                keepIds.add(prev[j].id);
+                break;
+              }
+            }
+          }
+        }
+        return prev.filter((m) => keepIds.has(m.id));
+      });
+    } catch {
+      setError("Couldn't clear chat — try again");
+    } finally {
+      setClearing(false);
+      setConfirmingClear(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] max-h-[700px]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
-        <h3 className="text-sm font-medium text-slate-300">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50 gap-2">
+        <h3 className="text-sm font-medium text-slate-300 flex-shrink-0">
           Ask about your chart
         </h3>
-        <span className="text-xs text-slate-500">
-          {isUnlimited ? (
-            <span className="text-emerald-400">Unlimited questions</span>
-          ) : (
-            <>
-              <span className="text-amber-400 font-medium">{remaining}</span>
-              {" "}question{remaining === 1 ? "" : "s"} remaining
-            </>
+        <div className="flex items-center gap-3">
+          {messages.length > 0 && (
+            <button
+              onClick={() => setConfirmingClear(true)}
+              className="text-xs text-slate-500 hover:text-slate-200 border border-slate-700 hover:border-slate-600 px-2.5 py-1 rounded-md transition-colors"
+              title="Delete unsaved messages; bookmarked answers stay"
+            >
+              {"\u{1F9F9}"} Clear chat
+            </button>
           )}
-        </span>
+          <span className="text-xs text-slate-500">
+            {isUnlimited ? (
+              <span className="text-emerald-400">Unlimited questions</span>
+            ) : (
+              <>
+                <span className="text-amber-400 font-medium">{remaining}</span>
+                {" "}question{remaining === 1 ? "" : "s"} remaining
+              </>
+            )}
+          </span>
+        </div>
       </div>
+
+      {/* Clear-chat confirm bar */}
+      {confirmingClear && (
+        <div className="px-4 py-2 bg-rose-500/10 border-b border-rose-500/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs text-rose-200">
+            Clear this conversation? Your <strong>bookmarked answers</strong> stay; everything else is deleted.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClearChat}
+              disabled={clearing}
+              className="text-xs bg-rose-500/20 text-rose-100 border border-rose-500/40 hover:bg-rose-500/30 px-2.5 py-1 rounded-md disabled:opacity-50"
+            >
+              {clearing ? "Clearing\u2026" : "Yes, clear"}
+            </button>
+            <button
+              onClick={() => setConfirmingClear(false)}
+              disabled={clearing}
+              className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 px-2.5 py-1 rounded-md"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -159,20 +252,44 @@ export function ChatInterface({
         {messages.map(msg => (
           <div
             key={msg.id}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex group ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed relative ${
                 msg.role === "user"
                   ? "bg-amber-500/20 border border-amber-500/30 text-amber-100"
-                  : "bg-slate-800 border border-slate-700 text-slate-300"
+                  : msg.saved
+                    ? "bg-slate-800 border border-amber-500/40 text-slate-300 ring-1 ring-amber-500/20"
+                    : "bg-slate-800 border border-slate-700 text-slate-300"
               }`}
             >
               {msg.role === "assistant" ? (
-                <div
-                  className="space-y-1 [&_strong]:font-semibold [&_hr]:my-3"
-                  dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.content) }}
-                />
+                <>
+                  <div
+                    className="space-y-1 [&_strong]:font-semibold [&_hr]:my-3"
+                    dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.content) }}
+                  />
+                  {!msg.id.startsWith("temp-") && (
+                    <button
+                      onClick={() => toggleSaved(msg)}
+                      disabled={togglingId === msg.id}
+                      className={`absolute -top-2 -right-2 w-7 h-7 rounded-full border flex items-center justify-center text-xs transition-colors ${
+                        msg.saved
+                          ? "bg-amber-500 border-amber-400 text-black"
+                          : "bg-slate-900 border-slate-700 text-slate-500 opacity-0 group-hover:opacity-100 hover:text-amber-400 hover:border-amber-500/40"
+                      } disabled:opacity-50`}
+                      title={msg.saved ? "Saved — click to unsave" : "Save this answer"}
+                      aria-label={msg.saved ? "Unsave answer" : "Save answer"}
+                    >
+                      {msg.saved ? "\u2605" : "\u2606"}
+                    </button>
+                  )}
+                  {msg.saved && (
+                    <p className="text-[10px] text-amber-400/80 mt-2 italic">
+                      {"\u2605"} Saved \u2014 survives &quot;clear chat&quot;
+                    </p>
+                  )}
+                </>
               ) : (
                 <p>{msg.content}</p>
               )}
