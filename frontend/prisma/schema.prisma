@@ -46,8 +46,9 @@ model Profile {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   chart ProfileChart?
+  dailyReadings DailyReading[]
 
   @@index([userId])
   @@index([userId, isOwn])
@@ -66,6 +67,28 @@ model ProfileChart {
   updatedAt DateTime @updatedAt
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Daily Perspective cache. One row per (profile, date, tone) — the reading
+// is pinned for the calendar day so the LLM call only runs once per user
+// per day per tone. If the user swaps tone, a new row is created.
+// ---------------------------------------------------------------------------
+model DailyReading {
+  id         String   @id @default(cuid())
+  profileId  String
+  /// ISO date (YYYY-MM-DD) in the user's timezone, used as the dedupe key.
+  readingDate String
+  /// "thoughtful" | "coffee" | "classical"
+  tone       String
+  facts      Json     // structured facts passed to the composer
+  reading    String   // composed natural-language output
+  createdAt  DateTime @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, readingDate, tone])
+  @@index([profileId, readingDate])
 }
 
 model Account {
