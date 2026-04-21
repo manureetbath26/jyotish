@@ -70,6 +70,22 @@ model ProfileChart {
 }
 
 // ---------------------------------------------------------------------------
+// House significations — single source of truth. 12 rows. Used by the
+// yoga, daily, finance, and arudha engines via a cached helper, replacing
+// four separate hardcoded maps.
+// ---------------------------------------------------------------------------
+model HouseSignification {
+  house   Int    @id  // 1..12
+  /// Classical name with a short English gloss, e.g. "Lagna (Self)"
+  name    String
+  /// Short theme phrase (daily-reading tone): "self, body, vitality"
+  short   String
+  /// Fuller signification list (yoga-report tone)
+  themes  String
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
 // Daily Perspective cache. One row per (profile, date, tone) — the reading
 // is pinned for the calendar day so the LLM call only runs once per user
 // per day per tone. If the user swaps tone, a new row is created.

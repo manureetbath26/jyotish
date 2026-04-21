@@ -17,25 +17,19 @@
 import type { ChartResponse, CurrentTransitResponse } from "./api";
 import type { AshtakvargaAnalysis } from "./ashtakvargaEngine";
 import { SIGN_INDEX } from "./charaDashaEngine";
+import { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
 
 // ────────────────────────────────────────────────────────────────────────────
 // House & planet significations
 // ────────────────────────────────────────────────────────────────────────────
 
-const HOUSE_THEMES: Record<number, string> = {
-  1: "self, body, vitality",
-  2: "wealth, speech, family",
-  3: "courage, siblings, skill, short travel",
-  4: "home, mother, peace, property",
-  5: "children, creativity, intelligence, romance",
-  6: "work, service, enemies, health",
-  7: "marriage, partnerships, open dealings",
-  8: "transformation, research, hidden matters",
-  9: "fortune, dharma, father, higher learning",
-  10: "career, public image, authority",
-  11: "gains, networks, elder siblings",
-  12: "rest, losses, foreign, moksha, privacy",
-};
+// House short-phrases sourced from lib/houseSignifications.ts (the 12
+// DB-backed rows). We consume the `.short` field here because the daily
+// reading wants a tight, colloquial phrasing rather than the full
+// signification list.
+function houseTheme(house: number): string {
+  return HOUSE_SIGNIFICATIONS[house]?.short ?? "";
+}
 
 const PLANET_VIBE: Record<string, { positive: string; cautious: string }> = {
   Sun: {
@@ -220,9 +214,9 @@ export function extractDailyFacts(
     sign: moonSign,
     nakshatra: moonNakshatra,
     houseFromLagna: moonHouse,
-    houseTheme: HOUSE_THEMES[moonHouse] ?? "",
+    houseTheme: houseTheme(moonHouse) ?? "",
     narrative: moonHouse
-      ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${HOUSE_THEMES[moonHouse]}.`
+      ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${houseTheme(moonHouse)}.`
       : "",
   };
 
@@ -253,7 +247,7 @@ export function extractDailyFacts(
         planet: p.name,
         transitSign: p.rashi,
         houseFromLagna: house,
-        houseTheme: HOUSE_THEMES[house] ?? "",
+        houseTheme: houseTheme(house) ?? "",
         bav,
         threshold: thresh,
         nature: BENEFICS.has(p.name) ? "benefic" : "malefic",
@@ -275,7 +269,7 @@ export function extractDailyFacts(
         planet: p.name,
         transitSign: p.rashi,
         houseFromLagna: house,
-        houseTheme: HOUSE_THEMES[house] ?? "",
+        houseTheme: houseTheme(house) ?? "",
         bav: 0,
         threshold: 0,
         nature: "malefic",

@@ -25,6 +25,7 @@ import {
   SIGN_LORD,
   type Sign,
 } from "./charaDashaEngine";
+import { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -187,20 +188,10 @@ export interface DetectedYoga {
 // House significations (used for house-context explanations)
 // ────────────────────────────────────────────────────────────────────────────
 
-export const HOUSE_SIGNIFICATIONS: Record<number, { name: string; significations: string }> = {
-  1:  { name: "Lagna (Self)",        significations: "self, body, vitality, personality, head, overall life direction" },
-  2:  { name: "Dhana Bhava (Wealth)",significations: "wealth, family, speech, food, values, face" },
-  3:  { name: "Sahaja (Siblings)",   significations: "courage, younger siblings, skills, short travel, self-effort, communication" },
-  4:  { name: "Sukha (Home)",        significations: "home, mother, vehicles, inner peace, property, early education" },
-  5:  { name: "Putra (Children)",    significations: "children, intelligence, creativity, romance, speculation, past-life merit (poorva punya)" },
-  6:  { name: "Ripu (Enemies)",      significations: "enemies, debts, disease, daily work, service, obstacles overcome" },
-  7:  { name: "Yuvati (Marriage)",   significations: "spouse, marriage, business partnerships, public dealings, open enemies" },
-  8:  { name: "Ayu (Longevity)",     significations: "longevity, transformation, secrets, inheritance, occult, sudden events, in-laws" },
-  9:  { name: "Dharma (Fortune)",    significations: "dharma, fortune, father, higher learning, long journeys, guru, spirituality" },
-  10: { name: "Karma (Career)",      significations: "career, public image, status, authority, action in the world" },
-  11: { name: "Labha (Gains)",       significations: "gains, friends, elder siblings, fulfilment of desires, networks" },
-  12: { name: "Vyaya (Losses)",      significations: "expenses, foreign lands, moksha, seclusion, bed pleasures, hidden enemies" },
-};
+// House significations now live in lib/houseSignifications.ts (DB-backed
+// with a compile-time fallback). Re-exported here for backward-compat with
+// consumers that used to import from this module.
+export { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
 
 const TRIK_HOUSES = [6, 8, 12];
 const KENDRA_HOUSES = [1, 4, 7, 10];
@@ -1674,39 +1665,39 @@ function getHouseContextNote(
 
   // Dosha in trik = often mitigated ("dosha cancels dosha")
   if (isDosha && inTrik) {
-    return `This yoga's dosha lands in the ${keyHouse}${ord(keyHouse)} house of ${hs.significations}. Because this is itself a dusthana, the classical principle "dusthana in dusthana" softens the harm — the difficulty still plays out through ${hs.significations.split(",")[0]}, but it often purifies rather than destroys, especially after maturity.`;
+    return `This yoga's dosha lands in the ${keyHouse}${ord(keyHouse)} house of ${hs.themes}. Because this is itself a dusthana, the classical principle "dusthana in dusthana" softens the harm — the difficulty still plays out through ${hs.themes.split(",")[0]}, but it often purifies rather than destroys, especially after maturity.`;
   }
 
   if (isDosha && inKendra) {
-    return `This dosha sits in the ${keyHouse}${ord(keyHouse)} house, which governs ${hs.significations}. Kendras are the pillars of the chart, so the disturbance is felt more visibly here — these are life areas that will need conscious handling, remedies, and maturity to settle.`;
+    return `This dosha sits in the ${keyHouse}${ord(keyHouse)} house, which governs ${hs.themes}. Kendras are the pillars of the chart, so the disturbance is felt more visibly here — these are life areas that will need conscious handling, remedies, and maturity to settle.`;
   }
 
   if (isDosha && inTrikona) {
-    return `This dosha falls in the ${keyHouse}${ord(keyHouse)} — a trikona, one of the most auspicious houses. Classically the trikona's good fortune absorbs much of the dosha, redirecting what could be loss into learning. Expect friction in ${hs.significations.split(",")[0]}, but look for growth underneath.`;
+    return `This dosha falls in the ${keyHouse}${ord(keyHouse)} — a trikona, one of the most auspicious houses. Classically the trikona's good fortune absorbs much of the dosha, redirecting what could be loss into learning. Expect friction in ${hs.themes.split(",")[0]}, but look for growth underneath.`;
   }
 
   if (isRaja && (inKendra || inTrikona)) {
-    return `This Raja-yoga anchors in the ${keyHouse}${ord(keyHouse)} house (${hs.significations}). A Raja yoga seated in a kendra or trikona is working at full strength — status, authority, and recognition will most clearly express through these themes.`;
+    return `This Raja-yoga anchors in the ${keyHouse}${ord(keyHouse)} house (${hs.themes}). A Raja yoga seated in a kendra or trikona is working at full strength — status, authority, and recognition will most clearly express through these themes.`;
   }
 
   if (isRaja && inUpachaya && keyHouse !== 6) {
-    return `This Raja-yoga sits in the ${keyHouse}${ord(keyHouse)} (${hs.significations}). Upachaya houses grow stronger with time, so this yoga delivers gradually rather than at once — its full fruit tends to arrive after the first Saturn return.`;
+    return `This Raja-yoga sits in the ${keyHouse}${ord(keyHouse)} (${hs.themes}). Upachaya houses grow stronger with time, so this yoga delivers gradually rather than at once — its full fruit tends to arrive after the first Saturn return.`;
   }
 
   if (isRaja && inTrik) {
-    return `This Raja-yoga lands in the ${keyHouse}${ord(keyHouse)} — a dusthana (${hs.significations}). The classical reading is that the yoga's dignity is compromised unless strong aspect or cancellation repairs it; results come through struggle, service, or after a crisis.`;
+    return `This Raja-yoga lands in the ${keyHouse}${ord(keyHouse)} — a dusthana (${hs.themes}). The classical reading is that the yoga's dignity is compromised unless strong aspect or cancellation repairs it; results come through struggle, service, or after a crisis.`;
   }
 
   // Dhana / wealth yogas
   if (rule.category === "dhana") {
     if ([2, 5, 9, 11].includes(keyHouse)) {
-      return `This wealth yoga expresses through the ${keyHouse}${ord(keyHouse)} (${hs.significations}) — one of the natural wealth axes, so gains flow cleanly through these themes.`;
+      return `This wealth yoga expresses through the ${keyHouse}${ord(keyHouse)} (${hs.themes}) — one of the natural wealth axes, so gains flow cleanly through these themes.`;
     }
-    return `Wealth yoga anchored in the ${keyHouse}${ord(keyHouse)} (${hs.significations}) — the money will come coloured by these life areas rather than through direct income streams.`;
+    return `Wealth yoga anchored in the ${keyHouse}${ord(keyHouse)} (${hs.themes}) — the money will come coloured by these life areas rather than through direct income streams.`;
   }
 
   // Generic fallback
-  return `This yoga operates through the ${keyHouse}${ord(keyHouse)} house — ${hs.significations}. Its effects will most visibly show up in these life themes.`;
+  return `This yoga operates through the ${keyHouse}${ord(keyHouse)} house — ${hs.themes}. Its effects will most visibly show up in these life themes.`;
 }
 
 /** Targeted overrides for high-impact yoga/house combinations. */

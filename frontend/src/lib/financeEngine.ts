@@ -30,6 +30,7 @@ import type { DetectedYoga, YogaRule } from "./yogaEngine";
 import { detectYogas } from "./yogaEngine";
 import { ZODIAC_ORDER, SIGN_INDEX, SIGN_LORD, type Sign } from "./charaDashaEngine";
 import { computeAllArudhas, type ArudhaSet } from "./arudhaEngine";
+import { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Report types
@@ -187,20 +188,12 @@ export interface Remedy {
 // Constants
 // ────────────────────────────────────────────────────────────────────────────
 
-const HOUSE_NAMES: Record<number, string> = {
-  1: "Lagna",
-  2: "Dhana (Wealth)",
-  3: "Siblings/Effort",
-  4: "Home/Assets",
-  5: "Creativity/Speculation",
-  6: "Debts/Service",
-  7: "Partnerships",
-  8: "Inheritance/Hidden",
-  9: "Fortune",
-  10: "Career",
-  11: "Gains",
-  12: "Losses",
-};
+// House display labels are sourced from lib/houseSignifications.ts via its
+// `.name` field (classical Sanskrit + English gloss). Small helper keeps
+// the call sites readable.
+function houseName(house: number): string {
+  return HOUSE_SIGNIFICATIONS[house]?.name ?? `House ${house}`;
+}
 
 const OWN_SIGNS: Record<string, Sign[]> = {
   Sun: ["Leo"],
@@ -435,7 +428,7 @@ function buildExtraSignatures(chart: ChartResponse): InlineSignature[] {
     const debil = isDebilitated("Jupiter", jupS);
     out.push({
       id: "jupiter-dhana-placement",
-      name: `Jupiter in ${HOUSE_NAMES[jupH]}`,
+      name: `Jupiter in ${houseName(jupH)}`,
       tone: debil ? "caution" : "positive",
       description: debil
         ? `Jupiter is debilitated in your ${jupH}${ordinal(jupH)} — a weakened Dhana-karaka; look for Neecha Bhanga or strong remedies.`
@@ -463,7 +456,7 @@ function buildExtraSignatures(chart: ChartResponse): InlineSignature[] {
   if (twoLordH && [6, 8, 12].includes(twoLordH)) {
     out.push({
       id: "two-lord-dusthana",
-      name: `2nd lord in ${HOUSE_NAMES[twoLordH]}`,
+      name: `2nd lord in ${houseName(twoLordH)}`,
       tone: "caution",
       description: `Your 2nd lord (${twoLord}) sits in the ${twoLordH}${ordinal(twoLordH)} — a dusthana. Classical reading: income flows may be disrupted or diverted; look for Vipareet Raja cancellations in the chart.`,
       source: "BPHS ch 50.",
@@ -472,7 +465,7 @@ function buildExtraSignatures(chart: ChartResponse): InlineSignature[] {
   if (elevenLordH && [6, 8, 12].includes(elevenLordH)) {
     out.push({
       id: "eleven-lord-dusthana",
-      name: `11th lord in ${HOUSE_NAMES[elevenLordH]}`,
+      name: `11th lord in ${houseName(elevenLordH)}`,
       tone: "caution",
       description: `Your 11th lord (${elevenLord}) sits in the ${elevenLordH}${ordinal(elevenLordH)} — a dusthana. Classical reading: gains may come through struggle or transformation rather than smoothly.`,
       source: "BPHS ch 41.",
@@ -498,7 +491,7 @@ function buildHouseHealth(
       "weak";
     return {
       house: h,
-      houseName: HOUSE_NAMES[h],
+      houseName: houseName(h),
       sign,
       savBindus: bindus,
       classification,
@@ -537,7 +530,7 @@ function buildHouseHealth(
 }
 
 function houseHealthNote(house: number, bindus: number, cls: string): string {
-  const hn = HOUSE_NAMES[house];
+  const hn = houseName(house);
   switch (cls) {
     case "abundant":
       return `${hn} at ${bindus} bindus — exceptionally well-supported; results flow easily through this house.`;

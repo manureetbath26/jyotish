@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChartResponse } from "@/lib/api";
 import { fetchLifetimeTransits } from "@/lib/api";
-import { detectYogas, HOUSE_SIGNIFICATIONS, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
+import { detectYogas, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
+import { HOUSE_SIGNIFICATIONS } from "@/lib/houseSignifications";
 import { ReportShell } from "@/components/ReportShell";
 
 const VERDICT_STYLE: Record<"favorable" | "mixed" | "challenging", { label: string; bg: string; text: string; border: string }> = {
@@ -336,7 +337,7 @@ function YogaCard({
                 )}
               </div>
               <p className="text-[11px] text-slate-400 italic mb-1.5">
-                {HOUSE_SIGNIFICATIONS[yoga.keyHouse]?.significations}
+                {HOUSE_SIGNIFICATIONS[yoga.keyHouse]?.themes}
               </p>
               <p className="text-xs text-slate-200 leading-relaxed">
                 {yoga.houseContextNote}
