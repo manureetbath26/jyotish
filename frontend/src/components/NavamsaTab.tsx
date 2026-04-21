@@ -25,7 +25,7 @@ const SIGN_LORDS: Record<number, string> = {
 };
 
 export function NavamsaTab({ navamsaLagna, navamsaPlanets }: Props) {
-  const [style, setStyle] = useState<ChartStyle>("south");
+  const [style, setStyle] = useState<ChartStyle>("north");
 
   // Convert navamsa data to chart-compatible format
   const lagnaRashiNum = RASHI_NAMES.indexOf(navamsaLagna) + 1;

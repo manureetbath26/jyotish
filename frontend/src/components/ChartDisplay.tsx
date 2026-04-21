@@ -37,7 +37,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 export function ChartDisplay({ chart, onSave }: Props) {
   const [tab, setTab] = useState<TabId>("panchang");
-  const [style, setStyle] = useState<ChartStyle>("south");
+  const [style, setStyle] = useState<ChartStyle>("north");
   const [panchang, setPanchang] = useState<PanchangResponse | null>(null);
   const [panchangLoading, setPanchangLoading] = useState(false);
   const [panchangError, setPanchangError] = useState<string | null>(null);

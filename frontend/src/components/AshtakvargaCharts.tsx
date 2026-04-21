@@ -37,8 +37,11 @@ interface Props {
 }
 
 export function AshtakvargaCharts({ analysis }: Props) {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [style, setStyle] = useState<ChartStyle>("both");
+  // Default to Sarvashtakvarga (index 7) — the headline "total of all"
+  // chart is what most users want first; individual Prastharas are a
+  // drill-down from that.
+  const [selectedIdx, setSelectedIdx] = useState(7);
+  const [style, setStyle] = useState<ChartStyle>("north");
 
   const isSarva = selectedIdx === 7;
 
@@ -64,6 +67,18 @@ export function AshtakvargaCharts({ analysis }: Props) {
         <span className="text-xs text-slate-500 uppercase tracking-wide font-medium mr-2">
           Chart:
         </span>
+        <button
+          type="button"
+          onClick={() => setSelectedIdx(7)}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            selectedIdx === 7
+              ? "bg-amber-500 text-black border-amber-500 font-semibold"
+              : "bg-slate-800/40 text-slate-300 border-slate-700 hover:border-amber-500/50"
+          }`}
+        >
+          <span className="mr-1">1.</span>
+          {"\u2605"} Sarva (Total)
+        </button>
         {ASHTAKVARGA_PLANETS.map((planet, i) => (
           <button
             key={planet}
@@ -75,22 +90,10 @@ export function AshtakvargaCharts({ analysis }: Props) {
                 : "bg-slate-800/40 text-slate-300 border-slate-700 hover:border-amber-500/50"
             }`}
           >
-            <span className="mr-1">{i + 1}.</span>
+            <span className="mr-1">{i + 2}.</span>
             {PLANET_EMOJI[planet]} {planet}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setSelectedIdx(7)}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-            selectedIdx === 7
-              ? "bg-amber-500 text-black border-amber-500 font-semibold"
-              : "bg-slate-800/40 text-slate-300 border-slate-700 hover:border-amber-500/50"
-          }`}
-        >
-          <span className="mr-1">8.</span>
-          {"\u2605"} Sarva (Total)
-        </button>
       </div>
 
       {/* ── Style toggle + summary ── */}
