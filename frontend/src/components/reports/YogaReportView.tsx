@@ -73,14 +73,33 @@ export function YogaReportView({ chart, userName, onBack }: Props) {
     return detectYogas(chart, rules);
   }, [chart, rules]);
 
+  // Display order: positive yogas first, doshas/warnings always last.
+  const CATEGORY_DISPLAY_ORDER: YogaCategory[] = [
+    "mahapurusha",
+    "raja",
+    "dhana",
+    "nabhasa",
+    "chandra",
+    "surya",
+    "special",
+    "dosha",
+  ];
+
   const grouped = useMemo(() => {
     const map = new Map<YogaCategory, DetectedYoga[]>();
+    // Pre-seed categories in display order so iteration honours it
+    for (const cat of CATEGORY_DISPLAY_ORDER) map.set(cat, []);
     for (const d of detected) {
       const arr = map.get(d.rule.category) ?? [];
       arr.push(d);
       map.set(d.rule.category, arr);
     }
+    // Drop empty categories
+    for (const [cat, arr] of map) {
+      if (arr.length === 0) map.delete(cat);
+    }
     return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detected]);
 
   const totalRules = rules?.length ?? 0;
