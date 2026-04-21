@@ -39,25 +39,25 @@ export function Navbar() {
           <div className="flex items-center gap-3 text-sm">
             <ThemeToggle />
 
-            <Link href="/" className="text-slate-300 hover:text-white transition-colors">
-              New Chart
-            </Link>
-
-            <Link href="/reports" className="text-slate-300 hover:text-white transition-colors">
-              Reports
-            </Link>
-
-            <Link href="/ashtakvarga" className="text-slate-300 hover:text-white transition-colors">
-              Ashtakvarga
-            </Link>
-
             {session ? (
               <>
+                <Link href="/daily" className="text-slate-300 hover:text-white transition-colors">
+                  Daily
+                </Link>
+                <Link href="/kundli" className="text-slate-300 hover:text-white transition-colors">
+                  My Kundli
+                </Link>
+                <Link href="/reports" className="text-slate-300 hover:text-white transition-colors">
+                  Reports
+                </Link>
+                <Link href="/ashtakvarga" className="text-slate-300 hover:text-white transition-colors">
+                  Ashtakvarga
+                </Link>
                 <Link href="/compatibility" className="text-slate-300 hover:text-white transition-colors">
                   Compatibility
                 </Link>
-                <Link href="/charts" className="text-slate-300 hover:text-white transition-colors">
-                  My Charts
+                <Link href="/help" className="text-slate-300 hover:text-white transition-colors">
+                  Help
                 </Link>
                 {session.user?.role === "admin" && (
                   <>
@@ -79,6 +79,18 @@ export function Navbar() {
               </>
             ) : (
               <>
+                <Link href="/" className="text-slate-300 hover:text-white transition-colors">
+                  New Chart
+                </Link>
+                <Link href="/reports" className="text-slate-300 hover:text-white transition-colors">
+                  Reports
+                </Link>
+                <Link href="/ashtakvarga" className="text-slate-300 hover:text-white transition-colors">
+                  Ashtakvarga
+                </Link>
+                <Link href="/help" className="text-slate-300 hover:text-white transition-colors">
+                  Help
+                </Link>
                 <Link
                   href="/auth/signin"
                   className="text-xs bg-amber-500 hover:bg-amber-400 text-black font-semibold px-3 py-1.5 rounded-md transition-colors"

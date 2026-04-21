@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { BirthForm } from "@/components/BirthForm";
 import { ChartDisplay } from "@/components/ChartDisplay";
 import { calculateChart, saveChart, BirthDataInput, ChartResponse } from "@/lib/api";
@@ -52,13 +53,20 @@ const FAQ_ITEMS = [
 ];
 
 export default function HomePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const { activeProfile } = useActiveProfile();
   const [chart, setChart] = useState<ChartResponse | null>(null);
   const [chartName, setChartName] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // Logged-in users land on /daily; this page stays as the marketing /
+  // SEO landing for logged-out traffic.
+  useEffect(() => {
+    if (status === "authenticated") router.replace("/daily");
+  }, [status, router]);
 
   const handleSubmit = async (data: BirthDataInput) => {
     setLoading(true);
