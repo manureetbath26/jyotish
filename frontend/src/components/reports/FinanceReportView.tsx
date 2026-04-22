@@ -230,6 +230,24 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
               </div>
             ))}
           </div>
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500/30 border border-emerald-500/50" />
+              Abundant (≥ 32)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-500/30 border border-sky-500/50" />
+              Healthy (28–31)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-700 border border-slate-600" />
+              Average (23–27)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-500/30 border border-rose-500/50" />
+              Weak (&lt; 23)
+            </span>
+          </div>
         </Section>
 
         {/* 4. Source profile */}

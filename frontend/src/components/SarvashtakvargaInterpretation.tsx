@@ -219,6 +219,8 @@ function HouseRow({
 // ────────────────────────────────────────────────────────────────────────────
 
 function TrikonaCard({ trikona }: { trikona: TrikonaInterpretation }) {
+  const [open, setOpen] = useState(false);
+
   const accent = trikona.isStrong
     ? {
         border: "border-emerald-500/30",
@@ -238,20 +240,60 @@ function TrikonaCard({ trikona }: { trikona: TrikonaInterpretation }) {
         };
 
   return (
-    <div className={`border ${accent.border} ${accent.bg} rounded-lg p-3 space-y-2`}>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h4 className="text-sm font-semibold text-slate-100">{trikona.name}</h4>
-          <p className="text-[10px] text-slate-500">
-            Houses {trikona.houses.join(", ")} &middot; {trikona.meaning}
-          </p>
+    <div className={`border ${accent.border} ${accent.bg} rounded-lg overflow-hidden`}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full p-3 space-y-2 text-left hover:bg-black/5 transition-colors"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-semibold text-slate-100">{trikona.name}</h4>
+            <p className="text-[10px] text-slate-500">
+              Houses {trikona.houses.join(", ")} &middot; {trikona.meaning}
+            </p>
+          </div>
+          <div className="text-right flex items-center gap-2">
+            <div>
+              <p className={`text-xl font-bold ${accent.text}`}>{trikona.averageBindus}</p>
+              <p className="text-[9px] text-slate-500 uppercase tracking-wide">avg</p>
+            </div>
+            <span className="text-slate-600 text-[10px]">{open ? "\u25B2" : "\u25BC"}</span>
+          </div>
         </div>
-        <div className="text-right">
-          <p className={`text-xl font-bold ${accent.text}`}>{trikona.averageBindus}</p>
-          <p className="text-[9px] text-slate-500 uppercase tracking-wide">avg</p>
+        <p className="text-[11px] text-slate-400 leading-relaxed">{trikona.verdict}</p>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-2 border-t border-slate-800/40 space-y-1.5">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">House breakdown</p>
+          {trikona.breakdown.map((b) => {
+            const styles = STRENGTH_STYLES[b.strength];
+            return (
+              <div
+                key={b.house}
+                className="flex items-center gap-2 bg-slate-800/30 rounded px-2 py-1.5"
+              >
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-slate-300">{b.house}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-semibold text-slate-200 truncate">
+                      {b.title}
+                    </span>
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${styles.badge}`}>
+                      {b.strengthLabel}
+                    </span>
+                  </div>
+                  {b.themes && (
+                    <p className="text-[10px] text-slate-500 truncate">{b.themes}</p>
+                  )}
+                </div>
+                <p className={`text-sm font-bold ${styles.accent} flex-shrink-0`}>{b.bindus}</p>
+              </div>
+            );
+          })}
         </div>
-      </div>
-      <p className="text-[11px] text-slate-400 leading-relaxed">{trikona.verdict}</p>
+      )}
     </div>
   );
 }

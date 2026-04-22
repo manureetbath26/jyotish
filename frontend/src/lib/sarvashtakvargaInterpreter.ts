@@ -69,6 +69,15 @@ export interface HouseInterpretation {
   marakaNote?: string;
 }
 
+export interface TrikonaHouseBreakdown {
+  house: number;
+  title: string;
+  themes: string;
+  bindus: number;
+  strength: Strength;
+  strengthLabel: string;
+}
+
 export interface TrikonaInterpretation {
   id: string;
   name: string;
@@ -78,6 +87,7 @@ export interface TrikonaInterpretation {
   averageBindus: number;
   isStrong: boolean;
   verdict: string;
+  breakdown: TrikonaHouseBreakdown[];
 }
 
 export interface ComparisonInterpretation {
@@ -182,16 +192,47 @@ export function interpretSarvashtakvarga(
   }
 
   // Trikona interpretations
+  const houseByNumber: Record<number, HouseInterpretation> = {};
+  for (const h of houses) houseByNumber[h.house] = h;
+
   const trikonas: TrikonaInterpretation[] = rules.trikona.map((r) => {
     const c = r.content;
     const totals = c.houses.map((h) => binduByHouse[h] ?? 0);
     const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
     const isStrong = avg >= c.strongThreshold;
-    const verdict = isStrong
-      ? `Strong ${c.name} pillar (avg ${avg.toFixed(1)}). ${c.description}`
-      : avg >= 24
-        ? `Moderate ${c.name} pillar (avg ${avg.toFixed(1)}). Some aspects are well supported; others need attention.`
-        : `Weak ${c.name} pillar (avg ${avg.toFixed(1)}). This life area benefits from conscious cultivation and targeted effort.`;
+
+    const breakdown: TrikonaHouseBreakdown[] = c.houses.map((h) => {
+      const hi = houseByNumber[h];
+      return {
+        house: h,
+        title: hi?.title ?? `House ${h}`,
+        themes: hi?.themes ?? "",
+        bindus: binduByHouse[h] ?? 0,
+        strength: hi?.strength ?? "average",
+        strengthLabel: hi?.strengthLabel ?? "Average",
+      };
+    });
+
+    const supported = breakdown.filter((b) => b.strength === "strong" || b.strength === "excess");
+    const needsAttention = breakdown.filter((b) => b.strength === "weak");
+    const fmt = (arr: TrikonaHouseBreakdown[]) =>
+      arr.map((b) => `H${b.house} ${b.title.split(" (")[0]}`).join(", ");
+
+    let verdict: string;
+    if (isStrong) {
+      verdict = `Strong ${c.name} pillar (avg ${avg.toFixed(1)}). ${c.description}`;
+    } else if (avg >= 24) {
+      const parts: string[] = [];
+      if (supported.length) parts.push(`${fmt(supported)} well supported`);
+      if (needsAttention.length) parts.push(`${fmt(needsAttention)} needs attention`);
+      const detail = parts.length
+        ? parts.join("; ") + "."
+        : "All three houses sit in the average band — steady but not a standout area.";
+      verdict = `Moderate ${c.name} pillar (avg ${avg.toFixed(1)}). ${detail}`;
+    } else {
+      verdict = `Weak ${c.name} pillar (avg ${avg.toFixed(1)}). This life area benefits from conscious cultivation and targeted effort.`;
+    }
+
     return {
       id: r.ruleKey,
       name: c.name,
@@ -201,6 +242,7 @@ export function interpretSarvashtakvarga(
       averageBindus: Math.round(avg * 10) / 10,
       isStrong,
       verdict,
+      breakdown,
     };
   });
 
