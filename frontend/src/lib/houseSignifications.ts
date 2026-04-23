@@ -1,19 +1,13 @@
 /**
- * Single source of truth for house significations.
+ * Single source of truth for house significations — CLIENT-SAFE.
  *
  * Exports:
  *   - HOUSE_SIGNIFICATIONS (sync constant) — the 12 rows hardcoded here.
  *     Imported by client + server engines alike. This is the compile-time
  *     baseline.
- *   - getHouseSignifications() (async, server-only) — reads the DB so
- *     admins can override the constant without a redeploy. Falls back to
- *     HOUSE_SIGNIFICATIONS if the DB is unreachable or empty.
  *
- * Consumers:
- *   - yogaEngine.ts (detection + house-context narrative)
- *   - dailyEngine.ts (moon pulse + transit house themes)
- *   - financeEngine.ts (wealth-house health labels)
- *   - YogaReportView.tsx (display)
+ * The DB-backed async accessor (getHouseSignifications) lives in
+ * ./houseSignificationsServer.ts to keep prisma out of the client bundle.
  */
 
 export interface HouseSignificationRow {
@@ -50,56 +44,3 @@ export const HOUSE_SIGNIFICATIONS: HouseMap = {
   12: { house: 12, name: "Vyaya (Losses & Moksha)",              short: "rest, losses, foreign, moksha, privacy",  themes: "expenses, foreign lands, moksha, seclusion, bed pleasures, hidden enemies" },
 };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Server-side DB-backed accessor with module-level cache.
-// This import is deferred so that client bundles don't pull in prisma.
-// ────────────────────────────────────────────────────────────────────────────
-
-let serverCache: HouseMap | null = null;
-let inFlight: Promise<HouseMap> | null = null;
-
-/**
- * SERVER ONLY. Returns the house significations map, preferring any
- * admin-edited rows in the DB over the compile-time constant. Cached
- * for the lifetime of the Node process.
- *
- * Never throws — falls back to HOUSE_SIGNIFICATIONS if the DB is down,
- * empty, or partial.
- */
-export async function getHouseSignifications(): Promise<HouseMap> {
-  if (serverCache) return serverCache;
-  if (inFlight) return inFlight;
-  inFlight = (async () => {
-    try {
-      // Dynamic import so the constant-only client bundle stays lean
-      const { prisma } = await import("@/lib/prisma");
-      const rows = await prisma.houseSignification.findMany();
-      if (rows.length !== 12) {
-        console.warn(
-          `[houseSignifications] DB has ${rows.length}/12 rows; using compile-time constant`,
-        );
-        serverCache = HOUSE_SIGNIFICATIONS;
-        return HOUSE_SIGNIFICATIONS;
-      }
-      const map: HouseMap = {};
-      for (const r of rows) {
-        map[r.house] = { house: r.house, name: r.name, short: r.short, themes: r.themes };
-      }
-      serverCache = map;
-      return map;
-    } catch (err) {
-      console.warn("[houseSignifications] DB fetch failed, using constant:", err);
-      serverCache = HOUSE_SIGNIFICATIONS;
-      return HOUSE_SIGNIFICATIONS;
-    } finally {
-      inFlight = null;
-    }
-  })();
-  return inFlight;
-}
-
-/** Bust the server cache (e.g. after admin edits). */
-export function refreshHouseSignifications(): void {
-  serverCache = null;
-  inFlight = null;
-}

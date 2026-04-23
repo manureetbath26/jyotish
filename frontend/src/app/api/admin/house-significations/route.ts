@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { refreshHouseSignifications } from "@/lib/houseSignifications";
+import { refreshHouseSignifications } from "@/lib/houseSignificationsServer";
 
 export const dynamic = "force-dynamic";
 

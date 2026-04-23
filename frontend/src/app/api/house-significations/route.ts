@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getHouseSignifications } from "@/lib/houseSignifications";
+import { getHouseSignifications } from "@/lib/houseSignificationsServer";
 
 export const dynamic = "force-dynamic";
 
