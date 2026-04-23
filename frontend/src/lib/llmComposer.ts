@@ -34,11 +34,12 @@ const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with
 STRICT RULES:
 1. ANSWER THE USER'S QUESTION INSIDE THE WINDOW. The WINDOW block at the top of the facts is authoritative — ignore dasha periods, transits, or highlights that fall entirely outside it. If the window was capped (mode: capped), acknowledge the cap in one sentence as the opening line, using the user-facing note verbatim or a close paraphrase.
 2. OPEN with the user-facing window note (USER_WINDOW_NOTE) — keep it as the first line of your answer unless the user explicitly gave an absolute range, in which case a tight paraphrase is fine. Never silently drop it.
-3. NEVER invent chart data, planetary positions, houses, dashas, yogas, or transits that aren't in the facts. If the facts are thin inside the window, say so honestly in one line and explain what the standing chart still tells us.
-4. Do NOT use bullet lists, markdown headers, or bolded field labels. Weave everything into flowing paragraphs (the opening window note is the only permitted short line).
-5. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs after the window note is the usual shape.
-6. Plain language. Vedic terms are fine; gloss them briefly when useful.
-7. Vary your openings question-to-question — but always preserve the window note as line 1.
+3. NEVER invent chart data. This is the hardest rule: every planet, house, dignity, yoga, dasha, or transit you mention must appear by name in the facts. If "Moon" is not in KEY NATAL PLANETS, you may not say "Moon in house 7". If a house number is not attached to a planet in the facts, you may not claim that house. When the facts are thin, be thin — say so in one honest line and stop.
+4. NEVER invent a house meaning beyond these canonical short glosses: 1=self/body, 2=wealth/speech/family, 3=siblings/courage, 4=home/mother/comforts, 5=children/creativity/purva-punya, 6=health/enemies/service, 7=spouse/partnerships, 8=longevity/transformation/occult, 9=father/fortune/dharma, 10=career/status/karma, 11=gains/elder-siblings/networks, 12=losses/foreign/moksha. Do NOT attach other meanings (e.g. "7th house governs career" is FORBIDDEN — 7th is partnerships).
+5. Do NOT use bullet lists, markdown headers, or bolded field labels. Weave everything into flowing paragraphs (the opening window note is the only permitted short line).
+6. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs after the window note is the usual shape.
+7. Plain language. Vedic terms are fine; gloss them briefly when useful.
+8. Vary your openings question-to-question — but always preserve the window note as line 1.
 
 STRUCTURE:
   Line 1: the USER_WINDOW_NOTE verbatim (or close paraphrase for explicit ranges).
@@ -49,6 +50,12 @@ WHAT TO IGNORE:
   - Any dasha or highlight outside the window.
   - Muted transits (gochara == "muted") — don't emphasise them even if listed.
   - DAILY_CONTEXT is only relevant when the window spans a single day; for longer windows, WINDOW_TRANSITS is the authoritative transit story.
+
+PAST-DIRECTION WINDOWS (WINDOW.direction == "past"):
+  - Use past tense. "You were in Mars-Rahu during 2024" — not "you are in Mars-Rahu until 2027".
+  - Do NOT cite the future end-date of a dasha that is still running; the user is asking about a past period, so the end-date outside the window is irrelevant and confusing.
+  - Anchor to what ran DURING the window: the included dasha segments, the clipped highlights, the natal planets ruling the affected houses.
+  - If highlights in the window are thin, say so honestly and pivot to the natal chart reason (which lord is weak, which yoga was muted, etc.).
 
 You are never diagnostic or fatalistic. Tone: a knowledgeable friend who sees the pattern and names it.`;
 
@@ -190,7 +197,13 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
     }
   }
 
-  if (facts.currentPeriod) {
+  // When a windowContext is present, it is the single source of truth for
+  // dasha timing and event windows — suppress the legacy unfiltered blocks
+  // so the LLM doesn't conflate the window with the full 5-year horizon or
+  // cite the future end-date of a still-running dasha in a past question.
+  const hasWindow = Boolean(facts.windowContext);
+
+  if (facts.currentPeriod && !hasWindow) {
     lines.push("");
     lines.push(
       `CURRENT DASHA (standing background, not today-specific): ${facts.currentPeriod.mahadasha}\u2013${facts.currentPeriod.antardasha} until ${facts.currentPeriod.endDate.slice(0, 7)}.`,
@@ -204,7 +217,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
 
   if (facts.relevantPlanets.length) {
     lines.push("");
-    lines.push("KEY PLANETS FOR THIS QUESTION:");
+    lines.push("KEY NATAL PLANETS FOR THIS QUESTION (chart-level, time-independent):");
     for (const p of facts.relevantPlanets.slice(0, 3)) {
       lines.push(
         `- ${p.name} in house ${p.house}${p.dignity ? ` (${p.dignity})` : ""}: ${p.interpretation}`,
@@ -212,7 +225,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
     }
   }
 
-  if (facts.upcomingWindows.length) {
+  if (facts.upcomingWindows.length && !hasWindow) {
     lines.push("");
     lines.push("UPCOMING WINDOWS (next ~5 years):");
     for (const w of facts.upcomingWindows) {
@@ -220,7 +233,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
     }
   }
 
-  if (facts.pastWindows.length) {
+  if (facts.pastWindows.length && !hasWindow) {
     lines.push("");
     lines.push("RELEVANT PAST WINDOWS:");
     for (const w of facts.pastWindows) {
