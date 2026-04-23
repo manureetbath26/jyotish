@@ -15,6 +15,8 @@ import {
   YogaInfluence,
 } from "@/lib/lifeEventsReport";
 import type { EnrichedChatContext } from "@/lib/chatEnrichment";
+import type { QuestionWindow } from "@/lib/questionWindow";
+import type { WindowContext } from "@/lib/windowContext";
 
 // ─── Question Classification ────────────────────────────────────────────────
 
@@ -176,7 +178,7 @@ function detectTimeScope(question: string): TimeScope {
   return "general";
 }
 
-interface ClassificationResult {
+export interface ClassificationResult {
   categories: string[];
   houses: number[];
   planets: string[];
@@ -186,7 +188,7 @@ interface ClassificationResult {
   timeScope: TimeScope;
 }
 
-function classifyQuestion(question: string): ClassificationResult {
+export function classifyQuestion(question: string): ClassificationResult {
   const lower = question.toLowerCase();
   // Pad with spaces so keywords like " did " with word boundaries match at start/end
   const padded = ` ${lower} `;
@@ -278,11 +280,17 @@ function buildCategoryAnswer(
   askingAboutPast: boolean,
   enriched?: EnrichedChatContext,
   yearRange?: { start?: number; end?: number },
+  windowContext?: WindowContext,
 ): string {
   const parts: string[] = [];
   const categories = getRelevantCategories(report, categoryIds);
   const currentDasha = getCurrentDashaPrediction(report);
   const cpa = report.currentPeriodAnalysis;
+
+  // Window banner — always the first line so user knows the focus
+  if (windowContext) {
+    parts.push(windowContext.window.userNote);
+  }
 
   // Opening — warm, direct summary
   if (categories.length > 0) {
@@ -291,59 +299,94 @@ function buildCategoryAnswer(
     parts.push(`Looking at your chart, ${cat.name.toLowerCase()} is ${outlookDesc} for you overall. ${cat.summary}`);
   }
 
-  // What's relevant RIGHT NOW — current period context
-  if (currentDasha) {
+  // Dasha segments inside the window — prefer the window-scoped list over
+  // the single "current" MD-AD when we have a real range to cover.
+  if (windowContext && windowContext.dashaSegments.length > 0) {
+    const segs = windowContext.dashaSegments.slice(0, 3);
+    const segLines = segs.map((s) => {
+      const flag = s.isCurrent ? " ← you are here" : "";
+      const themes = s.themes?.length ? ` — themes: ${s.themes.join(", ")}` : "";
+      const monthRange = `${s.includedFrom.slice(0, 7)} → ${s.includedTo.slice(0, 7)}`;
+      return `• **${s.mahadasha}-${s.antardasha}** (${monthRange})${flag}${themes}`;
+    });
+    parts.push(`Dasha periods inside this window:\n${segLines.join("\n")}`);
+  } else if (currentDasha) {
     const relevantPreds = currentDasha.eventPredictions
-      .filter(ep => categoryIds.includes(ep.category))
+      .filter((ep) => categoryIds.includes(ep.category))
       .slice(0, 2);
     if (relevantPreds.length > 0) {
-      parts.push(`Right now, you're running **${cpa.mahadasha}-${cpa.antardasha}** (until ${cpa.endDate.slice(0, 7).replace("-", "/")}). ${relevantPreds.map(p => p.description).join(" ")}`);
+      parts.push(`Right now, you're running **${cpa.mahadasha}-${cpa.antardasha}** (until ${cpa.endDate.slice(0, 7).replace("-", "/")}). ${relevantPreds.map((p) => p.description).join(" ")}`);
     } else {
       parts.push(`You're currently in **${cpa.mahadasha}-${cpa.antardasha}** period. While this period's main themes don't directly focus on this area, the underlying chart strengths still apply.`);
     }
   }
 
-  // Key planetary influences — woven naturally
+  // Key natal planetary influences — the chart-level story
   const relevantPlanets = getRelevantPlanets(report, planets);
   if (relevantPlanets.length > 0) {
-    const planetNotes = relevantPlanets.slice(0, 2).map(p => {
+    const planetNotes = relevantPlanets.slice(0, 2).map((p) => {
       const dignityNote = p.dignity ? ` (in ${p.dignity})` : "";
       return `**${p.planet}**${dignityNote} sitting in house ${p.house}`;
     });
-    parts.push(`The key planets here are ${planetNotes.join(" and ")}. ${relevantPlanets[0].interpretation}`);
+    parts.push(`The key natal planets here are ${planetNotes.join(" and ")}. ${relevantPlanets[0].interpretation}`);
   }
 
-  // Upcoming windows — the most actionable part
-  const upcoming = getRelevantHighlights(report.upcomingHighlights, categoryIds, 3);
-  if (upcoming.length > 0) {
-    const windowTexts = upcoming.map(h => {
-      const indicator = likelihoodWord(h.likelihood);
-      return `• **${h.window}** (${h.dashaContext}) — ${indicator}. ${trimReasoning(h.reasoning)}`;
-    });
-    parts.push(`Here are your best upcoming windows:\n${windowTexts.join("\n")}`);
-  }
-
-  // Past — ONLY if user explicitly asked
-  if (askingAboutPast) {
-    let pastPool = report.pastHighlights;
-    if (yearRange && yearRange.start) {
-      const filtered = highlightsInYearRange(pastPool, yearRange);
-      if (filtered.length > 0) pastPool = filtered;
+  // Transits projected across the window — active ones only
+  if (windowContext && windowContext.transits.length > 0) {
+    const active = windowContext.transits.filter(
+      (t) => t.gochara === "active" || t.gochara === "nodal",
+    );
+    if (active.length > 0) {
+      const lines = active.slice(0, 4).map((t) => {
+        const ingressBit = t.ingresses.length
+          ? ` — moves to ${t.ingresses[0].sign} (H${t.ingresses[0].houseFromLagna}) around ${t.ingresses[0].date.slice(0, 7)}`
+          : ` (stays in ${t.endSign}, H${t.endHouseFromLagna})`;
+        const bavBit =
+          t.gochara === "active" ? ` · BAV ${t.midBav}/${t.threshold}` : "";
+        return `• **${t.planet}**${bavBit} ${ingressBit} — ${t.effect}`;
+      });
+      parts.push(`Transit movements over this window (approximate):\n${lines.join("\n")}`);
     }
-    const limit = yearRange ? 5 : 2;
-    const past = getRelevantHighlights(pastPool, categoryIds, limit);
-    if (past.length > 0) {
-      const rangeLabel = yearRange && yearRange.start
-        ? (yearRange.end && yearRange.end !== yearRange.start
-            ? ` between ${yearRange.start}-${yearRange.end}`
-            : ` around ${yearRange.start}`)
-        : "";
-      const pastTexts = past.map(h =>
-        `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
-      );
-      parts.push(`Looking back at past periods${rangeLabel}:\n${pastTexts.join("\n")}`);
-    } else if (yearRange && yearRange.start) {
-      parts.push(`I don't have strong specific indicators from your chart's pre-computed highlights for **${yearRange.start}${yearRange.end && yearRange.end !== yearRange.start ? `-${yearRange.end}` : ""}** in this area. The dasha that ran during that window would still be the key — happy to walk through it if you tell me which life area to focus on.`);
+  }
+
+  // Highlights (upcoming + past) that fall inside the window
+  if (windowContext && windowContext.highlights.length > 0) {
+    const windowHl = windowContext.highlights.slice(0, 5);
+    const lines = windowHl.map((h) => {
+      const indicator = likelihoodWord(h.likelihood);
+      const arrow = h.direction === "past" ? "◀" : "▶";
+      return `${arrow} **${h.window}** (${h.dashaContext}) — ${indicator}. ${trimReasoning(h.reasoning)}`;
+    });
+    parts.push(`Key windows inside this range:\n${lines.join("\n")}`);
+  } else if (!windowContext) {
+    // Legacy path — only runs when called without a windowContext
+    const upcoming = getRelevantHighlights(report.upcomingHighlights, categoryIds, 3);
+    if (upcoming.length > 0) {
+      const windowTexts = upcoming.map((h) => {
+        const indicator = likelihoodWord(h.likelihood);
+        return `• **${h.window}** (${h.dashaContext}) — ${indicator}. ${trimReasoning(h.reasoning)}`;
+      });
+      parts.push(`Here are your best upcoming windows:\n${windowTexts.join("\n")}`);
+    }
+    if (askingAboutPast) {
+      let pastPool = report.pastHighlights;
+      if (yearRange && yearRange.start) {
+        const filtered = highlightsInYearRange(pastPool, yearRange);
+        if (filtered.length > 0) pastPool = filtered;
+      }
+      const limit = yearRange ? 5 : 2;
+      const past = getRelevantHighlights(pastPool, categoryIds, limit);
+      if (past.length > 0) {
+        const rangeLabel = yearRange && yearRange.start
+          ? (yearRange.end && yearRange.end !== yearRange.start
+              ? ` between ${yearRange.start}-${yearRange.end}`
+              : ` around ${yearRange.start}`)
+          : "";
+        const pastTexts = past.map((h) =>
+          `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
+        );
+        parts.push(`Looking back at past periods${rangeLabel}:\n${pastTexts.join("\n")}`);
+      }
     }
   }
 
@@ -476,7 +519,10 @@ function ord(n: number): string {
   return s[(v - 20) % 10] || s[v] || s[0];
 }
 
-function buildGeneralAnswer(report: LifeEventsReport): string {
+function buildGeneralAnswer(
+  report: LifeEventsReport,
+  windowContext?: WindowContext,
+): string {
   const parts: string[] = [];
   const cs = report.chartSummary;
   const cpa = report.currentPeriodAnalysis;
@@ -495,15 +541,35 @@ function buildGeneralAnswer(report: LifeEventsReport): string {
     parts.push(`Things to be mindful about:\n${cpa.cautions.slice(0, 2).map(c => `• ${c}`).join("\n")}`);
   }
 
-  // Top upcoming — just a taste
-  const topUpcoming = [...report.upcomingHighlights]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-  if (topUpcoming.length > 0) {
-    const lines = topUpcoming.map(h =>
-      `• **${h.event}** around ${h.window} — ${likelihoodWord(h.likelihood)}`
-    );
-    parts.push(`Some key things coming up for you:\n${lines.join("\n")}`);
+  // Window-scoped highlights if we have them — otherwise fall back to the
+  // top 3 upcoming from the full report.
+  if (windowContext && windowContext.highlights.length > 0) {
+    const lines = windowContext.highlights.slice(0, 4).map((h) => {
+      const arrow = h.direction === "past" ? "◀" : "▶";
+      return `${arrow} **${h.event}** around ${h.window} — ${likelihoodWord(h.likelihood)}`;
+    });
+    parts.push(`Key things inside this window:\n${lines.join("\n")}`);
+  } else {
+    const topUpcoming = [...report.upcomingHighlights]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    if (topUpcoming.length > 0) {
+      const lines = topUpcoming.map((h) =>
+        `• **${h.event}** around ${h.window} — ${likelihoodWord(h.likelihood)}`,
+      );
+      parts.push(`Some key things coming up for you:\n${lines.join("\n")}`);
+    }
+  }
+
+  // Active transits inside the window — short, only when present
+  if (windowContext && windowContext.transits.length > 0) {
+    const active = windowContext.transits.filter((t) => t.gochara === "active");
+    if (active.length > 0) {
+      const lines = active.slice(0, 3).map((t) =>
+        `• **${t.planet}** moves through your ${t.endHouseFromLagna}th house (${t.houseTheme}) — ${t.effect}`,
+      );
+      parts.push(`Transit movements in this window:\n${lines.join("\n")}`);
+    }
   }
 
   parts.push("Feel free to ask me about anything specific — career, marriage, health, money, travel, or any other area of life!");
@@ -563,6 +629,7 @@ export function answerAstrologyQuestion(
   chart: ChartResponse,
   report: LifeEventsReport,
   enriched?: EnrichedChatContext,
+  windowContext?: WindowContext,
 ): ChatAnswer {
   const lower = question.toLowerCase();
   const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
@@ -572,9 +639,17 @@ export function answerAstrologyQuestion(
   let answer: string;
 
   if (classification.isGeneral && !isDashaQuestion) {
-    answer = buildGeneralAnswer(report);
+    // General questions still get the window note if present, but the body
+    // is the chart snapshot + window-scoped highlights/transits.
+    const general = buildGeneralAnswer(report, windowContext);
+    answer = windowContext
+      ? `${windowContext.window.userNote}\n\n${general}`
+      : general;
   } else if (isDashaQuestion && classification.isGeneral) {
-    answer = buildDashaAnswer(report);
+    const dasha = buildDashaAnswer(report);
+    answer = windowContext
+      ? `${windowContext.window.userNote}\n\n${dasha}`
+      : dasha;
   } else {
     answer = buildCategoryAnswer(
       report,
@@ -584,6 +659,7 @@ export function answerAstrologyQuestion(
       classification.askingAboutPast,
       enriched,
       classification.yearRange,
+      windowContext,
     );
 
     // If answer is too thin, add a gentle general nudge
@@ -666,6 +742,17 @@ export interface AnswerFacts {
     lagnaLord: string;
     topStrengths: { planet: string; note: string }[];
   };
+  /**
+   * Resolved time window for this question. Always present when the route
+   * invokes the window resolver. The LLM composer uses this as the primary
+   * framing for every answer (not the legacy timeScope enum).
+   */
+  window?: QuestionWindow;
+  /**
+   * Window-scoped signals: dasha segments, clipped highlights, slow-planet
+   * transits projected across the range, Jaimini hits, house SAV focus.
+   */
+  windowContext?: WindowContext;
 }
 
 export interface DailyContext {
@@ -691,6 +778,8 @@ export function extractAnswerFacts(
   chart: ChartResponse,
   report: LifeEventsReport,
   enriched?: EnrichedChatContext,
+  window?: QuestionWindow,
+  windowContext?: WindowContext,
 ): AnswerFacts {
   const lower = question.toLowerCase();
   const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
@@ -786,5 +875,7 @@ export function extractAnswerFacts(
     })),
     enrichedNote,
     generalSnapshot,
+    window,
+    windowContext,
   };
 }

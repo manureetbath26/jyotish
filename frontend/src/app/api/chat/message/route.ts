@@ -3,12 +3,23 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ChartResponse } from "@/lib/api";
 import { generateLifeEventsReport } from "@/lib/lifeEventsReport";
-import { answerAstrologyQuestion, extractAnswerFacts, type DailyContext } from "@/lib/chatEngine";
+import {
+  answerAstrologyQuestion,
+  classifyQuestion,
+  extractAnswerFacts,
+  type DailyContext,
+} from "@/lib/chatEngine";
 import { computeChatEnrichment } from "@/lib/chatEnrichment";
 import { composeNaturalAnswer, isLlmComposerAvailable } from "@/lib/llmComposer";
 import { extractDailyFacts } from "@/lib/dailyEngine";
-import { computeAshtakvarga, type AshtakvargaRule } from "@/lib/ashtakvargaEngine";
+import {
+  computeAshtakvarga,
+  type AshtakvargaAnalysis,
+  type AshtakvargaRule,
+} from "@/lib/ashtakvargaEngine";
 import type { CurrentTransitResponse } from "@/lib/api";
+import { resolveQuestionWindow } from "@/lib/questionWindow";
+import { buildWindowContext } from "@/lib/windowContext";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +127,11 @@ export async function POST(req: NextRequest) {
   const chartData = chatSession.chartData as unknown as ChartResponse;
   const report = generateLifeEventsReport(chartData);
 
+  // Resolve the question's time window. Hard-capped to 5 years; the
+  // resolver returns a user-facing note describing the focus.
+  const now = new Date();
+  const questionWindow = resolveQuestionWindow(trimmedQuestion, now);
+
   // Compute enriched context (Jaimini marriage/career windows + Ashtakvarga
   // house-level SAV + karaka BAV). Fails open — chat still works if this
   // throws, answer just lacks the "Jaimini + Ashtakvarga check" section.
@@ -127,6 +143,38 @@ export async function POST(req: NextRequest) {
     enriched = undefined;
   }
 
+  // Shared resources for window context + daily context. Both need current
+  // transits and Ashtakvarga — fetch once, reuse, fail open.
+  let currentTransits: CurrentTransitResponse | undefined;
+  let ashtakvarga: AshtakvargaAnalysis | undefined;
+  if (!questionWindow.isPurePast) {
+    try {
+      currentTransits = await fetchCurrentTransits(chartData);
+    } catch (err) {
+      console.warn("[chat] current transits fetch failed:", err);
+    }
+    try {
+      ashtakvarga = await computeAshtakvargaForChat(chartData);
+    } catch (err) {
+      console.warn("[chat] ashtakvarga compute failed:", err);
+    }
+  }
+
+  // Build the window-scoped context (dasha slice, clipped highlights,
+  // projected slow-planet transits, Jaimini overlap, house SAV focus).
+  const classification = classifyQuestion(trimmedQuestion);
+  const windowContext = buildWindowContext({
+    chart: chartData,
+    report,
+    window: questionWindow,
+    categories: classification.categories,
+    houses: classification.houses,
+    enriched,
+    currentTransits,
+    ashtakvarga,
+    now,
+  });
+
   // Deterministic extraction first — this is our source of truth and our
   // fallback if the LLM composer is unavailable or fails.
   const { answer: templateAnswer, metadata } = answerAstrologyQuestion(
@@ -134,22 +182,33 @@ export async function POST(req: NextRequest) {
     chartData,
     report,
     enriched,
+    windowContext,
   );
   let answer = templateAnswer;
   let composer: "openai" | "template" = "template";
 
   if (isLlmComposerAvailable()) {
     try {
-      const facts = extractAnswerFacts(trimmedQuestion, chartData, report, enriched);
+      const facts = extractAnswerFacts(
+        trimmedQuestion,
+        chartData,
+        report,
+        enriched,
+        questionWindow,
+        windowContext,
+      );
 
-      // If the user asked about "today"/"this week"/etc., augment with
-      // today's transit-level context so the LLM can actually answer the
-      // time-scoped question instead of reciting the general category.
-      if (facts.timeScope === "today" || facts.timeScope === "thisWeek") {
+      // Daily-granularity context only when the window is a single day
+      // AND we already have the transit snapshot in memory.
+      if (questionWindow.isDaily && currentTransits && ashtakvarga) {
         try {
-          facts.dailyContext = await fetchDailyContextForChat(chartData);
+          facts.dailyContext = dailyContextFromShared(
+            chartData,
+            currentTransits,
+            ashtakvarga,
+          );
         } catch (err) {
-          console.warn("[chat] daily context fetch failed:", err);
+          console.warn("[chat] daily context assembly failed:", err);
         }
       }
 
@@ -198,16 +257,13 @@ export async function POST(req: NextRequest) {
 }
 
 
-/**
- * Compute today's transit-level context for chat questions that mention
- * "today"/"this week"/etc. Reuses the Daily Perspective pipeline so the
- * chat engine and daily reading stay in sync.
- */
-async function fetchDailyContextForChat(
+/** Fetch today's transit snapshot from the backend — used by both the
+ *  window transit projector and the optional daily-context augmentation. */
+async function fetchCurrentTransits(
   chartData: ChartResponse,
-): Promise<DailyContext | undefined> {
+): Promise<CurrentTransitResponse> {
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const transitRes = await fetch(`${backendUrl}/api/chart/current-transits`, {
+  const res = await fetch(`${backendUrl}/api/chart/current-transits`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -215,19 +271,30 @@ async function fetchDailyContextForChat(
       natal_lagna_degree: chartData.lagna_degree,
     }),
   });
-  if (!transitRes.ok) return undefined;
-  const transits = (await transitRes.json()) as CurrentTransitResponse;
+  if (!res.ok) throw new Error(`current-transits failed (${res.status})`);
+  return res.json();
+}
 
+async function computeAshtakvargaForChat(
+  chartData: ChartResponse,
+): Promise<AshtakvargaAnalysis> {
   const rulesRaw = await prisma.ashtakvargaRule.findMany();
   const rules: AshtakvargaRule[] = rulesRaw.map((r) => ({
     planet: r.planet as AshtakvargaRule["planet"],
     source: r.source as AshtakvargaRule["source"],
     houses: r.houses,
   }));
-  const ashtakvarga = computeAshtakvarga(chartData, rules);
+  return computeAshtakvarga(chartData, rules);
+}
 
+/** Assemble DailyContext from already-fetched transits + ashtakvarga.
+ *  Only called when the question's window is a single day. */
+function dailyContextFromShared(
+  chartData: ChartResponse,
+  transits: CurrentTransitResponse,
+  ashtakvarga: AshtakvargaAnalysis,
+): DailyContext {
   const dailyFacts = extractDailyFacts(chartData, transits, ashtakvarga, "");
-
   return {
     date: dailyFacts.date,
     moonSign: dailyFacts.moonPulse.sign,

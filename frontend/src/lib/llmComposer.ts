@@ -29,33 +29,26 @@ export function isLlmComposerAvailable(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
-const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with a client whose chart you've already studied. Your job is to answer THEIR SPECIFIC QUESTION in natural, conversational prose, grounded ONLY in the structured facts provided.
+const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with a client whose chart you've already studied. Your job is to answer THEIR SPECIFIC QUESTION in natural, conversational prose, grounded ONLY in the structured facts provided — and strictly inside the WINDOW specified.
 
 STRICT RULES:
-1. ANSWER THE USER'S QUESTION DIRECTLY. Do not recite the full category summary. Select only the facts that genuinely help answer THIS question at its stated time-scope.
-2. NEVER invent chart data, planetary positions, houses, dashas, yogas, or windows that aren't in the facts. If the facts don't cover something the user asked about, say so honestly in one line.
-3. Do NOT use bullet lists, markdown headers, or bolded field labels ("**Current period:**" etc.). Weave everything into flowing paragraphs.
-4. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs is the usual shape.
-5. Plain language. Vedic terms are fine; gloss them briefly when useful. Avoid jargon when the user's phrasing is casual.
-6. Vary your openings question-to-question — never start two answers with the same phrase.
+1. ANSWER THE USER'S QUESTION INSIDE THE WINDOW. The WINDOW block at the top of the facts is authoritative — ignore dasha periods, transits, or highlights that fall entirely outside it. If the window was capped (mode: capped), acknowledge the cap in one sentence as the opening line, using the user-facing note verbatim or a close paraphrase.
+2. OPEN with the user-facing window note (USER_WINDOW_NOTE) — keep it as the first line of your answer unless the user explicitly gave an absolute range, in which case a tight paraphrase is fine. Never silently drop it.
+3. NEVER invent chart data, planetary positions, houses, dashas, yogas, or transits that aren't in the facts. If the facts are thin inside the window, say so honestly in one line and explain what the standing chart still tells us.
+4. Do NOT use bullet lists, markdown headers, or bolded field labels. Weave everything into flowing paragraphs (the opening window note is the only permitted short line).
+5. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs after the window note is the usual shape.
+6. Plain language. Vedic terms are fine; gloss them briefly when useful.
+7. Vary your openings question-to-question — but always preserve the window note as line 1.
 
-TIME-SCOPE RULES:
-- If timeScope is "today" AND dailyContext is present, PRIORITISE dailyContext over long-range predictions. Talk about today's Moon, today's active transits, and what's happening for the user right now. The user asked about today — give them today.
-- If timeScope is "today" but dailyContext is absent, say honestly that you don't have today's transit detail and offer to give a longer-horizon answer instead.
-- If timeScope is "thisWeek"/"thisMonth", blend dailyContext (if any) with the nearest upcoming window.
-- If timeScope is "general", use categoryFacts + upcoming windows naturally.
-- If asked about a specific past year, address THAT window first.
+STRUCTURE:
+  Line 1: the USER_WINDOW_NOTE verbatim (or close paraphrase for explicit ranges).
+  Paragraph 1: the core answer — the dasha segment(s) active inside the window and what they mean for this question. Weave in the most relevant slow-planet transit inside the window (from WINDOW_TRANSITS) and the single strongest window highlight if any.
+  Paragraph 2 (optional): one concrete piece of framing or advice grounded in the window's signals.
 
-STRUCTURE for time-scoped answers:
-  Open with today's/this-week's pulse (Moon + any active transits).
-  Then 1 sentence of standing context (current dasha as background).
-  Then the practical takeaway for the stated question.
-
-STRUCTURE for general/category answers:
-  Open with a direct take on the user's specific question.
-  One sentence on the key planet(s) or current dasha.
-  Mention ONE most-relevant upcoming window if and only if the user's question is time-sensitive.
-  Optional closing line with one grounded piece of advice.
+WHAT TO IGNORE:
+  - Any dasha or highlight outside the window.
+  - Muted transits (gochara == "muted") — don't emphasise them even if listed.
+  - DAILY_CONTEXT is only relevant when the window spans a single day; for longer windows, WINDOW_TRANSITS is the authoritative transit story.
 
 You are never diagnostic or fatalistic. Tone: a knowledgeable friend who sees the pattern and names it.`;
 
@@ -66,6 +59,21 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
   if (facts.categories.length) {
     lines.push(`DETECTED THEMES: ${facts.categories.join(", ")}`);
   }
+
+  // ── WINDOW block (authoritative framing) ─────────────────────────────────
+  if (facts.window) {
+    lines.push("");
+    lines.push(
+      `WINDOW: ${facts.window.label} (mode: ${facts.window.mode}, direction: ${facts.window.direction})`,
+    );
+    lines.push(`USER_WINDOW_NOTE: ${facts.window.userNote}`);
+    if (facts.window.mode === "capped" && facts.window.originalStart && facts.window.originalEnd) {
+      lines.push(
+        `(User originally asked a wider span — ACKNOWLEDGE the cap in your opening line.)`,
+      );
+    }
+  }
+
   lines.push(`TIME SCOPE: ${facts.timeScope}`);
   if (facts.timeScope === "today" && !facts.dailyContext) {
     lines.push(
@@ -87,6 +95,72 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
           : ""
       }.`,
     );
+  }
+
+  // ── Window-scoped signals (dasha segments, transits, clipped highlights) ─
+  if (facts.windowContext) {
+    const wc = facts.windowContext;
+    if (wc.dashaSegments.length) {
+      lines.push("");
+      lines.push("DASHA SEGMENTS INSIDE WINDOW (authoritative timing story):");
+      for (const s of wc.dashaSegments.slice(0, 4)) {
+        const flag = s.isCurrent ? " [CURRENT]" : "";
+        const nature = s.nature ? ` nature=${s.nature}` : "";
+        const themes = s.themes?.length ? ` themes=${s.themes.join(", ")}` : "";
+        lines.push(
+          `- ${s.mahadasha}-${s.antardasha} from ${s.includedFrom} to ${s.includedTo}${flag}${nature}${themes}`,
+        );
+      }
+    }
+    if (wc.transits.length) {
+      lines.push("");
+      lines.push(
+        "SLOW-PLANET TRANSITS PROJECTED ACROSS WINDOW (approximate; mean-motion, ignores retrograde loops):",
+      );
+      for (const t of wc.transits) {
+        const ingressText = t.ingresses.length
+          ? ` ingresses: ${t.ingresses.map((i) => `${i.date}→${i.sign}(H${i.houseFromLagna})`).join("; ")}`
+          : " stays in sign";
+        const bavText =
+          t.gochara === "nodal"
+            ? " [nodal — no BAV]"
+            : ` BAV ${t.midBav}/${t.threshold} [${t.gochara}]`;
+        lines.push(
+          `- ${t.planet}: ${t.startSign} H${t.startHouseFromLagna} → ${t.endSign} H${t.endHouseFromLagna}${bavText}${ingressText}. Effect if active: ${t.effect}.`,
+        );
+      }
+      lines.push(
+        "(Only weave in transits marked [active] or [nodal]. Skip [muted].)",
+      );
+    }
+    if (wc.highlights.length) {
+      lines.push("");
+      lines.push("HIGHLIGHTS CLIPPED TO WINDOW (past ◀ and upcoming ▶):");
+      for (const h of wc.highlights.slice(0, 5)) {
+        const arrow = h.direction === "past" ? "◀" : "▶";
+        lines.push(
+          `- ${arrow} ${h.window} (${h.dashaContext}) — ${h.likelihood} — ${h.reasoning}`,
+        );
+      }
+    }
+    if (wc.jaiminiWindows.length) {
+      lines.push("");
+      lines.push("JAIMINI WINDOWS OVERLAPPING RANGE:");
+      for (const j of wc.jaiminiWindows) {
+        lines.push(
+          `- ${j.kind} peak ${j.startMonth} → ${j.endMonth} (${j.peakScore}/6, ${j.rating})`,
+        );
+      }
+    }
+    if (wc.categoryHouseFocus.length) {
+      lines.push("");
+      lines.push("HOUSE SAV FOCUS FOR THIS QUESTION:");
+      for (const h of wc.categoryHouseFocus) {
+        lines.push(
+          `- ${h.house}th (${h.sign}, ${h.theme}): ${h.bindus} bindus (${h.strength})`,
+        );
+      }
+    }
   }
 
   if (facts.categoryFacts.length) {
