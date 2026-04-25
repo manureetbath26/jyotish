@@ -261,6 +261,10 @@ class TransitIngressResponse(BaseModel):
     end_date: str
     opening_snapshot: List[PlanetSnapshot]  # all 9 planets at start_date
     events_by_area: Dict[str, List[IngressEvent]]
+    # Per-area 3-paragraph narrative synthesis (current state → next
+    # inflection → background themes). Reads top-to-bottom so the user
+    # gets a coherent reading without scanning every card.
+    narrative_by_area: Dict[str, str] = {}
 
 
 # ── Panchang & Avakhada ──────────────────────────────────────────────────────

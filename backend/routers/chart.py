@@ -21,6 +21,7 @@ from services.transit import (
     calculate_opening_snapshot,
     calculate_transit_ingresses,
     calculate_pratyantardasha_events,
+    compose_area_narrative,
 )
 from services.panchang import calculate_panchang
 from services import rules as rules_module
@@ -289,11 +290,32 @@ async def transit_ingresses(body: TransitChartRequest):
             combined.sort(key=lambda e: e["date"])
             events_by_area[area] = combined
 
+        # Compose per-area narrative synthesis (current → next → background).
+        rules = await rules_module.get_rules()
+        today = datetime.utcnow()
+        narrative_by_area: dict = {}
+        for area in life_areas:
+            try:
+                narrative_by_area[area] = compose_area_narrative(
+                    rules,
+                    body.chart_data,
+                    area,
+                    events_by_area[area],
+                    today,
+                    end_date,
+                    ayanamsha_val,
+                )
+            except Exception as ne:
+                # Narrative is enrichment — never fail the whole response on it.
+                print(f"[transit-ingresses] narrative compose failed for {area}: {ne}")
+                narrative_by_area[area] = ""
+
         return TransitIngressResponse(
             start_date=body.start_date,
             end_date=body.end_date,
             opening_snapshot=opening_snapshot,
             events_by_area=events_by_area,
+            narrative_by_area=narrative_by_area,
         )
 
     except ValueError as e:

@@ -1711,3 +1711,312 @@ def _parse_iso_date(s: Optional[str]) -> Optional[datetime]:
         return datetime.strptime(s, "%Y-%m-%d")
     except (ValueError, TypeError):
         return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Per-area NARRATIVE composer (Apr 2026)
+#
+# Synthesises events_by_area + chart state into a 3-paragraph prose
+# reading per area: current state → next inflection → background themes.
+# Reads top-to-bottom; the cards below are the receipts.
+# ────────────────────────────────────────────────────────────────────────────
+
+# Yogakaraka: a planet ruling kendra (1/4/7/10) AND trikona (1/5/9) that
+# isn't itself the lagna lord. Hard rule per natal lagna — invariant.
+# Sources: BPHS Ch. 7 (planetary lordships); Phaladeepika; modern texts.
+YOGAKARAKA_FOR_LAGNA: Dict[str, str] = {
+    "Taurus":    "Saturn",
+    "Cancer":    "Mars",
+    "Leo":       "Mars",
+    "Libra":     "Saturn",
+    "Capricorn": "Venus",
+    "Aquarius":  "Venus",
+}
+
+
+def _is_yogakaraka(planet: str, lagna: str) -> bool:
+    return YOGAKARAKA_FOR_LAGNA.get(lagna) == planet
+
+
+def _compute_sade_sati(
+    natal_chart: Dict, today: datetime, ayanamsha_val: float
+) -> Optional[Dict]:
+    """Detect if user is currently in Sade-Sati and which phase.
+
+    Phase 1: Saturn in 12th from natal Moon
+    Phase 2: Saturn in 1st from natal Moon (Janma Shani — heaviest)
+    Phase 3: Saturn in 2nd from natal Moon
+
+    Returns {phase, saturn_sign, moon_sign, days_remaining_in_phase} or None.
+    """
+    natal_moon = next(
+        (p for p in (natal_chart.get("planets") or []) if p.get("name") == "Moon"),
+        None,
+    )
+    if not natal_moon:
+        return None
+    moon_sign_idx = int(natal_moon.get("longitude", 0) / 30)
+
+    saturn_pos = _planet_position("Saturn", today, ayanamsha_val)
+    saturn_sign_idx = _sign_index(saturn_pos["longitude"])
+
+    diff = (saturn_sign_idx - moon_sign_idx) % 12
+    if diff == 11:
+        phase = 1
+    elif diff == 0:
+        phase = 2
+    elif diff == 1:
+        phase = 3
+    else:
+        return None
+
+    # Estimate when Saturn leaves the current sign (rough — daily walk
+    # bounded at 1100d). Used for "until" framing.
+    cursor = today
+    for d in range(1, 1100):
+        cursor = today + timedelta(days=d)
+        s = _planet_position("Saturn", cursor, ayanamsha_val)
+        if _sign_index(s["longitude"]) != saturn_sign_idx:
+            break
+    days_remaining = (cursor - today).days
+
+    return {
+        "phase": phase,
+        "saturn_sign": RASHI_NAMES[saturn_sign_idx],
+        "moon_sign": RASHI_NAMES[moon_sign_idx],
+        "days_remaining_in_phase": days_remaining,
+        "leaves_on": cursor.strftime("%Y-%m-%d"),
+    }
+
+
+def _format_human_date(iso: str) -> str:
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d")
+        return d.strftime("%b %-d, %Y") if hasattr(datetime, "strftime") else iso
+    except Exception:
+        return iso
+
+
+def _format_human_date_safe(iso: str) -> str:
+    """Cross-platform '%b %d, %Y' without leading zero."""
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d")
+        # Avoid %-d (Linux only) / %#d (Windows only) for portability
+        return f"{d.strftime('%b')} {d.day}, {d.year}"
+    except Exception:
+        return iso
+
+
+def _format_duration_human(days: int) -> str:
+    if days < 14:
+        return f"{days} days"
+    if days < 60:
+        return f"~{round(days / 7)} weeks"
+    return f"~{round(days / 30)} months"
+
+
+def _classify_signal(events: List[Dict]) -> str:
+    """Aggregate sentiment for a list of events: favorable / mixed / challenging."""
+    if not events:
+        return "neutral"
+    fav = sum(1 for e in events if e.get("classification") == "favorable")
+    unfav = sum(1 for e in events if e.get("classification") == "unfavorable")
+    if fav > unfav and unfav == 0:
+        return "favorable"
+    if unfav > fav and fav == 0:
+        return "challenging"
+    return "mixed"
+
+
+def compose_area_narrative(
+    rules: "RuleSet",
+    natal_chart: Dict,
+    area: str,
+    events: List[Dict],
+    today: datetime,
+    window_end: datetime,
+    ayanamsha_val: float,
+) -> str:
+    """Three-paragraph prose synthesis for one life area.
+
+    Para 1: current state (active PD + active ingresses + dasha context)
+    Para 2: next inflection (next 1-3 events on the same date, with what changes)
+    Para 3: background (longest-duration ingresses + Sade-Sati if applicable)
+    """
+    lagna = natal_chart.get("lagna", "")
+    paras: List[str] = []
+
+    # ── Para 1: CURRENT STATE ──
+    current = sorted(
+        [e for e in events if e.get("is_current")],
+        key=lambda e: 0 if e.get("event_type") == "pratyantardasha" else 1,
+    )
+    if current:
+        active_pd = next((e for e in current if e.get("event_type") == "pratyantardasha"), None)
+        active_ingresses = [e for e in current if e.get("event_type") == "ingress"]
+
+        bits: List[str] = []
+        if active_pd:
+            md = active_pd.get("md_lord")
+            ad = active_pd.get("ad_lord")
+            pd = active_pd.get("planet")
+            until_iso = active_pd.get("next_ingress_date")
+            until_str = _format_human_date_safe(until_iso) if until_iso else "later this period"
+            bits.append(
+                f"Currently you're in **{md}-{ad}-{pd}** sub-period "
+                f"(running until {until_str})."
+            )
+        if active_ingresses:
+            ingress_phrases = []
+            for e in active_ingresses[:3]:
+                p = e.get("planet")
+                h = e.get("to_house")
+                since_iso = e.get("date")
+                since = _format_human_date_safe(since_iso) if since_iso else ""
+                yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
+                ingress_phrases.append(f"**{p}**{yk_note} has been transiting your H{h} since {since}")
+            if ingress_phrases:
+                bits.append(" and ".join(ingress_phrases) + ".")
+
+        signal = _classify_signal(current)
+        if signal == "favorable":
+            bits.append(f"For {area}, the active signals lean **favorable** — momentum is on your side.")
+        elif signal == "challenging":
+            bits.append(f"For {area}, the active signals lean **challenging** — proceed with patience.")
+        elif signal == "mixed":
+            bits.append(f"For {area}, the active signals are **mixed** — read each below to see what's pushing which way.")
+
+        paras.append(" ".join(bits))
+
+    # ── Para 2: NEXT INFLECTION ──
+    future = sorted(
+        [e for e in events if not e.get("is_current") and _parse_iso_date(e["date"]) and _parse_iso_date(e["date"]) > today],
+        key=lambda e: e["date"],
+    )
+    if future:
+        next_date = future[0]["date"]
+        same_day = [e for e in future if e["date"] == next_date]
+        days_away = (_parse_iso_date(next_date) - today).days
+        when_str = _format_human_date_safe(next_date)
+
+        if days_away == 0:
+            timing = "today"
+        elif days_away == 1:
+            timing = "tomorrow"
+        elif days_away < 14:
+            timing = f"in **{days_away} days**"
+        elif days_away < 60:
+            timing = f"in **{round(days_away / 7)} weeks**"
+        else:
+            timing = f"in **{round(days_away / 30)} months**"
+
+        # Describe what changes
+        change_phrases = []
+        for e in same_day[:3]:
+            if e.get("event_type") == "pratyantardasha":
+                pd = e.get("planet")
+                md = e.get("md_lord")
+                ad = e.get("ad_lord")
+                karaka_note = ""
+                if pd in rules.area_karakas.get(area, {}):
+                    karaka_note = f" — {pd} is a natural significator of {area}"
+                change_phrases.append(
+                    f"the {md}-{ad}-{pd} pratyantardasha begins{karaka_note}"
+                )
+            else:
+                p = e.get("planet")
+                from_h = e.get("from_house")
+                to_h = e.get("to_house")
+                yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
+                change_phrases.append(
+                    f"**{p}**{yk_note} moves from your H{from_h} into H{to_h}"
+                )
+
+        signal = _classify_signal(same_day)
+        signal_word = {
+            "favorable": "a more supportive window opens",
+            "challenging": "the tone tightens",
+            "mixed": "the picture shifts in mixed ways",
+            "neutral": "the configuration changes",
+        }[signal]
+
+        if change_phrases:
+            change_str = "; ".join(change_phrases)
+            paras.append(
+                f"On **{when_str}** ({timing}), {signal_word}: {change_str}."
+            )
+
+    # ── Para 3: BACKGROUND THEMES ──
+    bg_bits: List[str] = []
+
+    # Longest-duration ingress events (slow planets shaping the window)
+    long_ingresses = sorted(
+        [e for e in events if e.get("event_type") == "ingress" and not e.get("is_current")],
+        key=lambda e: e.get("duration_days", 0),
+        reverse=True,
+    )[:1]
+    # Plus any current slow-planet placements
+    current_slow = [
+        e for e in events
+        if e.get("is_current") and e.get("event_type") == "ingress"
+        and e.get("planet") in {"Saturn", "Jupiter", "Rahu", "Ketu"}
+    ]
+    background_events = current_slow + long_ingresses
+
+    for e in background_events[:2]:
+        p = e.get("planet")
+        to_h = e.get("to_house")
+        dur = e.get("duration_days", 0)
+        until_iso = e.get("next_ingress_date")
+        yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
+        if until_iso:
+            until_str = _format_human_date_safe(until_iso)
+            bg_bits.append(
+                f"**{p}**{yk_note} in your H{to_h} is the slow background "
+                f"({_format_duration_human(dur)} arc, until {until_str})."
+            )
+        else:
+            bg_bits.append(
+                f"**{p}**{yk_note} sits in your H{to_h} as the slow background "
+                f"for the rest of this window."
+            )
+
+    # Sade-Sati state
+    sade = _compute_sade_sati(natal_chart, today, ayanamsha_val)
+    if sade:
+        phase = sade["phase"]
+        leaves_str = _format_human_date_safe(sade["leaves_on"])
+        moon_sign = sade["moon_sign"]
+        saturn_sign = sade["saturn_sign"]
+        is_sat_yk = _is_yogakaraka("Saturn", lagna)
+        if phase == 1:
+            phase_text = (
+                f"You're in **Sade-Sati Phase 1** (Saturn in {saturn_sign} = "
+                f"12th from your natal Moon in {moon_sign}), continuing until {leaves_str}."
+            )
+        elif phase == 2:
+            phase_text = (
+                f"You're in **Sade-Sati Phase 2 — Janma Shani** (Saturn over your "
+                f"natal Moon in {moon_sign}), the classical heaviest phase, until {leaves_str}."
+            )
+        else:
+            phase_text = (
+                f"You're in **Sade-Sati Phase 3** (Saturn in {saturn_sign} = "
+                f"2nd from your natal Moon in {moon_sign}), the closing phase, until {leaves_str}."
+            )
+
+        if is_sat_yk:
+            yk_text = (
+                f" Per Phaladeepika Ch. 26 + Sanjay Rath, your Saturn is "
+                f"yogakaraka so the lagna-referenced thread (career, material) tends "
+                f"positive even during Sade-Sati — but Moon-referenced pressure "
+                f"(mind, health, mother, public standing) runs in parallel and is not cancelled."
+            )
+            phase_text += yk_text
+
+        bg_bits.append(phase_text)
+
+    if bg_bits:
+        paras.append(" ".join(bg_bits))
+
+    return "\n\n".join(paras) if paras else ""

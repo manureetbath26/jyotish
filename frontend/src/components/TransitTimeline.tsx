@@ -39,6 +39,23 @@ export interface IngressEvent {
 interface TransitTimelineProps {
   lifeArea: string;
   events: IngressEvent[];
+  /** 3-paragraph synthesised reading; rendered above the cards. */
+  narrative?: string;
+}
+
+/** Render a paragraph with **bold** runs. Trusted server-composed text only. */
+function renderRichText(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-semibold text-amber-300">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
 }
 
 const AREA_LABELS: Record<string, string> = {
@@ -89,17 +106,33 @@ function classificationStyles(c: IngressEvent["classification"]) {
   };
 }
 
-export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
+export function TransitTimeline({ lifeArea, events, narrative }: TransitTimelineProps) {
   const label = AREA_LABELS[lifeArea] ?? lifeArea;
+  const narrativeParas = narrative
+    ? narrative.split(/\n\n+/).map((p) => p.trim()).filter(Boolean)
+    : [];
 
   return (
     <div>
       <h3 className="text-lg font-semibold text-amber-400 mb-1">{label}</h3>
+
+      {/* Synthesised narrative — current state → next inflection → background */}
+      {narrativeParas.length > 0 && (
+        <div className="mb-5 space-y-3 rounded-lg border border-amber-800/40 bg-slate-900/40 p-4">
+          {narrativeParas.map((para, i) => (
+            <p key={i} className="text-sm text-slate-300 leading-relaxed">
+              {renderRichText(para)}
+            </p>
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-slate-500 mb-4">
-        Cards are <span className="text-slate-300">transit ingresses</span> (a tracked
-        planet enters a new sign — Mars + Jupiter, Saturn, Rahu, Ketu) and{" "}
-        <span className="text-purple-400">pratyantardasha shifts</span> (sub-sub-period
-        changes inside your current dasha — the actual fine-timing signal).
+        Receipts below — each card is a{" "}
+        <span className="text-slate-300">transit ingress</span> (Mars + slow planets
+        enter a new sign) or{" "}
+        <span className="text-purple-400">pratyantardasha shift</span> (sub-sub-period
+        change inside your current dasha).
       </p>
 
       {events.length === 0 ? (

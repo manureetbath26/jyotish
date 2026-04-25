@@ -21,6 +21,7 @@ interface TransitData {
   end_date: string;
   opening_snapshot: PlanetSnapshot[];
   events_by_area: Record<string, IngressEvent[]>;
+  narrative_by_area?: Record<string, string>;
 }
 
 interface TransitCalculatorProps {
@@ -356,6 +357,7 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
                 <TransitTimeline
                   lifeArea={areaId}
                   events={transitData.events_by_area[areaId] ?? []}
+                  narrative={transitData.narrative_by_area?.[areaId]}
                 />
               </div>
             ))}
