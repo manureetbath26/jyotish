@@ -17,79 +17,13 @@
 import type { ChartResponse, CurrentTransitResponse } from "./api";
 import type { AshtakvargaAnalysis } from "./ashtakvargaEngine";
 import { SIGN_INDEX } from "./charaDashaEngine";
-import { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
+import type { ChatRules } from "./rulesServer";
 
 // ────────────────────────────────────────────────────────────────────────────
-// House & planet significations
+// All interpretive constants (PLANET_VIBE, GOCHARA_THRESHOLD, BENEFIC /
+// MALEFIC sets, house theme phrases) are now loaded from Postgres via
+// rulesServer.ts and passed in via the `rules` parameter on extractDailyFacts.
 // ────────────────────────────────────────────────────────────────────────────
-
-// House short-phrases sourced from lib/houseSignifications.ts (the 12
-// DB-backed rows). We consume the `.short` field here because the daily
-// reading wants a tight, colloquial phrasing rather than the full
-// signification list.
-function houseTheme(house: number): string {
-  return HOUSE_SIGNIFICATIONS[house]?.short ?? "";
-}
-
-const PLANET_VIBE: Record<string, { positive: string; cautious: string }> = {
-  Sun: {
-    positive: "confidence, recognition, clarity of purpose",
-    cautious: "ego friction, clashes with authority",
-  },
-  Moon: {
-    positive: "emotional openness, comfort, social warmth",
-    cautious: "mood volatility, over-sensitivity",
-  },
-  Mars: {
-    positive: "drive, productivity, courage to act",
-    cautious: "impatience, conflict, accidents",
-  },
-  Mercury: {
-    positive: "sharp thinking, good communication, deals",
-    cautious: "over-analysis, miscommunication",
-  },
-  Jupiter: {
-    positive: "good counsel, expansion, grace, opportunities",
-    cautious: "overconfidence, over-committing",
-  },
-  Venus: {
-    positive: "harmony, pleasure, artistic flow, good relationships",
-    cautious: "indulgence, relationship drama",
-  },
-  Saturn: {
-    positive: "discipline, structure, slow steady progress",
-    cautious: "delays, fatigue, cold interactions",
-  },
-  Rahu: {
-    positive: "unexpected openings, unusual gains, innovation",
-    cautious: "confusion, distraction, inflated promises",
-  },
-  Ketu: {
-    positive: "insight, detachment, spiritual clarity",
-    cautious: "withdrawal, loss of interest, isolation",
-  },
-};
-
-// Classical benefic/malefic flavour for simple tone shading
-const BENEFICS = new Set(["Jupiter", "Venus", "Mercury", "Moon"]);
-const MALEFICS = new Set(["Sun", "Mars", "Saturn", "Rahu", "Ketu"]);
-
-// ────────────────────────────────────────────────────────────────────────────
-// Ashtakvarga gochara thresholds (classical, BPHS ch 70)
-// A transiting planet is "active" when its BAV in the transit sign meets
-// these thresholds. Mnemonic: high benefics need to be well-supported to
-// actually deliver; malefics' thresholds are lower because they assert
-// themselves more easily.
-// ────────────────────────────────────────────────────────────────────────────
-const GOCHARA_THRESHOLD: Record<string, number> = {
-  Sun: 4,
-  Moon: 4,
-  Mars: 3,
-  Mercury: 5,
-  Jupiter: 5,
-  Venus: 4,
-  Saturn: 3,
-};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -168,10 +102,10 @@ function getCurrentDashaPair(natal: ChartResponse): {
   return { mahadasha: md, antardasha: ad, endsOn };
 }
 
-function classifyDasha(md: string, ad: string): string {
+function classifyDasha(rules: ChatRules, md: string, ad: string): string {
   // Short, honest hint based on benefic/malefic flavour of the pair
-  const mdNature = BENEFICS.has(md) ? "benefic" : MALEFICS.has(md) ? "malefic" : "mixed";
-  const adNature = BENEFICS.has(ad) ? "benefic" : MALEFICS.has(ad) ? "malefic" : "mixed";
+  const mdNature = rules.planetNature[md] ?? "neutral";
+  const adNature = rules.planetNature[ad] ?? "neutral";
   if (mdNature === "benefic" && adNature === "benefic") {
     return "an expansive, supportive background phase";
   }
@@ -200,10 +134,13 @@ export function extractDailyFacts(
   transits: CurrentTransitResponse,
   ashtakvarga: AshtakvargaAnalysis,
   profileName: string,
+  rules: ChatRules,
   panchang?: PanchangSnapshot,
 ): DailyFacts {
   const natalLagna = natal.lagna;
   const today = transits.transit_date.slice(0, 10);
+  const houseTheme = (h: number) => rules.houseSignification[h] ?? "";
+  const isBenefic = (name: string) => rules.planetNature[name] === "benefic";
 
   // ── Moon pulse ────────────────────────────────────────────────────────────
   const transitMoon = transits.planets.find((p) => p.name === "Moon");
@@ -214,7 +151,7 @@ export function extractDailyFacts(
     sign: moonSign,
     nakshatra: moonNakshatra,
     houseFromLagna: moonHouse,
-    houseTheme: houseTheme(moonHouse) ?? "",
+    houseTheme: houseTheme(moonHouse),
     narrative: moonHouse
       ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${houseTheme(moonHouse)}.`
       : "",
@@ -226,7 +163,7 @@ export function extractDailyFacts(
     mahadasha,
     antardasha,
     endsOn,
-    themeHint: classifyDasha(mahadasha, antardasha),
+    themeHint: classifyDasha(rules, mahadasha, antardasha),
   };
 
   // ── Active vs quiet transits (by BAV threshold) ───────────────────────────
@@ -234,11 +171,11 @@ export function extractDailyFacts(
   const quiet: QuietTransit[] = [];
   for (const p of transits.planets) {
     if (p.name === "Moon") continue; // covered in moonPulse
-    const vibe = PLANET_VIBE[p.name];
+    const vibe = rules.planetVibe[p.name];
     if (!vibe) continue;
     const house = houseFromLagna(p.rashi, natalLagna);
     const signIdx = SIGN_INDEX[p.rashi as keyof typeof SIGN_INDEX] ?? 0;
-    const thresh = GOCHARA_THRESHOLD[p.name] ?? 0;
+    const thresh = rules.gocharaThreshold[p.name] ?? 0;
     // Rahu/Ketu don't have their own Prastara chart; use Sarva as proxy / skip
     const bav = thresh ? bavForPlanetInSign(ashtakvarga, p.name, signIdx) : 0;
 
@@ -247,12 +184,11 @@ export function extractDailyFacts(
         planet: p.name,
         transitSign: p.rashi,
         houseFromLagna: house,
-        houseTheme: houseTheme(house) ?? "",
+        houseTheme: houseTheme(house),
         bav,
         threshold: thresh,
-        nature: BENEFICS.has(p.name) ? "benefic" : "malefic",
-        effectIfActive:
-          BENEFICS.has(p.name) ? vibe.positive : vibe.cautious,
+        nature: isBenefic(p.name) ? "benefic" : "malefic",
+        effectIfActive: isBenefic(p.name) ? vibe.positive : vibe.cautious,
       });
     } else if (thresh) {
       quiet.push({
@@ -269,7 +205,7 @@ export function extractDailyFacts(
         planet: p.name,
         transitSign: p.rashi,
         houseFromLagna: house,
-        houseTheme: houseTheme(house) ?? "",
+        houseTheme: houseTheme(house),
         bav: 0,
         threshold: 0,
         nature: "malefic",

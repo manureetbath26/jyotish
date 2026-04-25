@@ -20,6 +20,7 @@ import {
 import type { CurrentTransitResponse } from "@/lib/api";
 import { resolveQuestionWindow } from "@/lib/questionWindow";
 import { buildWindowContext } from "@/lib/windowContext";
+import { getChatRules } from "@/lib/rulesServer";
 
 export const dynamic = "force-dynamic";
 
@@ -160,15 +161,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Load the DB-backed interpretive rules (5-min in-process cache).
+  const rules = await getChatRules();
+
   // Build the window-scoped context (dasha slice, clipped highlights,
   // projected slow-planet transits, Jaimini overlap, house SAV focus).
-  const classification = classifyQuestion(trimmedQuestion);
+  const classification = classifyQuestion(rules, trimmedQuestion);
   const windowContext = buildWindowContext({
     chart: chartData,
     report,
     window: questionWindow,
     categories: classification.categories,
     houses: classification.houses,
+    rules,
     enriched,
     currentTransits,
     ashtakvarga,
@@ -181,6 +186,7 @@ export async function POST(req: NextRequest) {
     trimmedQuestion,
     chartData,
     report,
+    rules,
     enriched,
     windowContext,
   );
@@ -193,6 +199,7 @@ export async function POST(req: NextRequest) {
         trimmedQuestion,
         chartData,
         report,
+        rules,
         enriched,
         questionWindow,
         windowContext,
@@ -206,6 +213,7 @@ export async function POST(req: NextRequest) {
             chartData,
             currentTransits,
             ashtakvarga,
+            rules,
           );
         } catch (err) {
           console.warn("[chat] daily context assembly failed:", err);
@@ -293,8 +301,9 @@ function dailyContextFromShared(
   chartData: ChartResponse,
   transits: CurrentTransitResponse,
   ashtakvarga: AshtakvargaAnalysis,
+  rules: import("@/lib/rulesServer").ChatRules,
 ): DailyContext {
-  const dailyFacts = extractDailyFacts(chartData, transits, ashtakvarga, "");
+  const dailyFacts = extractDailyFacts(chartData, transits, ashtakvarga, "", rules);
   return {
     date: dailyFacts.date,
     moonSign: dailyFacts.moonPulse.sign,

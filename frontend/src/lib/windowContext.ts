@@ -23,7 +23,7 @@ import type {
 import { ASHTAKVARGA_PLANETS } from "./ashtakvargaEngine";
 import { SIGN_INDEX, ZODIAC_ORDER, type Sign } from "./charaDashaEngine";
 import type { EnrichedChatContext } from "./chatEnrichment";
-import { HOUSE_SIGNIFICATIONS } from "./houseSignifications";
+import type { ChatRules } from "./rulesServer";
 import type {
   DashaPrediction,
   LifeEventsReport,
@@ -33,58 +33,15 @@ import type { QuestionWindow } from "./questionWindow";
 import { formatMonth, toIsoDate } from "./questionWindow";
 
 // ────────────────────────────────────────────────────────────────────────────
-// Gochara thresholds (classical BPHS ch. 70) — duplicated from dailyEngine
-// intentionally to avoid a circular import.
+// Interpretive constants (gochara threshold, planet vibe, tracked planets,
+// benefic/malefic) are loaded from Postgres via rulesServer.ts and passed
+// in via the `rules` parameter. Mean motion stays in code — physics
+// constant, not interpretation.
 // ────────────────────────────────────────────────────────────────────────────
-const GOCHARA_THRESHOLD: Record<string, number> = {
-  Sun: 4,
-  Moon: 4,
-  Mars: 3,
-  Mercury: 5,
-  Jupiter: 5,
-  Venus: 4,
-  Saturn: 3,
-};
-
-const BENEFICS = new Set(["Jupiter", "Venus", "Mercury", "Moon"]);
-
-const PLANET_VIBE: Record<string, { positive: string; cautious: string }> = {
-  Sun: {
-    positive: "recognition, authority, clarity of purpose",
-    cautious: "ego friction, clashes with authority",
-  },
-  Mars: {
-    positive: "drive, decisive action, courage",
-    cautious: "impatience, conflict, accidents",
-  },
-  Mercury: {
-    positive: "sharp thinking, communication, deals",
-    cautious: "over-analysis, miscommunication",
-  },
-  Jupiter: {
-    positive: "expansion, grace, opportunities, wisdom",
-    cautious: "overconfidence, over-committing, weight",
-  },
-  Venus: {
-    positive: "harmony, partnerships, artistic flow",
-    cautious: "indulgence, relationship drama",
-  },
-  Saturn: {
-    positive: "discipline, structure, slow compounding progress",
-    cautious: "delays, fatigue, heavy responsibility",
-  },
-  Rahu: {
-    positive: "unexpected openings, unusual gains, innovation",
-    cautious: "confusion, distraction, inflated promises",
-  },
-  Ketu: {
-    positive: "insight, detachment, spiritual clarity",
-    cautious: "withdrawal, loss of interest, isolation",
-  },
-};
 
 // Mean tropical/sidereal motion in degrees per day. Positive = prograde.
 // Rahu/Ketu are always retrograde. Mars/Sun included for short windows.
+// FRAMEWORK CONSTANT — astrophysics, not interpretation.
 const MEAN_MOTION_DEG_PER_DAY: Record<string, number> = {
   Sun: 0.9856,
   Mars: 0.5240,
@@ -93,10 +50,6 @@ const MEAN_MOTION_DEG_PER_DAY: Record<string, number> = {
   Rahu: -0.0529,
   Ketu: -0.0529,
 };
-
-// Which planets we project over a window. Mercury/Venus/Moon change too
-// fast to be meaningful mid-window; Sun we include only for short windows.
-const WINDOW_TRANSIT_PLANETS = ["Jupiter", "Saturn", "Rahu", "Ketu"];
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -184,6 +137,9 @@ export interface BuildWindowContextOptions {
   window: QuestionWindow;
   categories: string[]; // from classifyQuestion
   houses: number[];
+  /** DB-loaded interpretive rules (planet vibe, gochara thresholds,
+   *  benefic/malefic, house themes, tracked planet list). */
+  rules: ChatRules;
   enriched?: EnrichedChatContext;
   /** Current transits — when omitted, window transits are skipped. */
   currentTransits?: CurrentTransitResponse;
@@ -195,7 +151,7 @@ export interface BuildWindowContextOptions {
 export function buildWindowContext(
   opts: BuildWindowContextOptions,
 ): WindowContext {
-  const { chart, report, window, categories, houses, enriched } = opts;
+  const { chart, report, window, categories, houses, enriched, rules } = opts;
   const now = opts.now ?? new Date();
 
   const dashaSegments = sliceDashas(chart, report, window);
@@ -208,10 +164,11 @@ export function buildWindowContext(
           opts.ashtakvarga,
           window,
           now,
+          rules,
         )
       : [];
   const jaiminiWindows = clipJaiminiWindows(enriched, window);
-  const categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign);
+  const categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign, rules);
 
   const summary = buildSummary(
     window,
@@ -348,16 +305,20 @@ function projectWindowTransits(
   ashtakvarga: AshtakvargaAnalysis | undefined,
   window: QuestionWindow,
   now: Date,
+  rules: ChatRules,
 ): WindowTransit[] {
   const natalLagna = chart.lagna as Sign;
   const startMs = window.start.getTime();
   const endMs = window.end.getTime();
   const spanDays = (endMs - startMs) / 86_400_000;
 
-  const planets = [...WINDOW_TRANSIT_PLANETS];
+  const planets = [...rules.windowTransitPlanets];
   // For short windows (≤ 60 days) include faster planets too so the
   // answer has real daily-granularity signals.
   if (spanDays <= 60) planets.push("Mars", "Sun");
+
+  const houseTheme = (h: number) => rules.houseSignification[h] ?? "";
+  const isBenefic = (name: string) => rules.planetNature[name] === "benefic";
 
   const out: WindowTransit[] = [];
   for (const name of planets) {
@@ -388,7 +349,7 @@ function projectWindowTransits(
       natalLagna,
     );
 
-    const threshold = GOCHARA_THRESHOLD[name] ?? 0;
+    const threshold = rules.gocharaThreshold[name] ?? 0;
     const isNode = name === "Rahu" || name === "Ketu";
     const midBav =
       ashtakvarga && !isNode
@@ -400,8 +361,8 @@ function projectWindowTransits(
     else if (threshold && midBav >= threshold) gochara = "active";
     else gochara = "muted";
 
-    const nature = BENEFICS.has(name) ? "benefic" : "malefic";
-    const vibe = PLANET_VIBE[name];
+    const nature = isBenefic(name) ? "benefic" : "malefic";
+    const vibe = rules.planetVibe[name];
     const effect = vibe
       ? nature === "benefic"
         ? vibe.positive
@@ -530,9 +491,11 @@ function collectHouseFocus(
   enriched: EnrichedChatContext | undefined,
   houses: number[],
   lagnaSign: Sign,
+  rules: ChatRules,
 ): HouseFocus[] {
   if (!enriched || enriched.houseSav.length === 0 || houses.length === 0)
     return [];
+  const houseTheme = (h: number) => rules.houseSignification[h] ?? "";
   const out: HouseFocus[] = [];
   for (const h of houses.slice(0, 3)) {
     const row = enriched.houseSav.find((r) => r.house === h);
@@ -601,10 +564,6 @@ function houseFromLagna(transitSign: string, natalLagna: Sign): number {
   const t = SIGN_INDEX[transitSign as Sign] ?? 0;
   const l = SIGN_INDEX[natalLagna] ?? 0;
   return ((t - l + 12) % 12) + 1;
-}
-
-function houseTheme(house: number): string {
-  return HOUSE_SIGNIFICATIONS[house]?.short ?? "";
 }
 
 function normalizeDeg(d: number): number {

@@ -29,7 +29,9 @@ async function main() {
     console.log("\n" + "=".repeat(70));
     console.log("Q:", q);
     console.log("=".repeat(70));
-    const { answer } = answerAstrologyQuestion(q, chart, report, enriched);
+    const { getChatRules } = await import("../src/lib/rulesServer");
+    const rules = await getChatRules();
+    const { answer } = answerAstrologyQuestion(q, chart, report, rules, enriched);
     console.log(answer);
   }
 }

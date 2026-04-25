@@ -539,3 +539,28 @@ model RuleSetting {
   notes     String?
   updatedAt DateTime @updatedAt
 }
+
+/// Question classification categories for the chat engine — keywords +
+/// relevant houses + relevant planets per life-area. 16 rows. Matches
+/// LifeAreaHouseRelevance / LifeAreaKaraka semantically but exists
+/// separately because chat needs the keyword list (NLU input) too.
+model QuestionCategory {
+  id        String   @id  // e.g. "marriage", "career_growth"
+  /// Keywords that match this category in user questions (lowercase)
+  keywords  String[]
+  /// Houses relevant to this category (1-12)
+  houses    Int[]
+  /// Planets relevant to this category
+  planets   String[]
+  updatedAt DateTime @updatedAt
+}
+
+/// Per-planet BAV (Bhinnashtakvarga) bindu threshold for classical
+/// gochara — only when transiting planet's BAV in the transit sign meets
+/// or exceeds this is the transit considered "active" (BPHS Ch. 70).
+/// 7 rows (Sun-Saturn). Rahu/Ketu use nodal logic, no threshold.
+model GocharaThreshold {
+  planet    String  @id
+  threshold Int     // 0-8 bindus
+  updatedAt DateTime @updatedAt
+}

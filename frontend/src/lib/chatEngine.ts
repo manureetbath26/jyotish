@@ -17,8 +17,13 @@ import {
 import type { EnrichedChatContext } from "@/lib/chatEnrichment";
 import type { QuestionWindow } from "@/lib/questionWindow";
 import type { WindowContext } from "@/lib/windowContext";
+import type { ChatRules } from "@/lib/rulesServer";
 
 // ─── Question Classification ────────────────────────────────────────────────
+//
+// QUESTION_CATEGORIES (16 rows), TIME_SCOPE_KEYWORDS, and PAST_KEYWORDS now
+// live in the Postgres rules tables (QuestionCategory + RuleSetting). Loaded
+// via rulesServer.getChatRules() and passed in via the `rules` parameter.
 
 interface QuestionCategory {
   id: string;
@@ -26,116 +31,6 @@ interface QuestionCategory {
   houses: number[];
   planets: string[];
 }
-
-const QUESTION_CATEGORIES: QuestionCategory[] = [
-  {
-    id: "marriage",
-    keywords: ["marriage", "marry", "married", "wedding", "spouse", "husband", "wife", "partner", "partnership", "soulmate", "life partner", "shaadi", "vivah"],
-    houses: [7, 2, 11],
-    planets: ["Venus", "Jupiter"],
-  },
-  {
-    id: "romance",
-    keywords: ["love", "romance", "romantic", "relationship", "dating", "boyfriend", "girlfriend", "attraction", "pyaar"],
-    houses: [5, 7, 11],
-    planets: ["Venus", "Moon"],
-  },
-  {
-    id: "children",
-    keywords: ["children", "child", "kids", "baby", "pregnancy", "pregnant", "son", "daughter", "progeny", "conceive", "fertility", "santan"],
-    houses: [5, 9, 2],
-    planets: ["Jupiter"],
-  },
-  {
-    id: "career_growth",
-    keywords: ["career", "job", "work", "profession", "promotion", "professional", "salary", "boss", "office", "employment", "naukri"],
-    houses: [10, 6, 11, 1],
-    planets: ["Sun", "Saturn"],
-  },
-  {
-    id: "wealth",
-    keywords: ["money", "wealth", "rich", "income", "financial", "finance", "earn", "earnings", "prosperity", "dhan", "paisa"],
-    houses: [2, 11, 9, 5],
-    planets: ["Jupiter", "Venus"],
-  },
-  {
-    id: "property",
-    keywords: ["property", "house", "home", "flat", "apartment", "land", "vehicle", "car", "real estate", "ghar", "plot"],
-    houses: [4, 11, 2],
-    planets: ["Mars", "Moon"],
-  },
-  {
-    id: "education",
-    keywords: ["education", "study", "studies", "exam", "academic", "college", "university", "degree", "learn", "school", "padhai"],
-    houses: [4, 5, 9],
-    planets: ["Jupiter", "Mercury"],
-  },
-  {
-    id: "fame",
-    keywords: ["fame", "famous", "recognition", "reputation", "status", "public", "celebrity", "influence", "social media"],
-    houses: [10, 1, 5, 11],
-    planets: ["Sun", "Rahu"],
-  },
-  {
-    id: "new_business",
-    keywords: ["business", "startup", "venture", "entrepreneurship", "self-employed", "company", "enterprise", "vyapar"],
-    houses: [7, 10, 3, 11],
-    planets: ["Mercury"],
-  },
-  {
-    id: "foreign_travel",
-    keywords: ["foreign", "abroad", "travel", "overseas", "immigration", "visa", "settle abroad", "videsh"],
-    houses: [9, 12, 3],
-    planets: ["Rahu"],
-  },
-  {
-    id: "spiritual_growth",
-    keywords: ["spiritual", "spirituality", "meditation", "moksha", "enlightenment", "guru", "dharma", "temple", "prayer", "adhyatm"],
-    houses: [9, 12, 5],
-    planets: ["Jupiter", "Ketu"],
-  },
-  {
-    id: "health_issues",
-    keywords: ["health", "illness", "disease", "sick", "hospital", "surgery", "medical", "doctor", "fitness", "body", "rogam", "bimari"],
-    houses: [6, 8, 1, 12],
-    planets: ["Saturn", "Mars", "Rahu"],
-  },
-  {
-    id: "relationship_conflict",
-    keywords: ["divorce", "separation", "breakup", "conflict", "fight", "argument", "dispute", "cheating", "toxicity"],
-    houses: [7, 6, 12, 8],
-    planets: ["Mars", "Saturn", "Rahu", "Ketu"],
-  },
-  {
-    id: "financial_loss",
-    keywords: ["loss", "debt", "loan", "bankrupt", "poverty", "expense", "waste", "fraud", "scam"],
-    houses: [12, 6, 8, 2],
-    planets: ["Rahu", "Saturn"],
-  },
-  {
-    id: "career_setback",
-    keywords: ["fired", "layoff", "terminated", "job loss", "demoted", "unemployed", "resign"],
-    houses: [10, 8, 12],
-    planets: ["Saturn", "Rahu"],
-  },
-  {
-    id: "protective_disruption",
-    keywords: ["redirect", "protection", "purpose", "disruption for good", "blessing in disguise", "life change", "transformation"],
-    houses: [1, 8],
-    planets: ["Ketu"],
-  },
-];
-
-// Past-specific keywords — only show past events if user explicitly asks
-const PAST_KEYWORDS = [
-  "past", "before", "earlier", "previous", "ago", "happened", "did i", "was there",
-  "last year", "back then", "history", "already",
-  // past-tense verbs & phrasings
-  " did ", " was ", " were ", " had ", "used to", "meant to", "supposed to",
-  "taught", "teach me", "learn", "learned", "learnt", "lesson", "experienced",
-  "went through", "have been", "has been", "went ", "came ", "felt ",
-  "looking back", "in hindsight", "retrospect",
-];
 
 // Detect explicit year / year-range references (e.g. "2015", "2015-2020", "between 2015 and 2020")
 const YEAR_RANGE_RE = /\b(19|20)\d{2}\b/g;
@@ -163,17 +58,10 @@ function highlightsInYearRange(highlights: LifeHighlight[], range: { start?: num
 
 export type TimeScope = "today" | "thisWeek" | "thisMonth" | "general";
 
-// Near-term time-scope keywords. Ordered by specificity — first match wins.
-const TIME_SCOPE_KEYWORDS: { scope: TimeScope; keywords: string[] }[] = [
-  { scope: "today", keywords: ["today", "tonight", "right now", "this morning", "this afternoon", "this evening", "tomorrow"] },
-  { scope: "thisWeek", keywords: ["this week", "next week", "this weekend", "coming days", "next few days"] },
-  { scope: "thisMonth", keywords: ["this month", "next month", "coming weeks"] },
-];
-
-function detectTimeScope(question: string): TimeScope {
+function detectTimeScope(rules: ChatRules, question: string): TimeScope {
   const lower = question.toLowerCase();
-  for (const { scope, keywords } of TIME_SCOPE_KEYWORDS) {
-    if (keywords.some((k) => lower.includes(k))) return scope;
+  for (const { scope, keywords } of rules.timeScopeKeywords) {
+    if (keywords.some((k) => lower.includes(k))) return scope as TimeScope;
   }
   return "general";
 }
@@ -188,13 +76,13 @@ export interface ClassificationResult {
   timeScope: TimeScope;
 }
 
-export function classifyQuestion(question: string): ClassificationResult {
+export function classifyQuestion(rules: ChatRules, question: string): ClassificationResult {
   const lower = question.toLowerCase();
   // Pad with spaces so keywords like " did " with word boundaries match at start/end
   const padded = ` ${lower} `;
   const matched: QuestionCategory[] = [];
 
-  for (const cat of QUESTION_CATEGORIES) {
+  for (const cat of rules.questionCategories) {
     for (const kw of cat.keywords) {
       if (lower.includes(kw)) {
         matched.push(cat);
@@ -206,8 +94,8 @@ export function classifyQuestion(question: string): ClassificationResult {
   const yearRange = extractYearRange(lower) ?? undefined;
   const currentYear = new Date().getFullYear();
   const yearSuggestsPast = !!(yearRange && yearRange.start && yearRange.start < currentYear);
-  const askingAboutPast = yearSuggestsPast || PAST_KEYWORDS.some(kw => padded.includes(kw));
-  const timeScope = detectTimeScope(question);
+  const askingAboutPast = yearSuggestsPast || rules.pastKeywords.some(kw => padded.includes(kw));
+  const timeScope = detectTimeScope(rules, question);
 
   if (matched.length === 0) {
     return { categories: ["general"], houses: [], planets: [], isGeneral: true, askingAboutPast, yearRange, timeScope };
@@ -628,13 +516,14 @@ export function answerAstrologyQuestion(
   question: string,
   chart: ChartResponse,
   report: LifeEventsReport,
+  rules: ChatRules,
   enriched?: EnrichedChatContext,
   windowContext?: WindowContext,
 ): ChatAnswer {
   const lower = question.toLowerCase();
   const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
 
-  const classification = classifyQuestion(question);
+  const classification = classifyQuestion(rules, question);
 
   let answer: string;
 
@@ -777,13 +666,14 @@ export function extractAnswerFacts(
   question: string,
   chart: ChartResponse,
   report: LifeEventsReport,
+  rules: ChatRules,
   enriched?: EnrichedChatContext,
   window?: QuestionWindow,
   windowContext?: WindowContext,
 ): AnswerFacts {
   const lower = question.toLowerCase();
   const isDashaQuestion = /dasha|period|mahadasha|antardasha|timing|when will|how long/.test(lower);
-  const classification = classifyQuestion(question);
+  const classification = classifyQuestion(rules, question);
 
   const categoryIds = classification.categories;
   const categories = getRelevantCategories(report, categoryIds);

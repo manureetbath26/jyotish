@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { ChartResponse, CurrentTransitResponse } from "@/lib/api";
 import { computeAshtakvarga, type AshtakvargaRule } from "@/lib/ashtakvargaEngine";
 import { extractDailyFacts, type DailyFacts } from "@/lib/dailyEngine";
+import { getChatRules } from "@/lib/rulesServer";
 import {
   composeDailyReading,
   composeDailyTemplate,
@@ -102,12 +103,14 @@ export async function GET(req: NextRequest) {
   }));
   const ashtakvarga = computeAshtakvarga(natal, rules);
 
-  // 3. Extract structured facts
+  // 3. Extract structured facts (DB-backed interpretive rules)
+  const chatRules = await getChatRules();
   const facts: DailyFacts = extractDailyFacts(
     natal,
     transits,
     ashtakvarga,
     profile.name,
+    chatRules,
   );
 
   // 4. Compose — LLM if configured, template fallback otherwise

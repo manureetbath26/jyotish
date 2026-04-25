@@ -565,7 +565,64 @@ const RULE_SETTINGS: { key: string; value: object; notes?: string }[] = [
     value: { Mars: 60, Jupiter: 400, Saturn: 1100, Rahu: 600, Ketu: 600 },
     notes: "Per-planet max days to walk backwards from start_date when finding the most recent ingress (slightly bigger than max sign-residency including retrograde loops).",
   },
+  {
+    key: "window_transit_planets",
+    value: ["Jupiter", "Saturn", "Rahu", "Ketu"],
+    notes: "Slow planets shown in the chat-engine window context (no Mars — different scope from ingress timeline).",
+  },
+  {
+    key: "time_scope_keywords",
+    value: [
+      { scope: "today",     keywords: ["today", "tonight", "right now", "this morning", "this afternoon", "this evening", "tomorrow"] },
+      { scope: "thisWeek",  keywords: ["this week", "next week", "this weekend", "coming days", "next few days"] },
+      { scope: "thisMonth", keywords: ["this month", "next month", "coming weeks"] },
+    ],
+    notes: "Chat engine time-scope detector. First-match-wins, ordered by specificity.",
+  },
+  {
+    key: "past_keywords",
+    value: [
+      "past", "before", "earlier", "previous", "ago", "happened", "did i", "was there",
+      "last year", "back then", "history", "already",
+      " did ", " was ", " were ", " had ", "used to", "meant to", "supposed to",
+      "taught", "teach me", "learn", "learned", "learnt", "lesson", "experienced",
+      "went through", "have been", "has been", "went ", "came ", "felt ",
+      "looking back", "in hindsight", "retrospect",
+    ],
+    notes: "Chat engine past-question detector. Padded with leading/trailing space for word-boundary matching.",
+  },
 ];
+
+// ────────────────────────────────────────────────────────────────────────────
+// QUESTION CATEGORIES — chat engine classifier (16 rows)
+// ────────────────────────────────────────────────────────────────────────────
+const QUESTION_CATEGORIES: { id: string; keywords: string[]; houses: number[]; planets: string[] }[] = [
+  { id: "marriage", keywords: ["marriage", "marry", "married", "wedding", "spouse", "husband", "wife", "partner", "partnership", "soulmate", "life partner", "shaadi", "vivah"], houses: [7, 2, 11], planets: ["Venus", "Jupiter"] },
+  { id: "romance", keywords: ["love", "romance", "romantic", "relationship", "dating", "boyfriend", "girlfriend", "attraction", "pyaar"], houses: [5, 7, 11], planets: ["Venus", "Moon"] },
+  { id: "children", keywords: ["children", "child", "kids", "baby", "pregnancy", "pregnant", "son", "daughter", "progeny", "conceive", "fertility", "santan"], houses: [5, 9, 2], planets: ["Jupiter"] },
+  { id: "career_growth", keywords: ["career", "job", "work", "profession", "promotion", "professional", "salary", "boss", "office", "employment", "naukri"], houses: [10, 6, 11, 1], planets: ["Sun", "Saturn"] },
+  { id: "wealth", keywords: ["money", "wealth", "rich", "income", "financial", "finance", "earn", "earnings", "prosperity", "dhan", "paisa"], houses: [2, 11, 9, 5], planets: ["Jupiter", "Venus"] },
+  { id: "property", keywords: ["property", "house", "home", "flat", "apartment", "land", "vehicle", "car", "real estate", "ghar", "plot"], houses: [4, 11, 2], planets: ["Mars", "Moon"] },
+  { id: "education", keywords: ["education", "study", "studies", "exam", "academic", "college", "university", "degree", "learn", "school", "padhai"], houses: [4, 5, 9], planets: ["Jupiter", "Mercury"] },
+  { id: "fame", keywords: ["fame", "famous", "recognition", "reputation", "status", "public", "celebrity", "influence", "social media"], houses: [10, 1, 5, 11], planets: ["Sun", "Rahu"] },
+  { id: "new_business", keywords: ["business", "startup", "venture", "entrepreneurship", "self-employed", "company", "enterprise", "vyapar"], houses: [7, 10, 3, 11], planets: ["Mercury"] },
+  { id: "foreign_travel", keywords: ["foreign", "abroad", "travel", "overseas", "immigration", "visa", "settle abroad", "videsh"], houses: [9, 12, 3], planets: ["Rahu"] },
+  { id: "spiritual_growth", keywords: ["spiritual", "spirituality", "meditation", "moksha", "enlightenment", "guru", "dharma", "temple", "prayer", "adhyatm"], houses: [9, 12, 5], planets: ["Jupiter", "Ketu"] },
+  { id: "health_issues", keywords: ["health", "illness", "disease", "sick", "hospital", "surgery", "medical", "doctor", "fitness", "body", "rogam", "bimari"], houses: [6, 8, 1, 12], planets: ["Saturn", "Mars", "Rahu"] },
+  { id: "relationship_conflict", keywords: ["divorce", "separation", "breakup", "conflict", "fight", "argument", "dispute", "cheating", "toxicity"], houses: [7, 6, 12, 8], planets: ["Mars", "Saturn", "Rahu", "Ketu"] },
+  { id: "financial_loss", keywords: ["loss", "debt", "loan", "bankrupt", "poverty", "expense", "waste", "fraud", "scam"], houses: [12, 6, 8, 2], planets: ["Rahu", "Saturn"] },
+  { id: "career_setback", keywords: ["fired", "layoff", "terminated", "job loss", "demoted", "unemployed", "resign"], houses: [10, 8, 12], planets: ["Saturn", "Rahu"] },
+  { id: "protective_disruption", keywords: ["redirect", "protection", "purpose", "disruption for good", "blessing in disguise", "life change", "transformation"], houses: [1, 8], planets: ["Ketu"] },
+];
+
+// ────────────────────────────────────────────────────────────────────────────
+// GOCHARA THRESHOLDS — per-planet BAV bindus needed in transit sign for the
+// transit to be classically "active" (BPHS Ch. 70). 7 rows; Rahu/Ketu use
+// nodal logic and have no threshold.
+// ────────────────────────────────────────────────────────────────────────────
+const GOCHARA_THRESHOLDS: Record<string, number> = {
+  Sun: 4, Moon: 4, Mars: 3, Mercury: 5, Jupiter: 5, Venus: 4, Saturn: 3,
+};
 
 // ────────────────────────────────────────────────────────────────────────────
 // SEED EXECUTION
@@ -745,6 +802,30 @@ async function seed() {
     n++;
   }
   console.log(`  RuleSetting: ${n} rows`);
+
+  // QuestionCategory
+  n = 0;
+  for (const row of QUESTION_CATEGORIES) {
+    await prisma.questionCategory.upsert({
+      where: { id: row.id },
+      create: row,
+      update: { keywords: row.keywords, houses: row.houses, planets: row.planets },
+    });
+    n++;
+  }
+  console.log(`  QuestionCategory: ${n} rows`);
+
+  // GocharaThreshold
+  n = 0;
+  for (const [planet, threshold] of Object.entries(GOCHARA_THRESHOLDS)) {
+    await prisma.gocharaThreshold.upsert({
+      where: { planet },
+      create: { planet, threshold },
+      update: { threshold },
+    });
+    n++;
+  }
+  console.log(`  GocharaThreshold: ${n} rows`);
 
   console.log("\nDone.");
 }
