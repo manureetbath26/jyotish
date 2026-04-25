@@ -28,6 +28,12 @@ export interface IngressEvent {
   /** True for the "currently here" card — planet's most recent ingress
    *  prior to start_date, so the user sees what's active right now. */
   is_current?: boolean;
+  /** Discriminator for card rendering. "ingress" = sign-change of a tracked
+   *  planet (default); "pratyantardasha" = sub-sub-period inside current dasha. */
+  event_type?: "ingress" | "pratyantardasha";
+  /** For PD events only — the parent MD and AD lords. */
+  md_lord?: string | null;
+  ad_lord?: string | null;
 }
 
 interface TransitTimelineProps {
@@ -90,9 +96,10 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
     <div>
       <h3 className="text-lg font-semibold text-amber-400 mb-1">{label}</h3>
       <p className="text-xs text-slate-500 mb-4">
-        Each card is a transit ingress — when a tracked planet moves into a new
-        sign / house. Mars and the four slow planets (Jupiter, Saturn, Rahu, Ketu)
-        are tracked.
+        Cards are <span className="text-slate-300">transit ingresses</span> (a tracked
+        planet enters a new sign — Mars + Jupiter, Saturn, Rahu, Ketu) and{" "}
+        <span className="text-purple-400">pratyantardasha shifts</span> (sub-sub-period
+        changes inside your current dasha — the actual fine-timing signal).
       </p>
 
       {events.length === 0 ? (
@@ -105,10 +112,22 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
           {events.map((e, i) => {
             const styles = classificationStyles(e.classification);
             const isCurrent = e.is_current === true;
+            const isPD = e.event_type === "pratyantardasha";
+
+            // Headline: PD shows MD-AD-PD chain; ingress shows from→to sign change
+            const headline = isPD ? (
+              <span className="text-xs text-slate-400">
+                {e.md_lord ?? "?"}–{e.ad_lord ?? "?"}–<span className="text-slate-200 font-medium">{e.planet}</span> sub-period
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                {e.from_sign} (H{e.from_house}) → {e.to_sign} (H{e.to_house})
+              </span>
+            );
 
             return (
               <li
-                key={`${e.planet}-${e.date}-${i}`}
+                key={`${e.event_type ?? "ingress"}-${e.planet}-${e.date}-${i}`}
                 className={`rounded-lg border p-3.5 ${styles.bg} ${
                   isCurrent ? "ring-1 ring-amber-500/40" : ""
                 }`}
@@ -121,9 +140,12 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
                         {e.planet}
                         {e.is_retrograde ? " ᴿ" : ""}
                       </span>
-                      <span className="text-xs text-slate-400">
-                        {e.from_sign} (H{e.from_house}) → {e.to_sign} (H{e.to_house})
-                      </span>
+                      {isPD && (
+                        <span className="text-[10px] font-bold tracking-wide text-purple-400">
+                          PRATYANTARDASHA
+                        </span>
+                      )}
+                      {headline}
                       {isCurrent && (
                         <span className="text-[10px] font-bold tracking-wide text-amber-400">
                           CURRENTLY HERE

@@ -20,6 +20,7 @@ from services.transit import (
     get_lifetime_transit_snapshots,
     calculate_opening_snapshot,
     calculate_transit_ingresses,
+    calculate_pratyantardasha_events,
 )
 from services.panchang import calculate_panchang
 from services import rules as rules_module
@@ -273,9 +274,20 @@ async def transit_ingresses(body: TransitChartRequest):
         opening_snapshot = calculate_opening_snapshot(
             body.chart_data, start_date, ayanamsha_val
         )
-        events_by_area = calculate_transit_ingresses(
+
+        ingress_events = calculate_transit_ingresses(
             body.chart_data, start_date, end_date, ayanamsha_val, life_areas
         )
+        pd_events = calculate_pratyantardasha_events(
+            body.chart_data, start_date, end_date, life_areas
+        )
+
+        # Merge ingress + PD events per area, sort chronologically by date.
+        events_by_area: dict = {}
+        for area in life_areas:
+            combined = (ingress_events.get(area, []) + pd_events.get(area, []))
+            combined.sort(key=lambda e: e["date"])
+            events_by_area[area] = combined
 
         return TransitIngressResponse(
             start_date=body.start_date,

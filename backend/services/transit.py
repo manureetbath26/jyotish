@@ -1490,8 +1490,224 @@ def calculate_transit_ingresses(
                 "interpretation": interpretation,
                 "life_area": area,
                 "is_current": ing.get("is_current", False),
+                "event_type": "ingress",
             })
 
     return events_by_area
 
     return major_transits
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Pratyantardasha events (Apr 2026)
+#
+# Within each antardasha (AD), the Vimshottari sequence subdivides into
+# pratyantardashas (PDs) — sub-sub-periods proportional to each planet's
+# Vimshottari years (Sun 6, Moon 10, Mars 7, Rahu 18, Jupiter 16,
+# Saturn 19, Mercury 17, Ketu 7, Venus 20). PD durations sum back to AD.
+#
+# These are the actual fine-timing signals real astrologers use — they
+# typically last 1-2 months and explain "8-day" / "this week" predictions
+# the lagna-only ingress timeline misses.
+# ────────────────────────────────────────────────────────────────────────────
+
+VIMSHOTTARI_YEARS: Dict[str, int] = {
+    "Sun": 6, "Moon": 10, "Mars": 7, "Rahu": 18, "Jupiter": 16,
+    "Saturn": 19, "Mercury": 17, "Ketu": 7, "Venus": 20,
+}
+VIMSHOTTARI_TOTAL = 120
+
+# Standard Vimshottari order — used to sequence PDs starting from AD lord.
+VIMSHOTTARI_SEQUENCE: List[str] = [
+    "Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury",
+]
+
+
+def _pd_sequence_from(lord: str) -> List[str]:
+    """Vimshottari sequence rotated so it starts from `lord`."""
+    if lord not in VIMSHOTTARI_SEQUENCE:
+        return VIMSHOTTARI_SEQUENCE[:]
+    i = VIMSHOTTARI_SEQUENCE.index(lord)
+    return VIMSHOTTARI_SEQUENCE[i:] + VIMSHOTTARI_SEQUENCE[:i]
+
+
+def _natal_house_of(natal_chart: Dict, planet: str) -> Optional[int]:
+    """House (from natal lagna) where `planet` sits in the natal chart."""
+    for p in natal_chart.get("planets", []) or []:
+        if p.get("name") == planet:
+            return p.get("house")
+    # Ketu isn't in chart.planets — derive from Rahu + 6 houses
+    if planet == "Ketu":
+        for p in natal_chart.get("planets", []) or []:
+            if p.get("name") == "Rahu":
+                rahu_house = p.get("house")
+                if rahu_house:
+                    return ((rahu_house - 1 + 6) % 12) + 1
+    return None
+
+
+def _compose_pd_interpretation(
+    rules: "RuleSet",
+    md_lord: str,
+    ad_lord: str,
+    pd_lord: str,
+    pd_natal_house: Optional[int],
+    area: str,
+    classification: str,
+) -> str:
+    """Interpretation for a pratyantardasha event.
+
+    Composition:
+      1. Sub-period header — "Within Mars-Rahu, Jupiter's pratyantardasha…"
+      2. PD lord's natal house relevance to the area (if known)
+      3. Karaka note if PD lord is a karaka of the area
+      4. Standard area lens for the PD lord (PlanetAreaInterpretation)
+    """
+    parts: List[str] = []
+    parts.append(
+        f"Pratyantardasha shifts to {pd_lord} within the standing "
+        f"{md_lord}-{ad_lord} period. {pd_lord} now drives the fine-timing "
+        f"signals for the next several weeks."
+    )
+
+    if pd_natal_house is not None:
+        rel = rules.area_house_relevance.get(area, {}).get(pd_natal_house)
+        if rel:
+            _w, why = rel
+            if why:
+                parts.append(
+                    f"For {area}: {pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} "
+                    f"house natally — {why}."
+                )
+            else:
+                parts.append(
+                    f"For {area}: {pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} "
+                    f"house natally — a primary {area} house."
+                )
+        else:
+            theme = rules.house_signification.get(pd_natal_house, "")
+            if theme:
+                parts.append(
+                    f"{pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} natally "
+                    f"({theme}) — sub-period themes draw from there."
+                )
+
+    karaka = rules.area_karakas.get(area, {}).get(pd_lord)
+    if karaka:
+        _kw, krat = karaka
+        parts.append(
+            f"{pd_lord} is also a natural significator of {area}"
+            f"{f' ({krat})' if krat else ''} — sub-period carries that flavour."
+        )
+
+    area_lens = rules.planet_area_interpretation.get((pd_lord, area, classification))
+    if area_lens:
+        parts.append(area_lens)
+
+    return " ".join(parts)
+
+
+def calculate_pratyantardasha_events(
+    natal_chart: Dict,
+    start_date: datetime,
+    end_date: datetime,
+    life_areas: List[str],
+) -> Dict[str, List[Dict]]:
+    """Walk every AD in natal_chart.dasha_sequence; for each AD overlapping
+    the window, generate its 9 PDs; emit one event per (PD, area) pair.
+
+    Output shape mirrors calculate_transit_ingresses so the route can
+    merge both event streams into events_by_area.
+    """
+    rules = rules_module.get_rules_sync()
+    events_by_area: Dict[str, List[Dict]] = {area: [] for area in life_areas}
+
+    today = datetime.utcnow()
+
+    for md in natal_chart.get("dasha_sequence", []) or []:
+        md_lord = md.get("planet")
+        for ad in md.get("antardashas", []) or []:
+            ad_start = _parse_iso_date(ad.get("start_date"))
+            ad_end = _parse_iso_date(ad.get("end_date"))
+            if not ad_start or not ad_end:
+                continue
+            if ad_end < start_date or ad_start > end_date:
+                continue
+            ad_lord = ad.get("planet")
+            ad_duration_s = (ad_end - ad_start).total_seconds()
+            if ad_duration_s <= 0:
+                continue
+
+            # Generate the 9 PDs starting from ad_lord, walking the
+            # Vimshottari sequence. Each PD's duration = AD × (lord_years/120).
+            cursor = ad_start
+            for pd_lord in _pd_sequence_from(ad_lord):
+                pd_years = VIMSHOTTARI_YEARS.get(pd_lord, 0)
+                pd_duration_s = ad_duration_s * (pd_years / VIMSHOTTARI_TOTAL)
+                pd_end = cursor + timedelta(seconds=pd_duration_s)
+
+                # Only emit PDs that overlap the requested window.
+                if pd_end >= start_date and cursor <= end_date:
+                    pd_natal_house = _natal_house_of(natal_chart, pd_lord)
+                    is_current = cursor <= today <= pd_end
+
+                    # Classification: karaka exception applies; otherwise
+                    # use natal house's relevance to the area as a proxy.
+                    for area in life_areas:
+                        is_karaka = pd_lord in rules.area_karakas.get(area, {})
+                        natal_rel = (
+                            rules.area_house_relevance.get(area, {}).get(pd_natal_house)
+                            if pd_natal_house is not None else None
+                        )
+                        if is_karaka or (natal_rel and natal_rel[0] >= 0.7):
+                            classification = "favorable"
+                        elif pd_lord in {"Mars", "Saturn", "Rahu", "Ketu", "Sun"}:
+                            classification = "unfavorable"
+                        else:
+                            classification = "neutral"
+
+                        interpretation = _compose_pd_interpretation(
+                            rules, md_lord, ad_lord, pd_lord,
+                            pd_natal_house, area, classification,
+                        )
+
+                        # Reuse IngressEvent shape but flag as "pratyantardasha".
+                        # from/to sign+house populated with PD lord's natal sign+house
+                        # to keep the dict shape uniform; frontend branches on event_type.
+                        natal_sign = ""
+                        for p in natal_chart.get("planets", []) or []:
+                            if p.get("name") == pd_lord:
+                                natal_sign = p.get("rashi", "")
+                                break
+
+                        events_by_area[area].append({
+                            "date": cursor.strftime("%Y-%m-%d"),
+                            "planet": pd_lord,
+                            "from_sign": natal_sign,  # PD doesn't change sign
+                            "to_sign": natal_sign,
+                            "from_house": pd_natal_house or 0,
+                            "to_house": pd_natal_house or 0,
+                            "is_retrograde": False,
+                            "duration_days": max(1, int(pd_duration_s / 86400)),
+                            "next_ingress_date": pd_end.strftime("%Y-%m-%d"),
+                            "classification": classification,
+                            "interpretation": interpretation,
+                            "life_area": area,
+                            "is_current": is_current,
+                            "event_type": "pratyantardasha",
+                            "md_lord": md_lord,
+                            "ad_lord": ad_lord,
+                        })
+
+                cursor = pd_end
+
+    return events_by_area
+
+
+def _parse_iso_date(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None

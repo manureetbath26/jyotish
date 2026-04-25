@@ -248,6 +248,12 @@ class IngressEvent(BaseModel):
     # BEFORE start_date, surfaced so the user sees what's active right now).
     # False for future ingresses inside the window.
     is_current: bool = False
+    # Discriminator: "ingress" (sign-change of a tracked planet) or
+    # "pratyantardasha" (sub-sub-period change within current dasha).
+    event_type: str = "ingress"
+    # For pratyantardasha events, the parent MD and AD lords; None for ingresses.
+    md_lord: Optional[str] = None
+    ad_lord: Optional[str] = None
 
 
 class TransitIngressResponse(BaseModel):
