@@ -263,14 +263,14 @@ def get_planet_position_on_date(
 #   - compute how long it stays in the new sign
 #   - frame it for each user-selected life area, looking up the existing
 #     PLANET_FAVORABLE_MEANINGS / PLANET_UNFAVORABLE_MEANINGS table
-# Sun/Mercury/Venus move ~30 days per sign â€” too noisy as event cards;
+# Sun/Mercury/Venus move ~30 days per sign — too noisy as event cards;
 # they appear in the opening_snapshot only. Moon excluded entirely.
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # NOTE: tracked planets, lookback days, area labels, yogakaraka mapping,
 # planet nature (benefic/malefic), and the 108 advisory phrases are now
 # all loaded from the DB via services/rules.py. See _settings() / _advice_for()
-# accessors below â€” no static interpretive constants live in this file.
+# accessors below — no static interpretive constants live in this file.
 
 
 def _find_current_ingress(
@@ -302,7 +302,7 @@ def _find_current_ingress(
 
 # â”€â”€ Per-house signification short phrases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Mirrors frontend/src/lib/houseSignifications.ts (the canonical source).
-# Kept in sync by hand â€” admin DB overrides only affect the frontend display.
+# Kept in sync by hand — admin DB overrides only affect the frontend display.
 HOUSE_SIGNIFICATIONS_SHORT: Dict[int, str] = {
     1: "self, body, vitality",
     2: "wealth, speech, family",
@@ -318,7 +318,7 @@ HOUSE_SIGNIFICATIONS_SHORT: Dict[int, str] = {
     12: "rest, losses, foreign, moksha, privacy",
 }
 
-# â”€â”€ Per-planet "vibe" â€” positive when classically favourable, cautious when
+# â”€â”€ Per-planet "vibe" — positive when classically favourable, cautious when
 # not. Mirrors PLANET_VIBE in frontend dailyEngine.ts / windowContext.ts so
 # the chat engine, daily reading and transit timeline speak the same dialect.
 PLANET_VIBE: Dict[str, Dict[str, str]] = {
@@ -356,15 +356,15 @@ def _compose_ingress_interpretation(
 ) -> str:
     """House- AND area-aware interpretation built from DB-loaded rules.
 
-    Composition order â€” leads with the strongest connection between the
+    Composition order — leads with the strongest connection between the
     transit and the selected life area, then layers planet vibe, then any
     dusthana/upachaya modifier, then the area-specific lens.
 
     Connection types (priority):
-      1. DIRECT     â€” to_house is a primary/secondary house for the area
-      2. KARAKA     â€” planet is a natural significator of the area
-      3. BHAVAT     â€” bhavat-bhavam from to_house lands on an area-relevant house
-      4. ASPECT     â€” planet's aspect from to_house reaches an area-relevant house
+      1. DIRECT     — to_house is a primary/secondary house for the area
+      2. KARAKA     — planet is a natural significator of the area
+      3. BHAVAT     — bhavat-bhavam from to_house lands on an area-relevant house
+      4. ASPECT     — planet's aspect from to_house reaches an area-relevant house
     """
     parts: List[str] = []
 
@@ -372,7 +372,7 @@ def _compose_ingress_interpretation(
     house_theme = rules.house_signification.get(to_house, "")
     if house_theme:
         parts.append(
-            f"{planet} now activates your {to_house}{_ord(to_house)} house â€” {house_theme}."
+            f"{planet} now activates your {to_house}{_ord(to_house)} house — {house_theme}."
         )
     else:
         parts.append(f"{planet} moves into your {to_house}{_ord(to_house)} house.")
@@ -388,7 +388,7 @@ def _compose_ingress_interpretation(
     # Compute aspected houses (universal 7th + planet special aspects)
     aspect_offsets = rules.planet_special_aspects.get(planet, [])
     if not aspect_offsets:
-        aspect_offsets = [(7, 1.0)]  # default â€” every planet has 7th aspect
+        aspect_offsets = [(7, 1.0)]  # default — every planet has 7th aspect
     aspect_hits: List[Tuple[int, float, Tuple[float, Optional[str]]]] = []
     for offset, strength in aspect_offsets:
         aspected_house = ((to_house - 1 + offset - 1) % 12) + 1
@@ -415,14 +415,14 @@ def _compose_ingress_interpretation(
         bb_weight, _ = bb_relevant
         connection = (
             f"For {area}: this house links to your {bb_house}{_ord(bb_house)} "
-            f"via bhavat-bhavam ({bb_label}) â€” {planet} here pushes "
+            f"via bhavat-bhavam ({bb_label}) — {planet} here pushes "
             f"{bb_house}{_ord(bb_house)}-house themes to centre stage."
         )
     elif aspect_hits:
         ah_house, ah_strength, (ah_weight, _) = aspect_hits[0]
         connection = (
             f"For {area}: {planet}'s aspect from H{to_house} reaches your "
-            f"{ah_house}{_ord(ah_house)} house â€” a primary {area} house."
+            f"{ah_house}{_ord(ah_house)} house — a primary {area} house."
         )
     if connection:
         parts.append(connection)
@@ -438,13 +438,13 @@ def _compose_ingress_interpretation(
         if vibe_phrase:
             parts.append(f"{planet}'s cautious flavour active here: {vibe_phrase}.")
 
-    # â”€â”€ 4. Modifier â€” dusthana / upachaya colouring â”€â”€
+    # â”€â”€ 4. Modifier — dusthana / upachaya colouring â”€â”€
     house_tags = rules.house_classification.get(to_house, set())
     is_malefic = _is_malefic(rules, planet)
     if "dusthana" in house_tags:
         if is_malefic:
             parts.append(
-                "Dusthana placement: malefics gain a battlefield here â€” turbulent now, "
+                "Dusthana placement: malefics gain a battlefield here — turbulent now, "
                 "but cleansing afflictions related to this house's themes."
             )
         else:
@@ -454,7 +454,7 @@ def _compose_ingress_interpretation(
             )
     elif "upachaya" in house_tags and is_malefic:
         parts.append(
-            "Upachaya placement: malefics excel here â€” strength compounds over the "
+            "Upachaya placement: malefics excel here — strength compounds over the "
             "transit, peaking near the end."
         )
 
@@ -565,7 +565,7 @@ def calculate_transit_ingresses(
         rules_for_settings.settings.get("lookback_days") or {}
     )
 
-    # Step 0: lookback pass â€” for each tracked planet, find the date it
+    # Step 0: lookback pass — for each tracked planet, find the date it
     # entered its CURRENT sign (i.e. the most recent ingress prior to
     # start_date). This becomes the "currently here" card so the user
     # sees what's active *right now*, not just the next ingress.
@@ -688,11 +688,11 @@ def calculate_transit_ingresses(
 # Pratyantardasha events (Apr 2026)
 #
 # Within each antardasha (AD), the Vimshottari sequence subdivides into
-# pratyantardashas (PDs) â€” sub-sub-periods proportional to each planet's
+# pratyantardashas (PDs) — sub-sub-periods proportional to each planet's
 # Vimshottari years (Sun 6, Moon 10, Mars 7, Rahu 18, Jupiter 16,
 # Saturn 19, Mercury 17, Ketu 7, Venus 20). PD durations sum back to AD.
 #
-# These are the actual fine-timing signals real astrologers use â€” they
+# These are the actual fine-timing signals real astrologers use — they
 # typically last 1-2 months and explain "8-day" / "this week" predictions
 # the lagna-only ingress timeline misses.
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -703,7 +703,7 @@ VIMSHOTTARI_YEARS: Dict[str, int] = {
 }
 VIMSHOTTARI_TOTAL = 120
 
-# Standard Vimshottari order â€” used to sequence PDs starting from AD lord.
+# Standard Vimshottari order — used to sequence PDs starting from AD lord.
 VIMSHOTTARI_SEQUENCE: List[str] = [
     "Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury",
 ]
@@ -722,7 +722,7 @@ def _natal_house_of(natal_chart: Dict, planet: str) -> Optional[int]:
     for p in natal_chart.get("planets", []) or []:
         if p.get("name") == planet:
             return p.get("house")
-    # Ketu isn't in chart.planets â€” derive from Rahu + 6 houses
+    # Ketu isn't in chart.planets — derive from Rahu + 6 houses
     if planet == "Ketu":
         for p in natal_chart.get("planets", []) or []:
             if p.get("name") == "Rahu":
@@ -744,7 +744,7 @@ def _compose_pd_interpretation(
     """Interpretation for a pratyantardasha event.
 
     Composition:
-      1. Sub-period header â€” "Within Mars-Rahu, Jupiter's pratyantardashaâ€¦"
+      1. Sub-period header — "Within Mars-Rahu, Jupiter's pratyantardasha…"
       2. PD lord's natal house relevance to the area (if known)
       3. Karaka note if PD lord is a karaka of the area
       4. Standard area lens for the PD lord (PlanetAreaInterpretation)
@@ -763,19 +763,19 @@ def _compose_pd_interpretation(
             if why:
                 parts.append(
                     f"For {area}: {pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} "
-                    f"house natally â€” {why}."
+                    f"house natally — {why}."
                 )
             else:
                 parts.append(
                     f"For {area}: {pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} "
-                    f"house natally â€” a primary {area} house."
+                    f"house natally — a primary {area} house."
                 )
         else:
             theme = rules.house_signification.get(pd_natal_house, "")
             if theme:
                 parts.append(
                     f"{pd_lord} sits in your {pd_natal_house}{_ord(pd_natal_house)} natally "
-                    f"({theme}) â€” sub-period themes draw from there."
+                    f"({theme}) — sub-period themes draw from there."
                 )
 
     karaka = rules.area_karakas.get(area, {}).get(pd_lord)
@@ -783,7 +783,7 @@ def _compose_pd_interpretation(
         _kw, krat = karaka
         parts.append(
             f"{pd_lord} is also a natural significator of {area}"
-            f"{f' ({krat})' if krat else ''} â€” sub-period carries that flavour."
+            f"{f' ({krat})' if krat else ''} — sub-period carries that flavour."
         )
 
     area_lens = rules.planet_area_interpretation.get((pd_lord, area, classification))
@@ -919,7 +919,7 @@ def _compute_sade_sati(
     """Detect if user is currently in Sade-Sati and which phase.
 
     Phase 1: Saturn in 12th from natal Moon
-    Phase 2: Saturn in 1st from natal Moon (Janma Shani â€” heaviest)
+    Phase 2: Saturn in 1st from natal Moon (Janma Shani — heaviest)
     Phase 3: Saturn in 2nd from natal Moon
 
     Returns {phase, saturn_sign, moon_sign, days_remaining_in_phase} or None.
@@ -945,7 +945,7 @@ def _compute_sade_sati(
     else:
         return None
 
-    # Estimate when Saturn leaves the current sign (rough â€” daily walk
+    # Estimate when Saturn leaves the current sign (rough — daily walk
     # bounded at 1100d). Used for "until" framing.
     cursor = today
     for d in range(1, 1100):
@@ -1049,7 +1049,7 @@ def compose_area_narrative(
         texture = {
             "favorable":   f"Right now {area_label} has tailwind",
             "challenging": f"Right now {area_label} feels heavy",
-            "mixed":       f"Right now {area_label} is mixed â€” some pressure, some support",
+            "mixed":       f"Right now {area_label} is mixed — some pressure, some support",
             "neutral":     f"Right now {area_label} is in a quiet phase",
         }[signal]
         bits.append(texture + ".")
@@ -1066,7 +1066,7 @@ def compose_area_narrative(
                     days_to_pd_end = max(0, (end_dt - today).days)
             advice = _advice_for(rules, pd, area, active_pd.get("classification") or "neutral")
             pd_line = (
-                f"You're in the **{md}-{ad}-{pd}** sub-period â€” {pd} is steering the next "
+                f"You're in the **{md}-{ad}-{pd}** sub-period — {pd} is steering the next "
                 f"~{days_to_pd_end} days (until **{until_str}**)."
             )
             if advice:
@@ -1080,14 +1080,14 @@ def compose_area_narrative(
             yk = _is_yogakaraka(rules, p, lagna)
             classn = e.get("classification") or "neutral"
             advice = _advice_for(rules, p, area, classn)
-            yk_note = " (your yogakaraka â€” friendly to your chart)" if yk else ""
+            yk_note = " (your yogakaraka — friendly to your chart)" if yk else ""
             if classn == "favorable":
                 bits.append(
-                    f"**{p}**{yk_note} sits in your H{h} supporting this â€” {advice}."
+                    f"**{p}**{yk_note} sits in your H{h} supporting this — {advice}."
                 )
             elif classn == "unfavorable":
                 bits.append(
-                    f"**{p}**{yk_note} in your H{h} is the friction source â€” {advice}."
+                    f"**{p}**{yk_note} in your H{h} is the friction source — {advice}."
                 )
             else:
                 bits.append(f"**{p}**{yk_note} sits in your H{h} as a neutral background.")
@@ -1117,7 +1117,7 @@ def compose_area_narrative(
         opener = {
             "favorable":   f"**{when_str}** ({timing}) is your next opening",
             "challenging": f"**{when_str}** ({timing}) is when the texture tightens",
-            "mixed":       f"**{when_str}** ({timing}) is your next inflection â€” mixed signals stack",
+            "mixed":       f"**{when_str}** ({timing}) is your next inflection — mixed signals stack",
             "neutral":     f"**{when_str}** ({timing}) marks the next configuration shift",
         }[signal]
         bits = [opener + "."]
@@ -1134,7 +1134,7 @@ def compose_area_narrative(
                     karaka_note = f" ({p} is a natural significator of {area_label})"
                 if classn == "favorable" and advice:
                     bits.append(
-                        f"The **{md}-{ad}-{p}** pratyantardasha begins{karaka_note} â€” "
+                        f"The **{md}-{ad}-{p}** pratyantardasha begins{karaka_note} — "
                         f"this is a window to {advice}."
                     )
                 elif classn == "unfavorable" and advice:
@@ -1151,7 +1151,7 @@ def compose_area_narrative(
                 yk_note = " (your yogakaraka)" if yk else ""
                 if classn == "favorable" and advice:
                     bits.append(
-                        f"**{p}**{yk_note} moves from H{from_h} into H{to_h} â€” {advice}."
+                        f"**{p}**{yk_note} moves from H{from_h} into H{to_h} — {advice}."
                     )
                 elif classn == "unfavorable" and advice:
                     bits.append(
@@ -1192,7 +1192,7 @@ def compose_area_narrative(
             if until_iso else " for the rest of this window"
         )
         bg_bits.append(
-            f"In the background, **{p}**{yk_note} continues to sit in your H{to_h}{until_clause} â€” "
+            f"In the background, **{p}**{yk_note} continues to sit in your H{to_h}{until_clause} — "
             f"that's the slow current shaping {area_label} regardless of the daily noise."
         )
         bg_first_done = True
@@ -1205,7 +1205,7 @@ def compose_area_narrative(
         yk_note = " (your yogakaraka)" if _is_yogakaraka(rules, p, lagna) else ""
         until_clause = f" until **{_format_human_date_safe(until_iso)}**" if until_iso else ""
         bg_bits.append(
-            f"Coming up, **{p}**{yk_note} will hold your H{to_h}{until_clause} â€” that becomes the "
+            f"Coming up, **{p}**{yk_note} will hold your H{to_h}{until_clause} — that becomes the "
             f"slow current for {area_label}."
         )
 
@@ -1218,19 +1218,19 @@ def compose_area_narrative(
         if phase == 1:
             sat_text = (
                 f"You're also in the **first third of your 7.5-year Saturn cycle** "
-                f"(Sade-Sati Phase 1, until **{leaves_str}**) â€” slow grind, but not breakage."
+                f"(Sade-Sati Phase 1, until **{leaves_str}**) — slow grind, but not breakage."
             )
         elif phase == 2:
             sat_text = (
                 f"You're in the **heaviest year-and-a-half of your Saturn cycle** "
-                f"(Sade-Sati Phase 2 â€” Saturn over your natal Moon, until **{leaves_str}**). "
+                f"(Sade-Sati Phase 2 — Saturn over your natal Moon, until **{leaves_str}**). "
                 f"Sleep, mother's wellbeing, and public standing all need extra care. "
                 f"Schedule rest, watch what you say in public."
             )
         else:
             sat_text = (
                 f"You're in the **closing third of your Saturn cycle** "
-                f"(Sade-Sati Phase 3, until **{leaves_str}**) â€” the worst pressure is behind you."
+                f"(Sade-Sati Phase 3, until **{leaves_str}**) — the worst pressure is behind you."
             )
 
         if is_sat_yk:
