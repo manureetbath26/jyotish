@@ -25,6 +25,9 @@ export interface IngressEvent {
    *  House-aware — H6 vs H7 read different. */
   interpretation: string;
   life_area: string;
+  /** True for the "currently here" card — planet's most recent ingress
+   *  prior to start_date, so the user sees what's active right now. */
+  is_current?: boolean;
 }
 
 interface TransitTimelineProps {
@@ -101,11 +104,14 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
         <ol className="space-y-3">
           {events.map((e, i) => {
             const styles = classificationStyles(e.classification);
+            const isCurrent = e.is_current === true;
 
             return (
               <li
                 key={`${e.planet}-${e.date}-${i}`}
-                className={`rounded-lg border p-3.5 ${styles.bg}`}
+                className={`rounded-lg border p-3.5 ${styles.bg} ${
+                  isCurrent ? "ring-1 ring-amber-500/40" : ""
+                }`}
               >
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${styles.dot}`} />
@@ -118,13 +124,20 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
                       <span className="text-xs text-slate-400">
                         {e.from_sign} (H{e.from_house}) → {e.to_sign} (H{e.to_house})
                       </span>
+                      {isCurrent && (
+                        <span className="text-[10px] font-bold tracking-wide text-amber-400">
+                          CURRENTLY HERE
+                        </span>
+                      )}
                       <span className={`text-[10px] font-bold tracking-wide ${styles.label}`}>
                         {styles.labelText}
                       </span>
                     </div>
 
                     <p className="text-xs text-slate-400 mt-1">
-                      <span className="text-slate-300 font-medium">{formatDate(e.date)}</span>
+                      <span className="text-slate-300 font-medium">
+                        {isCurrent ? `since ${formatDate(e.date)}` : formatDate(e.date)}
+                      </span>
                       {" · stays "}
                       {formatDuration(e.duration_days)}
                       {e.next_ingress_date && (

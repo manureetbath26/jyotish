@@ -1083,6 +1083,44 @@ def get_next_major_transit(
 # (slow planets first — they shape the year, fast planets fill in detail).
 INGRESS_TRACKED_PLANETS = ["Saturn", "Jupiter", "Rahu", "Ketu", "Mars"]
 
+# Per-planet maximum lookback in days when finding the most recent
+# ingress prior to start_date. Slightly bigger than the planet's max
+# residency in any sign (Saturn can stay ~2.5y due to retrograde loops).
+LOOKBACK_DAYS_PER_PLANET: Dict[str, int] = {
+    "Mars": 60,
+    "Jupiter": 400,
+    "Saturn": 1100,
+    "Rahu": 600,
+    "Ketu": 600,
+}
+
+
+def _find_current_ingress(
+    planet: str, start_date: datetime, ayanamsha_val: float, max_days: int
+) -> Optional[Dict]:
+    """Walk backwards from start_date until the planet's sign differs from
+    its sign on start_date. Returns the day AFTER the change (i.e. the
+    ingress day into the current sign). None if not found within max_days.
+
+    Daily granularity. Cost: O(min(max_days, residency)) ephemeris calls.
+    Early-terminates as soon as the sign differs.
+    """
+    target_lng = _planet_position(planet, start_date, ayanamsha_val)["longitude"]
+    target_sign_idx = _sign_index(target_lng)
+    for d in range(1, max_days + 1):
+        cursor = start_date - timedelta(days=d)
+        lng = _planet_position(planet, cursor, ayanamsha_val)["longitude"]
+        sign_idx = _sign_index(lng)
+        if sign_idx != target_sign_idx:
+            ingress_dt = cursor + timedelta(days=1)
+            return {
+                "_dt": ingress_dt,
+                "date": ingress_dt.strftime("%Y-%m-%d"),
+                "from_sign_idx": sign_idx,
+                "to_sign_idx": target_sign_idx,
+            }
+    return None  # planet has been in this sign longer than max_days lookback
+
 
 # ── Per-house signification short phrases ────────────────────────────────────
 # Mirrors frontend/src/lib/houseSignifications.ts (the canonical source).
@@ -1253,7 +1291,25 @@ def calculate_transit_ingresses(
     """
     natal_lagna_sign_idx = int(natal_chart.get("lagna_degree", 0) / 30)
 
-    # Step 1: scan each tracked planet daily, accumulate ingress dates.
+    # Step 0: lookback pass — for each tracked planet, find the date it
+    # entered its CURRENT sign (i.e. the most recent ingress prior to
+    # start_date). This becomes the "currently here" card so the user
+    # sees what's active *right now*, not just the next ingress.
+    current_placements: List[Dict] = []
+    for planet in INGRESS_TRACKED_PLANETS:
+        max_days = LOOKBACK_DAYS_PER_PLANET.get(planet, 90)
+        result = _find_current_ingress(planet, start_date, ayanamsha_val, max_days)
+        if result is None:
+            continue
+        # Carry retrograde state from current motion (best signal we have)
+        result["is_retrograde"] = _planet_position(
+            planet, start_date, ayanamsha_val
+        )["is_retrograde"]
+        result["planet"] = planet
+        result["is_current"] = True
+        current_placements.append(result)
+
+    # Step 1: scan each tracked planet daily, accumulate FUTURE ingress dates.
     # Each entry: {planet, date, from_sign_idx, to_sign_idx, is_retrograde}.
     raw_ingresses: List[Dict] = []
     for planet in INGRESS_TRACKED_PLANETS:
@@ -1271,33 +1327,38 @@ def calculate_transit_ingresses(
                     "from_sign_idx": prev_sign_idx,
                     "to_sign_idx": sign_idx,
                     "is_retrograde": p["is_retrograde"],
+                    "is_current": False,
                 })
             prev_sign_idx = sign_idx
             prev_pos = p
             cursor += timedelta(days=1)
 
-    # Step 2: per planet, compute duration_days = days until the NEXT
-    # ingress for that planet within the window (or window end if last).
-    ingresses_by_planet: Dict[str, List[Dict]] = {}
-    for ing in raw_ingresses:
-        ingresses_by_planet.setdefault(ing["planet"], []).append(ing)
+    # Step 2: merge current_placements + raw_ingresses per planet so
+    # durations chain correctly (current placement's duration = days
+    # until first future ingress, not until next current placement).
+    all_by_planet: Dict[str, List[Dict]] = {}
+    for ev in current_placements + raw_ingresses:
+        all_by_planet.setdefault(ev["planet"], []).append(ev)
 
-    for planet, ingresses in ingresses_by_planet.items():
-        for i, ing in enumerate(ingresses):
-            if i + 1 < len(ingresses):
-                next_dt = ingresses[i + 1]["_dt"]
-                ing["duration_days"] = (next_dt - ing["_dt"]).days
-                ing["next_ingress_date"] = ingresses[i + 1]["date"]
+    for planet, evs in all_by_planet.items():
+        evs.sort(key=lambda e: e["_dt"])
+        for i, ev in enumerate(evs):
+            if i + 1 < len(evs):
+                next_dt = evs[i + 1]["_dt"]
+                ev["duration_days"] = (next_dt - ev["_dt"]).days
+                ev["next_ingress_date"] = evs[i + 1]["date"]
             else:
-                ing["duration_days"] = max(1, (end_date - ing["_dt"]).days)
-                ing["next_ingress_date"] = None
+                ev["duration_days"] = max(1, (end_date - ev["_dt"]).days)
+                ev["next_ingress_date"] = None
 
-    # Step 3: emit per-area events. For every (ingress, selected area) pair:
+    # Step 3: emit per-area events. For every (event, selected area) pair:
     #   - compute classification (favorable/unfavorable/neutral) using
     #     CLASSICAL_FAVORABLE_HOUSES applied to to_house
     #   - look up area-specific meaning from PLANET_*_MEANINGS tables
+    # Includes both current placements (date < start_date, is_current=True)
+    # and future ingresses, sorted chronologically.
     events_by_area: Dict[str, List[Dict]] = {area: [] for area in life_areas}
-    flat = sorted(raw_ingresses, key=lambda x: x["_dt"])
+    flat = sorted(current_placements + raw_ingresses, key=lambda x: x["_dt"])
 
     for ing in flat:
         from_house = _house_from_natal_lagna(ing["from_sign_idx"], natal_lagna_sign_idx)
@@ -1346,6 +1407,7 @@ def calculate_transit_ingresses(
                 "classification": classification,
                 "interpretation": interpretation,
                 "life_area": area,
+                "is_current": ing.get("is_current", False),
             })
 
     return events_by_area

@@ -244,6 +244,10 @@ class IngressEvent(BaseModel):
     # genuinely different rather than reusing one (planet,area) string.
     interpretation: str
     life_area: str
+    # True for the "current placement" card (planet's most recent ingress
+    # BEFORE start_date, surfaced so the user sees what's active right now).
+    # False for future ingresses inside the window.
+    is_current: bool = False
 
 
 class TransitIngressResponse(BaseModel):
