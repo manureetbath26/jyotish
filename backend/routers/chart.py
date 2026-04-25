@@ -22,6 +22,7 @@ from services.transit import (
     calculate_transit_ingresses,
 )
 from services.panchang import calculate_panchang
+from services import rules as rules_module
 router = APIRouter(prefix="/api/chart", tags=["chart"])
 
 
@@ -264,6 +265,10 @@ async def transit_ingresses(body: TransitChartRequest):
         life_areas = body.life_areas or []
         if not life_areas:
             raise ValueError("life_areas cannot be empty — pick at least one area")
+
+        # Warm the rules cache in this async context so the sync
+        # calculator below can read it without blocking on DB I/O.
+        await rules_module.get_rules()
 
         opening_snapshot = calculate_opening_snapshot(
             body.chart_data, start_date, ayanamsha_val

@@ -8,8 +8,11 @@ identifies favorable/unfavorable periods for different life areas.
 import swisseph as swe
 from datetime import datetime, timedelta
 import math
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional, TYPE_CHECKING
 from models.schemas import PlanetPosition
+from services import rules as rules_module
+if TYPE_CHECKING:
+    from services.rules import RuleSet
 
 # Planet list for transit calculations
 PLANETS_FOR_TRANSIT = [
@@ -1165,40 +1168,125 @@ PLANET_VIBE: Dict[str, Dict[str, str]] = {
 }
 
 
+_MALEFIC_PLANETS: Set[str] = {"Sun", "Mars", "Saturn", "Rahu", "Ketu"}
+
+
 def _compose_ingress_interpretation(
-    planet: str, to_house: int, classification: str, area_lens: Optional[str]
+    rules: "RuleSet",
+    planet: str,
+    to_house: int,
+    area: str,
+    classification: str,
 ) -> str:
-    """Build a 2-3 sentence interpretation that's actually house-specific.
+    """House- AND area-aware interpretation built from DB-loaded rules.
 
-    Three parts:
-      1. House activation — what this house governs (HOUSE_SIGNIFICATIONS_SHORT)
-      2. Planet vibe — flavour of the planet, oriented by classification
-         (PLANET_VIBE.positive when favorable, .cautious when unfavorable;
-         neutral is left vibe-less)
-      3. Area lens — area-specific text from PLANET_*_MEANINGS (the existing
-         hand-written line that explains how it lands for love/career/etc.)
+    Composition order — leads with the strongest connection between the
+    transit and the selected life area, then layers planet vibe, then any
+    dusthana/upachaya modifier, then the area-specific lens.
+
+    Connection types (priority):
+      1. DIRECT     — to_house is a primary/secondary house for the area
+      2. KARAKA     — planet is a natural significator of the area
+      3. BHAVAT     — bhavat-bhavam from to_house lands on an area-relevant house
+      4. ASPECT     — planet's aspect from to_house reaches an area-relevant house
     """
-    house_theme = HOUSE_SIGNIFICATIONS_SHORT.get(to_house, "")
-    vibe_pair = PLANET_VIBE.get(planet, {})
-    if classification == "favorable":
-        vibe_phrase = vibe_pair.get("positive", "")
-        vibe_lead = "supportive flavour active here:"
-    elif classification == "unfavorable":
-        vibe_phrase = vibe_pair.get("cautious", "")
-        vibe_lead = "cautious flavour active here:"
-    else:
-        vibe_phrase = ""
-        vibe_lead = ""
-
     parts: List[str] = []
+
+    # ── 1. House activation lead ──
+    house_theme = rules.house_signification.get(to_house, "")
     if house_theme:
-        parts.append(f"{planet} now activates your {to_house}{_ord(to_house)} house — {house_theme}.")
+        parts.append(
+            f"{planet} now activates your {to_house}{_ord(to_house)} house — {house_theme}."
+        )
     else:
         parts.append(f"{planet} moves into your {to_house}{_ord(to_house)} house.")
-    if vibe_phrase:
-        parts.append(f"With {planet}'s {vibe_lead} {vibe_phrase}.")
+
+    # ── 2. Why this matters for the selected area (strongest connection) ──
+    area_houses = rules.area_house_relevance.get(area, {})
+
+    direct = area_houses.get(to_house)
+    karaka = rules.area_karakas.get(area, {}).get(planet)
+    bb = rules.bhavat_bhavam.get(to_house)
+    bb_relevant = (bb and area_houses.get(bb[0])) if bb else None
+
+    # Compute aspected houses (universal 7th + planet special aspects)
+    aspect_offsets = rules.planet_special_aspects.get(planet, [])
+    if not aspect_offsets:
+        aspect_offsets = [(7, 1.0)]  # default — every planet has 7th aspect
+    aspect_hits: List[Tuple[int, float, Tuple[float, Optional[str]]]] = []
+    for offset, strength in aspect_offsets:
+        aspected_house = ((to_house - 1 + offset - 1) % 12) + 1
+        rel = area_houses.get(aspected_house)
+        if rel:
+            aspect_hits.append((aspected_house, strength, rel))
+    aspect_hits.sort(key=lambda x: x[2][0] * x[1], reverse=True)
+
+    connection: Optional[str] = None
+    if direct:
+        _weight, why = direct
+        if why:
+            connection = f"For {area}: this house carries {why}."
+        else:
+            connection = f"This is a primary house for {area}."
+    elif karaka:
+        kw, krationale = karaka
+        connection = (
+            f"For {area}: {planet} is a natural significator ({krationale or 'karaka'}), "
+            f"so this transit matters regardless of which house it touches."
+        )
+    elif bb_relevant:
+        bb_house, bb_label = bb
+        bb_weight, _ = bb_relevant
+        connection = (
+            f"For {area}: this house links to your {bb_house}{_ord(bb_house)} "
+            f"via bhavat-bhavam ({bb_label}) — {planet} here pushes "
+            f"{bb_house}{_ord(bb_house)}-house themes to centre stage."
+        )
+    elif aspect_hits:
+        ah_house, ah_strength, (ah_weight, _) = aspect_hits[0]
+        connection = (
+            f"For {area}: {planet}'s aspect from H{to_house} reaches your "
+            f"{ah_house}{_ord(ah_house)} house — a primary {area} house."
+        )
+    if connection:
+        parts.append(connection)
+
+    # ── 3. Planet vibe oriented by classification ──
+    vibe_pair = rules.planet_vibe.get(planet, {})
+    if classification == "favorable":
+        vibe_phrase = vibe_pair.get("positive", "")
+        if vibe_phrase:
+            parts.append(f"{planet}'s supportive flavour active here: {vibe_phrase}.")
+    elif classification == "unfavorable":
+        vibe_phrase = vibe_pair.get("cautious", "")
+        if vibe_phrase:
+            parts.append(f"{planet}'s cautious flavour active here: {vibe_phrase}.")
+
+    # ── 4. Modifier — dusthana / upachaya colouring ──
+    house_tags = rules.house_classification.get(to_house, set())
+    is_malefic = planet in _MALEFIC_PLANETS
+    if "dusthana" in house_tags:
+        if is_malefic:
+            parts.append(
+                "Dusthana placement: malefics gain a battlefield here — turbulent now, "
+                "but cleansing afflictions related to this house's themes."
+            )
+        else:
+            parts.append(
+                "Dusthana placement: benefic energy is muted but protects against "
+                "the house's natural afflictions."
+            )
+    elif "upachaya" in house_tags and is_malefic:
+        parts.append(
+            "Upachaya placement: malefics excel here — strength compounds over the "
+            "transit, peaking near the end."
+        )
+
+    # ── 5. Area lens (the hand-written area-specific line) ──
+    area_lens = rules.planet_area_interpretation.get((planet, area, classification))
     if area_lens:
         parts.append(area_lens)
+
     return " ".join(parts)
 
 
@@ -1352,11 +1440,13 @@ def calculate_transit_ingresses(
                 ev["next_ingress_date"] = None
 
     # Step 3: emit per-area events. For every (event, selected area) pair:
-    #   - compute classification (favorable/unfavorable/neutral) using
-    #     CLASSICAL_FAVORABLE_HOUSES applied to to_house
-    #   - look up area-specific meaning from PLANET_*_MEANINGS tables
+    #   - look up classification (favorable/unfavorable/neutral) from DB
+    #     rules.planet_favorable_houses with the karaka exception
+    #   - call the DB-rules-driven composer to produce house+area-aware text
     # Includes both current placements (date < start_date, is_current=True)
     # and future ingresses, sorted chronologically.
+    rules = rules_module.get_rules_sync()
+
     events_by_area: Dict[str, List[Dict]] = {area: [] for area in life_areas}
     flat = sorted(current_placements + raw_ingresses, key=lambda x: x["_dt"])
 
@@ -1364,34 +1454,26 @@ def calculate_transit_ingresses(
         from_house = _house_from_natal_lagna(ing["from_sign_idx"], natal_lagna_sign_idx)
         to_house = _house_from_natal_lagna(ing["to_sign_idx"], natal_lagna_sign_idx)
         planet = ing["planet"]
-        favorable_houses = CLASSICAL_FAVORABLE_HOUSES.get(planet, set())
+        favorable_houses = rules.planet_favorable_houses.get(planet, set())
         is_favorable = to_house in favorable_houses
+        # Tracked planets are everything in the favorable-houses table.
+        # If a planet has no row at all, treat as neutral by default.
+        planet_is_tracked = planet in rules.planet_favorable_houses
 
         for area in life_areas:
-            karakas = LIFE_AREA_RULES.get(area, {}).get("karakas", [])
-            is_karaka = planet in karakas
+            is_karaka = planet in rules.area_karakas.get(area, {})
 
-            # Karakas are NEVER unfavorable for their own area (per existing rule).
+            # Karaka exception: karakas are never classified unfavorable for
+            # their own area (BPHS / Phaladeepika doctrine).
             if is_favorable or is_karaka:
                 classification = "favorable"
-            elif planet in CLASSICAL_FAVORABLE_HOUSES:
-                # Classically tracked planet, but in an unfavorable house.
+            elif planet_is_tracked:
                 classification = "unfavorable"
             else:
                 classification = "neutral"
 
-            # Area lens: pick whichever PLANET_*_MEANINGS row matches the
-            # classification. Falls through to None if not in the table —
-            # the composer just omits that sentence.
-            if classification == "favorable":
-                area_lens = PLANET_FAVORABLE_MEANINGS.get(planet, {}).get(area)
-            elif classification == "unfavorable":
-                area_lens = PLANET_UNFAVORABLE_MEANINGS.get(planet, {}).get(area)
-            else:
-                area_lens = None
-
             interpretation = _compose_ingress_interpretation(
-                planet, to_house, classification, area_lens
+                rules, planet, to_house, area, classification
             )
 
             events_by_area[area].append({

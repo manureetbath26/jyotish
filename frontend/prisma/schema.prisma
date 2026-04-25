@@ -359,3 +359,121 @@ model Coupon {
 
   subscriptions Subscription[]
 }
+
+// ---------------------------------------------------------------------------
+// Transit interpretation rules (Apr 2026)
+//
+// All static rules driving the transit ingress composer live here so admins
+// can refine wording / add karakas / adjust house weights without redeploy.
+// Backend reads via asyncpg with a 5-minute TTL cache. Frontend chat /
+// daily / window engines still use file-based copies for now (separate
+// migration pass to follow).
+//
+// Conventions:
+//   - planet ∈ {Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu}
+//   - house  ∈ 1..12
+//   - life_area ∈ {career, love_life, health, finances, family, self_confidence}
+//   - polarity ∈ {favorable, unfavorable}
+//   - classification tag ∈ {kendra, trikona, dusthana, upachaya, maraka,
+//                           bhadhaka, panapara, apoklima, ari, mritu, vyaya, ...}
+// ---------------------------------------------------------------------------
+
+/// Per-planet "vibe" — flavour text shown in transit cards.
+/// Two rows per planet (positive + cautious).
+model PlanetVibe {
+  planet    String
+  polarity  String // "positive" | "cautious"
+  text      String
+  updatedAt DateTime @updatedAt
+
+  @@id([planet, polarity])
+}
+
+/// Multi-label house tags — a house can be both ari (6th) AND upachaya.
+/// Stored as one row per (house, tag) so admins can add lineage-specific
+/// classifications without schema changes.
+model HouseClassification {
+  house     Int
+  tag       String   // "kendra" | "trikona" | "dusthana" | "upachaya" | "maraka" | "panapara" | "apoklima"
+  notes     String?  // optional rationale shown in admin UI
+  updatedAt DateTime @updatedAt
+
+  @@id([house, tag])
+  @@index([tag])
+}
+
+/// Bhavat-bhavam: counting the same house number from a bhava gives a
+/// secondary house with similar significations. e.g. (10, 7) means
+/// "10th-from-10th = 7th" — so 7H carries career significations.
+model BhavatBhavam {
+  fromHouse Int
+  toHouse   Int
+  /// Short label for the relationship, e.g. "10th-from-10th = career via business"
+  label     String
+  updatedAt DateTime @updatedAt
+
+  @@id([fromHouse, toHouse])
+}
+
+/// Per-planet special aspects (beyond the universal 7th).
+/// e.g. Mars: rows (Mars, 4) and (Mars, 8). Universal 7th is implicit.
+model PlanetSpecialAspect {
+  planet         String
+  aspectOffset   Int     // 1..12 offset from planet's house
+  /// Strength 0-1 — most special aspects are full-strength (1.0) per BPHS
+  strength       Float   @default(1.0)
+  updatedAt      DateTime @updatedAt
+
+  @@id([planet, aspectOffset])
+}
+
+/// Per life-area: which natal houses carry significations + relative weight.
+/// weight 1.0 = primary (e.g. 10H for career), 0.7 = secondary, 0.4 = tertiary.
+model LifeAreaHouseRelevance {
+  lifeArea  String
+  house     Int
+  weight    Float
+  /// Why this house matters for this area (admin-editable rationale)
+  rationale String?
+  updatedAt DateTime @updatedAt
+
+  @@id([lifeArea, house])
+  @@index([lifeArea])
+}
+
+/// Per life-area: which planets are natural significators (karakas).
+/// Karakas matter regardless of which house they transit.
+model LifeAreaKaraka {
+  lifeArea  String
+  planet    String
+  weight    Float    @default(1.0)
+  rationale String?
+  updatedAt DateTime @updatedAt
+
+  @@id([lifeArea, planet])
+  @@index([lifeArea])
+}
+
+/// Houses where a planet is classically favorable when transiting from
+/// natal lagna. Replaces the old PLANET_CLASSICAL_FAVORABLE_HOUSES dict.
+model PlanetFavorableHouse {
+  planet    String
+  house     Int
+  updatedAt DateTime @updatedAt
+
+  @@id([planet, house])
+  @@index([planet])
+}
+
+/// Per-(planet, area, polarity) interpretation text — the area lens
+/// sentence in the composed interpretation. Admin-editable.
+model PlanetAreaInterpretation {
+  planet    String
+  lifeArea  String
+  polarity  String // "favorable" | "unfavorable"
+  text      String
+  updatedAt DateTime @updatedAt
+
+  @@id([planet, lifeArea, polarity])
+  @@index([lifeArea])
+}

@@ -6,9 +6,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load backend .env first (if present), then fall back to frontend's .env
+# so DATABASE_URL (used by services/rules.py) works without duplication
+# in monorepo dev. Production should set env vars directly.
+load_dotenv()  # ./backend/.env
+_frontend_env = Path(__file__).resolve().parent.parent / "frontend" / ".env"
+if _frontend_env.exists():
+    load_dotenv(_frontend_env, override=False)
 
 from routers.chart import router as chart_router
 
