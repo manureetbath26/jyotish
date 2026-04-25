@@ -7,12 +7,20 @@ from models.schemas import (
     CurrentTransitRequest, CurrentTransitResponse,
     LifetimeTransitRequest, LifetimeTransitResponse,
     PanchangRequest, PanchangResponse,
+    TransitIngressResponse,
 )
 from services.geocoding import geocode_place, local_to_utc
 from services.astrology import calculate_full_chart
 from services.dasha import build_dasha_sequence, get_current_dasha_antardasha
 from services.yogas import calculate_yogas
-from services.transit import calculate_transit_periods, get_next_major_transit, get_current_transit_positions, get_lifetime_transit_snapshots
+from services.transit import (
+    calculate_transit_periods,
+    get_next_major_transit,
+    get_current_transit_positions,
+    get_lifetime_transit_snapshots,
+    calculate_opening_snapshot,
+    calculate_transit_ingresses,
+)
 from services.panchang import calculate_panchang
 router = APIRouter(prefix="/api/chart", tags=["chart"])
 
@@ -228,3 +236,50 @@ async def current_transits(body: CurrentTransitRequest):
         return CurrentTransitResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Current transit error: {e}")
+
+
+@router.post("/transit-ingresses", response_model=TransitIngressResponse)
+async def transit_ingresses(body: TransitChartRequest):
+    """
+    Ingress-event timeline for the requested window + life areas.
+
+    Returns:
+      - opening_snapshot: every planet's position on start_date (sign,
+        degree, house from natal lagna).
+      - events_by_area: per requested life area, a chronological list
+        of sign-changes for the tracked planets (Mars + the four slow
+        ones), each framed for that area with classical favorable /
+        unfavorable interpretation and duration to the next ingress.
+
+    Window is capped to whatever the caller sends — the frontend caps
+    to 1 year so the per-area card list stays scannable.
+    """
+    try:
+        start_date = datetime.strptime(body.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(body.end_date, "%Y-%m-%d")
+        if start_date >= end_date:
+            raise ValueError("Start date must be before end date")
+
+        ayanamsha_val = body.chart_data.get("ayanamsha_value", 0)
+        life_areas = body.life_areas or []
+        if not life_areas:
+            raise ValueError("life_areas cannot be empty — pick at least one area")
+
+        opening_snapshot = calculate_opening_snapshot(
+            body.chart_data, start_date, ayanamsha_val
+        )
+        events_by_area = calculate_transit_ingresses(
+            body.chart_data, start_date, end_date, ayanamsha_val, life_areas
+        )
+
+        return TransitIngressResponse(
+            start_date=body.start_date,
+            end_date=body.end_date,
+            opening_snapshot=opening_snapshot,
+            events_by_area=events_by_area,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transit ingress error: {e}")

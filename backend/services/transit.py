@@ -1065,4 +1065,199 @@ def get_next_major_transit(
 
         current_date += timedelta(days=1)
 
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ingress-event timeline (Apr 2026 redesign)
+#
+# Tracks sign-changes of the medium-and-slow planets (Mars, Jupiter,
+# Saturn, Rahu, Ketu) across the requested window. For each ingress:
+#   - resolve which house (from natal lagna) the planet entered
+#   - compute how long it stays in the new sign
+#   - frame it for each user-selected life area, looking up the existing
+#     PLANET_FAVORABLE_MEANINGS / PLANET_UNFAVORABLE_MEANINGS table
+# Sun/Mercury/Venus move ~30 days per sign — too noisy as event cards;
+# they appear in the opening_snapshot only. Moon excluded entirely.
+# ────────────────────────────────────────────────────────────────────────────
+
+# Tracked planets for the per-area event cards. Order matters for display
+# (slow planets first — they shape the year, fast planets fill in detail).
+INGRESS_TRACKED_PLANETS = ["Saturn", "Jupiter", "Rahu", "Ketu", "Mars"]
+
+
+def _resolve_planet_num(planet_name: str) -> Optional[int]:
+    """Map planet name -> swisseph constant. Returns None for Ketu (computed from Rahu)."""
+    if planet_name == "Ketu":
+        return None
+    for num, name in PLANET_NAMES.items():
+        if name == planet_name:
+            return num
+    return None
+
+
+def _planet_position(planet_name: str, dt: datetime, ayanamsha_val: float) -> Dict:
+    """Get sidereal longitude + retrograde flag for a planet on a date.
+
+    For Ketu, computes from Rahu + 180°.
+    Returns {"longitude": float, "speed": float, "is_retrograde": bool}.
+    """
+    if planet_name == "Ketu":
+        rahu = _planet_position("Rahu", dt, ayanamsha_val)
+        return {
+            "longitude": (rahu["longitude"] + 180) % 360,
+            "speed": rahu["speed"],
+            "is_retrograde": True,  # Ketu always retrograde
+        }
+    planet_num = _resolve_planet_num(planet_name)
+    if planet_num is None:
+        return {"longitude": 0.0, "speed": 0.0, "is_retrograde": False}
+    jd = swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0, 1)
+    flag = swe.FLG_SWIEPH | swe.FLG_SPEED
+    pos, _ = swe.calc_ut(jd, planet_num, flag)
+    sidereal_lng = (pos[0] - ayanamsha_val) % 360
+    speed = pos[3]
+    is_retro = speed < 0 or planet_name == "Rahu"  # Rahu always retrograde (mean node)
+    return {"longitude": sidereal_lng, "speed": speed, "is_retrograde": is_retro}
+
+
+def _sign_index(longitude: float) -> int:
+    return int(longitude / 30) % 12
+
+
+def _house_from_natal_lagna(sign_idx: int, natal_lagna_sign_idx: int) -> int:
+    return ((sign_idx - natal_lagna_sign_idx) % 12) + 1
+
+
+def calculate_opening_snapshot(
+    natal_chart: Dict, on_date: datetime, ayanamsha_val: float
+) -> List[Dict]:
+    """All 9 planets' positions on `on_date`, with house from natal lagna.
+
+    Returned shape matches the PlanetSnapshot pydantic model.
+    """
+    natal_lagna_sign_idx = int(natal_chart.get("lagna_degree", 0) / 30)
+    snapshots: List[Dict] = []
+    nak_size = 360.0 / 27
+    for planet in ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"]:
+        p = _planet_position(planet, on_date, ayanamsha_val)
+        sign_idx = _sign_index(p["longitude"])
+        nak_idx = min(int(p["longitude"] / nak_size), 26)
+        snapshots.append({
+            "planet": planet,
+            "sign": RASHI_NAMES[sign_idx],
+            "sign_num": sign_idx + 1,
+            "degree": round(p["longitude"] % 30, 2),
+            "house": _house_from_natal_lagna(sign_idx, natal_lagna_sign_idx),
+            "is_retrograde": p["is_retrograde"],
+            "nakshatra": NAKSHATRA_NAMES[nak_idx] if nak_idx < len(NAKSHATRA_NAMES) else None,
+        })
+    return snapshots
+
+
+def calculate_transit_ingresses(
+    natal_chart: Dict,
+    start_date: datetime,
+    end_date: datetime,
+    ayanamsha_val: float,
+    life_areas: List[str],
+) -> Dict[str, List[Dict]]:
+    """For each tracked planet, find every sign-change in [start_date, end_date].
+    Frame each ingress separately for each requested life_area.
+
+    Returns: {area_id: [IngressEvent dict, ...]} sorted by date.
+    """
+    natal_lagna_sign_idx = int(natal_chart.get("lagna_degree", 0) / 30)
+
+    # Step 1: scan each tracked planet daily, accumulate ingress dates.
+    # Each entry: {planet, date, from_sign_idx, to_sign_idx, is_retrograde}.
+    raw_ingresses: List[Dict] = []
+    for planet in INGRESS_TRACKED_PLANETS:
+        prev_sign_idx: Optional[int] = None
+        prev_pos: Optional[Dict] = None
+        cursor = start_date
+        while cursor <= end_date:
+            p = _planet_position(planet, cursor, ayanamsha_val)
+            sign_idx = _sign_index(p["longitude"])
+            if prev_sign_idx is not None and sign_idx != prev_sign_idx:
+                raw_ingresses.append({
+                    "planet": planet,
+                    "date": cursor.strftime("%Y-%m-%d"),
+                    "_dt": cursor,
+                    "from_sign_idx": prev_sign_idx,
+                    "to_sign_idx": sign_idx,
+                    "is_retrograde": p["is_retrograde"],
+                })
+            prev_sign_idx = sign_idx
+            prev_pos = p
+            cursor += timedelta(days=1)
+
+    # Step 2: per planet, compute duration_days = days until the NEXT
+    # ingress for that planet within the window (or window end if last).
+    ingresses_by_planet: Dict[str, List[Dict]] = {}
+    for ing in raw_ingresses:
+        ingresses_by_planet.setdefault(ing["planet"], []).append(ing)
+
+    for planet, ingresses in ingresses_by_planet.items():
+        for i, ing in enumerate(ingresses):
+            if i + 1 < len(ingresses):
+                next_dt = ingresses[i + 1]["_dt"]
+                ing["duration_days"] = (next_dt - ing["_dt"]).days
+                ing["next_ingress_date"] = ingresses[i + 1]["date"]
+            else:
+                ing["duration_days"] = max(1, (end_date - ing["_dt"]).days)
+                ing["next_ingress_date"] = None
+
+    # Step 3: emit per-area events. For every (ingress, selected area) pair:
+    #   - compute classification (favorable/unfavorable/neutral) using
+    #     CLASSICAL_FAVORABLE_HOUSES applied to to_house
+    #   - look up area-specific meaning from PLANET_*_MEANINGS tables
+    events_by_area: Dict[str, List[Dict]] = {area: [] for area in life_areas}
+    flat = sorted(raw_ingresses, key=lambda x: x["_dt"])
+
+    for ing in flat:
+        from_house = _house_from_natal_lagna(ing["from_sign_idx"], natal_lagna_sign_idx)
+        to_house = _house_from_natal_lagna(ing["to_sign_idx"], natal_lagna_sign_idx)
+        planet = ing["planet"]
+        favorable_houses = CLASSICAL_FAVORABLE_HOUSES.get(planet, set())
+        is_favorable = to_house in favorable_houses
+
+        for area in life_areas:
+            karakas = LIFE_AREA_RULES.get(area, {}).get("karakas", [])
+            is_karaka = planet in karakas
+
+            # Karakas are NEVER unfavorable for their own area (per existing rule).
+            if is_favorable or is_karaka:
+                classification = "favorable"
+            elif planet in CLASSICAL_FAVORABLE_HOUSES:
+                # Classically tracked planet, but in an unfavorable house.
+                classification = "unfavorable"
+            else:
+                classification = "neutral"
+
+            fav_text = (
+                PLANET_FAVORABLE_MEANINGS.get(planet, {}).get(area)
+                if classification == "favorable" else None
+            )
+            unfav_text = (
+                PLANET_UNFAVORABLE_MEANINGS.get(planet, {}).get(area)
+                if classification == "unfavorable" else None
+            )
+
+            events_by_area[area].append({
+                "date": ing["date"],
+                "planet": planet,
+                "from_sign": RASHI_NAMES[ing["from_sign_idx"]],
+                "to_sign": RASHI_NAMES[ing["to_sign_idx"]],
+                "from_house": from_house,
+                "to_house": to_house,
+                "is_retrograde": ing["is_retrograde"],
+                "duration_days": ing.get("duration_days", 0),
+                "next_ingress_date": ing.get("next_ingress_date"),
+                "classification": classification,
+                "favorable_meaning": fav_text,
+                "unfavorable_meaning": unfav_text,
+                "life_area": area,
+            })
+
+    return events_by_area
+
     return major_transits

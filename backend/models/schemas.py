@@ -211,6 +211,46 @@ class TransitChartResponse(BaseModel):
     summary: Dict[str, str]  # Summary text for each life area
 
 
+# ── Ingress-event timeline (Apr 2026 redesign) ───────────────────────────────
+# Replaces the favorability-period model with a transit-event model:
+# show where each planet sits at start_date, then list each ingress
+# (sign-change) for the tracked planets across the window.
+
+class PlanetSnapshot(BaseModel):
+    """A planet's position at a single moment (used in opening_snapshot)."""
+    planet: str
+    sign: str
+    sign_num: int  # 1-12
+    degree: float  # 0-30 within the sign
+    house: int     # 1-12 from natal lagna
+    is_retrograde: bool
+    nakshatra: Optional[str] = None
+
+
+class IngressEvent(BaseModel):
+    """One sign-change of a tracked planet, framed for a single life area."""
+    date: str          # YYYY-MM-DD
+    planet: str
+    from_sign: str
+    to_sign: str
+    from_house: int    # from natal lagna
+    to_house: int
+    is_retrograde: bool
+    duration_days: int            # days the planet stays in to_sign within window
+    next_ingress_date: Optional[str] = None  # date planet leaves to_sign (or None if past window)
+    classification: str  # "favorable" | "unfavorable" | "neutral"
+    favorable_meaning: Optional[str] = None    # area-specific text if favorable
+    unfavorable_meaning: Optional[str] = None  # area-specific text if unfavorable
+    life_area: str
+
+
+class TransitIngressResponse(BaseModel):
+    start_date: str
+    end_date: str
+    opening_snapshot: List[PlanetSnapshot]  # all 9 planets at start_date
+    events_by_area: Dict[str, List[IngressEvent]]
+
+
 # ── Panchang & Avakhada ──────────────────────────────────────────────────────
 
 class TithiInfo(BaseModel):
