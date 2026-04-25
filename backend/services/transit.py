@@ -36,6 +36,23 @@ RASHI_NAMES = [
     "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
 ]
 
+# Sign → ruling planet (rashi adhipati). Framework constant per BPHS Ch. 4
+# — invariant by construction (each rashi has exactly one classical lord).
+RASHI_LORDS: Dict[str, str] = {
+    "Aries":       "Mars",
+    "Taurus":      "Venus",
+    "Gemini":      "Mercury",
+    "Cancer":      "Moon",
+    "Leo":         "Sun",
+    "Virgo":       "Mercury",
+    "Libra":       "Venus",
+    "Scorpio":     "Mars",
+    "Sagittarius": "Jupiter",
+    "Capricorn":   "Saturn",
+    "Aquarius":    "Saturn",
+    "Pisces":      "Jupiter",
+}
+
 # 27 nakshatras — framework constant (zodiac subdivision), not interpretation.
 NAKSHATRA_NAMES = [
     "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
