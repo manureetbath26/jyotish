@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const isGuest = !session?.user?.id;
 
   const body = await req.json();
-  const { chartData, birthData, tierId, upiTransactionId, couponCode } = body;
+  const { chartData, birthData, tierId, upiTransactionId, couponCode, guestName, guestEmail } = body;
 
   if (!chartData) {
     return Response.json({ error: "chartData is required" }, { status: 400 });
@@ -50,6 +50,44 @@ export async function POST(req: NextRequest) {
       { error: "Sign in to apply a coupon or buy more questions." },
       { status: 401 },
     );
+  }
+
+  // Guests must identify themselves with name + email. Email is the
+  // primary quota key — one free trial per email, harder to bypass than
+  // the cookie alone (clear cookies → still blocked by email).
+  let normalisedGuestEmail: string | null = null;
+  let normalisedGuestName: string | null = null;
+  if (isGuest) {
+    if (typeof guestName !== "string" || guestName.trim().length === 0) {
+      return Response.json(
+        { error: "Please enter your name to start." },
+        { status: 400 },
+      );
+    }
+    if (typeof guestEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
+      return Response.json(
+        { error: "Please enter a valid email address." },
+        { status: 400 },
+      );
+    }
+    normalisedGuestEmail = guestEmail.trim().toLowerCase();
+    normalisedGuestName = guestName.trim();
+
+    // If this email already has a registered account, ask them to sign in
+    // — otherwise we'd give an existing user another free trial as a guest.
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalisedGuestEmail },
+      select: { id: true },
+    });
+    if (existingUser) {
+      return Response.json(
+        {
+          error: "This email is registered. Please sign in to continue.",
+          shouldSignIn: true,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   let questionLimit = FREE_QUESTION_LIMIT;
@@ -108,22 +146,23 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Payment required — please provide UPI transaction ID" }, { status: 400 });
     }
   } else {
-    // Free tier — one free session per identity (user OR anon cookie).
+    // Free tier — one free session per identity (user OR guest email).
     if (isGuest) {
-      const anonId = await readAnonId();
-      if (anonId) {
-        const existingFree = await prisma.chatSession.findFirst({
-          where: { anonSessionId: anonId, amount: 0, couponCode: null },
-        });
-        if (existingFree) {
-          return Response.json(
-            {
-              error: "You've already used your free trial. Sign up to buy more questions.",
-              existingSessionId: existingFree.id,
-            },
-            { status: 400 },
-          );
-        }
+      // Primary check: email. Even if cookie is cleared, the email is the
+      // authoritative quota key.
+      const existingFreeForEmail = await prisma.chatSession.findFirst({
+        where: { guestEmail: normalisedGuestEmail!, amount: 0, couponCode: null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (existingFreeForEmail) {
+        return Response.json(
+          {
+            error: "You've already used your free trial. Sign up with this email to buy more questions.",
+            existingSessionId: existingFreeForEmail.id,
+            email: normalisedGuestEmail,
+          },
+          { status: 400 },
+        );
       }
     } else {
       const existingFree = await prisma.chatSession.findFirst({
@@ -146,13 +185,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // For guests, mint (or read) the anon cookie and key the session by it.
+  // For guests, mint (or read) the anon cookie and key the session by it
+  // for browser continuity; the authoritative quota key is guestEmail.
   const anonSessionId = isGuest ? await getOrSetAnonId() : null;
 
   const chatSession = await prisma.chatSession.create({
     data: {
       userId: isGuest ? null : session!.user!.id,
       anonSessionId,
+      guestEmail: normalisedGuestEmail,
+      guestName: normalisedGuestName,
       chartData,
       birthData: birthData || null,
       tierId: tierId || null,

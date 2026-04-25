@@ -1,15 +1,27 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const params = useSearchParams();
+  // Prefill from query params (used when a guest is funnelled here from
+  // the chat page after using their 2 free questions).
+  const [name, setName] = useState(() => params.get("name") ?? "");
+  const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const n = params.get("name");
+    const e = params.get("email");
+    if (n && !name) setName(n);
+    if (e && !email) setEmail(e);
+    // intentionally only react to params changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,5 +103,13 @@ export default function RegisterPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="max-w-sm mx-auto pt-16 text-center text-slate-500">Loading…</div>}>
+      <RegisterPageInner />
+    </Suspense>
   );
 }

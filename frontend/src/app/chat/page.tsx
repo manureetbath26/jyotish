@@ -91,6 +91,7 @@ function ChatPageContent() {
 
   // Birth form
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [place, setPlace] = useState("");
@@ -269,7 +270,8 @@ function ChatPageContent() {
     }
   };
 
-  // Create session (free or coupon)
+  // Create session (free or coupon). Includes guestName + guestEmail
+  // when the user is unauthenticated — required by the API for quota.
   const createSession = async (tierId?: string, upiTransactionId?: string) => {
     if (!chart) return;
     const body: Record<string, unknown> = {
@@ -279,6 +281,10 @@ function ChatPageContent() {
     if (tierId) body.tierId = tierId;
     if (upiTransactionId) body.upiTransactionId = upiTransactionId;
     if (couponApplied && coupon.trim()) body.couponCode = coupon.trim();
+    if (isGuest) {
+      body.guestName = name.trim();
+      body.guestEmail = email.trim();
+    }
 
     const res = await fetch("/api/chat/session", {
       method: "POST",
@@ -288,7 +294,19 @@ function ChatPageContent() {
     const data = await res.json();
 
     if (!res.ok) {
-      // If there's an existing free session, resume it
+      // Guest tried with an email already registered → push to sign-in
+      if (isGuest && data.shouldSignIn) {
+        const params = new URLSearchParams({ email: email.trim() });
+        router.push(`/auth/signin?${params.toString()}`);
+        return;
+      }
+      // Guest already used their free trial → push to register with prefill
+      if (isGuest && data.email) {
+        const params = new URLSearchParams({ name: name.trim(), email: data.email });
+        router.push(`/auth/register?${params.toString()}`);
+        return;
+      }
+      // If there's an existing free session for a logged-in user, resume it
       if (data.existingSessionId) {
         const sessRes = await fetch("/api/chat/session");
         const sessions = await sessRes.json();
@@ -446,15 +464,38 @@ function ChatPageContent() {
       {/* Birth form — only in new_chart mode */}
       {mode === "new_chart" && step === "birth" && (
         <form onSubmit={handleCalculateChart} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">Your Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
+          <div className={isGuest ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : ""}>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
+                Your Name {isGuest && <span className="text-amber-400">*</span>}
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Enter your name"
+                required={isGuest}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+            {isGuest && (
+              <div>
+                <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
+                  Email <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Used to track your free trial. We&apos;ll prefill it if you sign up later.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

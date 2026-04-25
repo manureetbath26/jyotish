@@ -238,12 +238,19 @@ model ChatSession {
   id               String   @id @default(cuid())
   /// Logged-in user, nullable so guests (Ask AI Astrologer 2-question free
   /// trial) can start a session before signing up. When null, the session
-  /// is identified by anonSessionId via a cookie.
+  /// is identified by guestEmail (primary) + anonSessionId cookie (browser
+  /// continuity).
   userId           String?
-  /// UUID held in the `jyotish_anon_id` cookie. Mutually exclusive with
-  /// userId — exactly one of the two identifies the session owner. On
-  /// later sign-up we can adopt orphans by setting userId from this.
-  anonSessionId    String?  @unique
+  /// UUID held in the `jyotish_anon_id` cookie. Lets the same browser
+  /// resume guest sessions even before sign-up. NOT unique — a single
+  /// browser may legitimately accumulate multiple sessions over time
+  /// (different guest emails). Email is the authoritative quota key.
+  anonSessionId    String?
+  /// Guest contact captured in the birth form. guestEmail is the primary
+  /// quota key — one free trial per email, harder to bypass than a cookie.
+  /// On later sign-up we adopt all orphan sessions matching this email.
+  guestEmail       String?
+  guestName        String?
   chartData        Json              // full ChartResponse snapshot (so no FK needed)
   birthData        Json?             // {date, time, place, name}
   tierId           String?           // nullable for free tier
@@ -260,6 +267,7 @@ model ChatSession {
   messages ChatMessage[]
 
   @@index([anonSessionId])
+  @@index([guestEmail])
 }
 
 model ChatMessage {
