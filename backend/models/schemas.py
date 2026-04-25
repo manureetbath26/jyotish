@@ -131,6 +131,7 @@ class TransitDetail(BaseModel):
     transit_degree: float
     transit_house: int
     reason: str  # e.g. "conjunct natal Venus" or "transiting house 7"
+    transit_date: Optional[str] = None  # YYYY-MM-DD; day this snapshot represents
 
 
 class TransitPeriod(BaseModel):

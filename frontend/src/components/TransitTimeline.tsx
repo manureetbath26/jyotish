@@ -8,6 +8,8 @@ interface TransitDetail {
   transit_rashi: string;
   transit_degree: number;
   transit_house: number;
+  /** Day inside the period this snapshot represents (YYYY-MM-DD) */
+  transit_date?: string;
   reason: string;
 }
 
@@ -213,11 +215,21 @@ export function TransitTimeline({ lifeArea, periods, summary }: TransitTimelineP
                                 <p className="font-medium text-slate-200">
                                   {td.planet}{" "}
                                   <span className="font-normal text-slate-400">
-                                    in {td.transit_rashi} ({td.transit_degree}°)
+                                    in {td.transit_rashi} ({td.transit_degree}°) — H{td.transit_house}
                                   </span>
+                                  {td.transit_date && (
+                                    <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-500">
+                                      on{" "}
+                                      {new Date(td.transit_date).toLocaleDateString("en-IN", {
+                                        day: "numeric",
+                                        month: "short",
+                                        year: "numeric",
+                                      })}
+                                    </span>
+                                  )}
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                  {td.reason} — House {td.transit_house}
+                                  {td.reason}
                                 </p>
                               </div>
                             </div>

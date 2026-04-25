@@ -360,18 +360,35 @@ async function downloadPdf(transitData: TransitData, selectedAreas: string[]) {
   doc.save(`transit-report-${transitData.start_date}.pdf`);
 }
 
+// Hard ceiling on the analysis window. Beyond this the engine's
+// signals (mean-motion transit projection, dasha inflection precision)
+// blur into noise — and the UI gets unreadable. Matches the ask-engine cap.
+const MAX_WINDOW_YEARS = 5;
+const MAX_WINDOW_MS = MAX_WINDOW_YEARS * 365 * 24 * 60 * 60 * 1000;
+
+function isoDate(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
 export function TransitCalculator({ chart }: TransitCalculatorProps) {
   const { transitAccessUntil } = usePremium();
 
-  // Compute the max allowed end date from the subscription
-  const maxEndDate = transitAccessUntil
-    ? new Date(transitAccessUntil).toISOString().split("T")[0]
-    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const [startDate, setStartDate] = useState(isoDate(new Date()));
 
-  const [startDate, setStartDate] = useState(
-    new Date().toISOString().split("T")[0]
+  // Effective max end-date = min(start + 5y, subscription ceiling, default 1y)
+  const maxEndDate = (() => {
+    const fiveYearsFromStart = isoDate(new Date(new Date(startDate).getTime() + MAX_WINDOW_MS));
+    const subscriptionCap = transitAccessUntil ? isoDate(new Date(transitAccessUntil)) : null;
+    if (subscriptionCap && subscriptionCap < fiveYearsFromStart) return subscriptionCap;
+    return fiveYearsFromStart;
+  })();
+
+  const defaultEnd = transitAccessUntil
+    ? isoDate(new Date(transitAccessUntil))
+    : isoDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+  const [endDate, setEndDate] = useState(
+    defaultEnd > maxEndDate ? maxEndDate : defaultEnd,
   );
-  const [endDate, setEndDate] = useState(maxEndDate);
   const [selectedAreas, setSelectedAreas] = useState<string[]>(
     LIFE_AREAS.map(a => a.id)
   );
@@ -389,6 +406,11 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
       .catch(() => {})
       .finally(() => setTransitChartLoading(false));
   }, [chart.ayanamsha_value, chart.lagna_degree]);
+
+  // Keep endDate within the rolling 5-year ceiling whenever startDate moves
+  useEffect(() => {
+    if (endDate > maxEndDate) setEndDate(maxEndDate);
+  }, [startDate, maxEndDate, endDate]);
 
   const handleAreaToggle = (areaId: string) => {
     setSelectedAreas(prev =>
@@ -414,14 +436,10 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
       return;
     }
 
-    // Clamp end date to transit access limit
+    // Clamp end date to whichever ceiling is tighter — the 5-year analysis
+    // window or the user's subscription transit-access limit.
     let effectiveEndDate = endDate;
-    if (transitAccessUntil) {
-      const limit = new Date(transitAccessUntil).toISOString().split("T")[0];
-      if (endDate > limit) {
-        effectiveEndDate = limit;
-      }
-    }
+    if (effectiveEndDate > maxEndDate) effectiveEndDate = maxEndDate;
 
     setLoading(true);
     setError("");
@@ -484,7 +502,7 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
               houses={currentTransit.houses}
             />
 
-            {/* Planet position summary grid */}
+            {/* Planet position summary grid — sign + degree + house from natal lagna */}
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {currentTransit.planets.map(p => (
                 <div
@@ -496,6 +514,9 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
                   </p>
                   <p className="text-xs text-slate-500">
                     {p.rashi.slice(0, 3)} {p.degree_in_rashi.toFixed(1)}°
+                  </p>
+                  <p className="text-[10px] text-amber-500/80 font-medium mt-0.5">
+                    H{p.house}
                   </p>
                 </div>
               ))}
@@ -535,19 +556,24 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
               />
             </div>
           </div>
-          {transitAccessUntil && (
-            <p className="text-xs text-slate-500 mt-2">
-              Your plan covers transits until{" "}
-              <span className="text-slate-300 font-medium">
-                {new Date(transitAccessUntil).toLocaleDateString("en-IN", {
-                  day: "numeric", month: "long", year: "numeric",
-                })}
-              </span>.{" "}
-              <a href="/subscribe" className="text-amber-400 hover:text-amber-300 underline">
-                Top up for more
-              </a>
-            </p>
-          )}
+          <p className="text-xs text-slate-500 mt-2">
+            Analysis window is capped at{" "}
+            <span className="text-slate-300 font-medium">{MAX_WINDOW_YEARS} years</span>{" "}
+            from the start date — beyond that the engine&apos;s timing precision drops off.
+            {transitAccessUntil && (
+              <>
+                {" "}Your plan covers transits until{" "}
+                <span className="text-slate-300 font-medium">
+                  {new Date(transitAccessUntil).toLocaleDateString("en-IN", {
+                    day: "numeric", month: "long", year: "numeric",
+                  })}
+                </span>.{" "}
+                <a href="/subscribe" className="text-amber-400 hover:text-amber-300 underline">
+                  Top up for more
+                </a>
+              </>
+            )}
+          </p>
         </div>
 
         {/* Life Areas Selection */}

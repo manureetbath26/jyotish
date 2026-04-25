@@ -838,9 +838,10 @@ def calculate_transit_periods(
                     ASPECT_MULTIPLIERS["house_transit"],
                 )
 
-                # Build reason string
+                # Build reason string. House info is shown separately in the
+                # UI ("— House N") so we don't repeat it here.
                 if has_aspect:
-                    reason = f"transit {planet_name} {best_aspect_name} natal {best_natal_target} (house {transit_house})"
+                    reason = f"transit {planet_name} {best_aspect_name} natal {best_natal_target}"
                 else:
                     reason = f"transiting house {transit_house}"
 
@@ -872,6 +873,7 @@ def calculate_transit_periods(
                     "transit_rashi": transit_rashi,
                     "transit_degree": round(transit_lon % 30, 1),
                     "transit_house": transit_house,
+                    "transit_date": current_date.strftime("%Y-%m-%d"),
                     "reason": reason,
                 })
 
