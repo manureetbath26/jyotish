@@ -1828,6 +1828,158 @@ def _classify_signal(events: List[Dict]) -> str:
     return "mixed"
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# Advisory phrasing — what an astrologer would tell you to DO when a given
+# planet drives your sub-period or moves into a given house. Per planet ×
+# area: a positive (favorable) action prompt + a cautious one. Used by the
+# narrative composer to convert classifications into prescriptive advice.
+# ────────────────────────────────────────────────────────────────────────────
+_PD_ADVICE: Dict[str, Dict[str, Dict[str, str]]] = {
+    "Jupiter": {
+        "career":          {"favorable": "ask for the promotion, send the proposal, accept advisory or teaching roles — say yes to opportunities you've been holding back",
+                            "unfavorable": "be selective; Jupiter overcommits when challenged — don't take on more than you can deliver"},
+        "love_life":       {"favorable": "good window for engagement, marriage conversations, or deepening commitment",
+                            "unfavorable": "expansion can mean loss of focus — don't promise what you can't follow through on"},
+        "health":          {"favorable": "use this for healing routines that need patience — diet shifts, longer-term recovery, weight management",
+                            "unfavorable": "watch overindulgence — liver, weight, blood-sugar themes need attention"},
+        "finances":        {"favorable": "long-term investments, education spending, charitable giving — wealth karaka is supporting growth",
+                            "unfavorable": "don't overextend; Jupiter's optimism in unfavorable houses can lead to losses"},
+        "family":          {"favorable": "schedule the family gathering, have the difficult conversation, ask elders for guidance",
+                            "unfavorable": "watch for moralistic friction with family"},
+        "self_confidence": {"favorable": "your wisdom and presence are visible — trust your judgement, lead from values",
+                            "unfavorable": "watch for preachy or self-righteous moments"},
+    },
+    "Saturn": {
+        "career":          {"favorable": "long-game wins — structured projects, reputation through consistency, slow but durable progress",
+                            "unfavorable": "delays expected; persist anyway, the structure pays off later"},
+        "love_life":       {"favorable": "stable, slow-build commitment is favored — don't rush",
+                            "unfavorable": "emotional distance, delays in commitment — patience required"},
+        "health":          {"favorable": "build routines that require discipline — sleep schedule, exercise consistency, dietary structure",
+                            "unfavorable": "chronic conditions surface — rest and routine help"},
+        "finances":        {"favorable": "disciplined saving and long-term investments win",
+                            "unfavorable": "tighten spending; avoid speculation"},
+        "family":          {"favorable": "step into elder responsibilities; commitment to family duties is rewarded",
+                            "unfavorable": "watch for distance or burden with elders"},
+        "self_confidence": {"favorable": "confidence built through hard-won discipline — trust the slow climb",
+                            "unfavorable": "self-doubt and isolation creep in; rebuild slowly through small wins"},
+    },
+    "Mars": {
+        "career":          {"favorable": "good window for assertive moves — leadership pushes, competitive bids, decisive action",
+                            "unfavorable": "hold back from confrontation; conflicts with authority risk derailing progress"},
+        "love_life":       {"favorable": "passion, drive — physical chemistry is high",
+                            "unfavorable": "watch arguments and impatience; avoid confrontations"},
+        "health":          {"favorable": "good for exercise, recovery, stamina-building",
+                            "unfavorable": "accidents/inflammation risk — avoid reckless physical activity"},
+        "finances":        {"favorable": "bold financial moves and real-estate plays can pay off",
+                            "unfavorable": "avoid hasty financial decisions and overconfident bets"},
+        "family":          {"favorable": "lean into protective instincts; brothers/siblings benefit",
+                            "unfavorable": "heated arguments with male family members likely; choose silence"},
+        "self_confidence": {"favorable": "feel bold, decisive, ready to take on challenges",
+                            "unfavorable": "false bravado and impulsiveness lead to embarrassment — pause before acting"},
+    },
+    "Mercury": {
+        "career":          {"favorable": "trade, writing, communication accelerate — contracts and negotiations go smoothly",
+                            "unfavorable": "verify details before committing; miscommunication risk"},
+        "love_life":       {"favorable": "meaningful conversations deepen connection",
+                            "unfavorable": "over-analysing the relationship hurts it"},
+        "health":          {"favorable": "nervous-system supportive — mental clarity reduces anxiety",
+                            "unfavorable": "anxiety and overthinking surface"},
+        "finances":        {"favorable": "short-term trading and intellectual income flow",
+                            "unfavorable": "watch for paperwork errors and contract pitfalls"},
+        "family":          {"favorable": "communication resolves misunderstandings",
+                            "unfavorable": "siblings tension via miscommunication"},
+        "self_confidence": {"favorable": "express yourself articulately — visible mental sharpness",
+                            "unfavorable": "self-doubt via overthinking; act on instinct sometimes"},
+    },
+    "Venus": {
+        "career":          {"favorable": "creative, fashion, arts, diplomacy favored — charm opens doors",
+                            "unfavorable": "indulgence distracts from work"},
+        "love_life":       {"favorable": "one of the best windows for romance, marriage, deep connection",
+                            "unfavorable": "relationship drama and indulgence — pause big decisions"},
+        "health":          {"favorable": "hormonal/skin/reproductive health supported",
+                            "unfavorable": "indulgence themes — moderate consumption"},
+        "finances":        {"favorable": "luxury purchases and artistic income flow",
+                            "unfavorable": "overspending on comforts"},
+        "family":          {"favorable": "harmony in home, women in family supported",
+                            "unfavorable": "domestic tension via comfort/value differences"},
+        "self_confidence": {"favorable": "personal charm and social ease are at a high",
+                            "unfavorable": "vanity and people-pleasing get in the way"},
+    },
+    "Sun": {
+        "career":          {"favorable": "recognition possible — authority figures notice your work",
+                            "unfavorable": "ego clashes with bosses; pride blocks progress"},
+        "love_life":       {"favorable": "natural magnetism draws admiration",
+                            "unfavorable": "pride strains relationships; watch authority struggles"},
+        "health":          {"favorable": "vitality high — start that routine you've been planning",
+                            "unfavorable": "heart/eye/head themes — avoid overexertion in heat"},
+        "finances":        {"favorable": "steady income; government or authority figures help",
+                            "unfavorable": "father/government dues or status spending drains resources"},
+        "family":          {"favorable": "father figures support; lead family events",
+                            "unfavorable": "friction with father or authorities; pride blocks reconciliation"},
+        "self_confidence": {"favorable": "best window for personal empowerment and asserting identity",
+                            "unfavorable": "watch arrogance and grandstanding"},
+    },
+    "Moon": {
+        "career":          {"favorable": "public-facing roles favored — popularity rises",
+                            "unfavorable": "emotional volatility affects work"},
+        "love_life":       {"favorable": "deep emotional bonding possible",
+                            "unfavorable": "moodiness undermines connection"},
+        "health":          {"favorable": "mental wellbeing stabilises; sleep improves",
+                            "unfavorable": "watch for emotional eating, sleep disruption"},
+        "finances":        {"favorable": "gains via public dealings or maternal source",
+                            "unfavorable": "emotional spending"},
+        "family":          {"favorable": "mother and female family bonds strengthen",
+                            "unfavorable": "domestic mood swings"},
+        "self_confidence": {"favorable": "intuition is sharp — trust your gut",
+                            "unfavorable": "self-image volatile; ground in routine"},
+    },
+    "Rahu": {
+        "career":          {"favorable": "unconventional, foreign, or tech opportunities open — go where others won't",
+                            "unfavorable": "verify before committing; scandal/miscommunication risk"},
+        "love_life":       {"favorable": "unusual or foreign connections surface",
+                            "unfavorable": "illusion and deception in relationships — don't act on impulse"},
+        "health":          {"favorable": "alternative healing helps; sudden improvements possible",
+                            "unfavorable": "hard-to-diagnose conditions or anxiety"},
+        "finances":        {"favorable": "sudden gains via unconventional means possible",
+                            "unfavorable": "fraud and speculation risk — slow due-diligence beats hype"},
+        "family":          {"favorable": "foreign or unconventional family connections form",
+                            "unfavorable": "confusion and disruption in family dynamics"},
+        "self_confidence": {"favorable": "ambition surges — push into new territory",
+                            "unfavorable": "ego inflation or existential doubt — ground in reality"},
+    },
+    "Ketu": {
+        "career":          {"favorable": "research, spiritual, or specialist work serves; detach from politics",
+                            "unfavorable": "withdrawal and loss of interest — reorient before forcing"},
+        "love_life":       {"favorable": "deeper spiritual bonding possible",
+                            "unfavorable": "sudden disconnection or detachment"},
+        "health":          {"favorable": "good for cleansing routines, fasts, retreat",
+                            "unfavorable": "energy drops; rest more"},
+        "finances":        {"favorable": "frugal saving + spiritual giving",
+                            "unfavorable": "unexplained losses; check accounts"},
+        "family":          {"favorable": "deepening of roots, spiritual family",
+                            "unfavorable": "withdrawal from family events"},
+        "self_confidence": {"favorable": "clarity through detachment, spiritual insight",
+                            "unfavorable": "self-doubt via withdrawal"},
+    },
+}
+
+
+def _advice_for(planet: str, area: str, classification: str) -> str:
+    """Lookup advisory phrase for (planet, area, classification). Empty if unknown."""
+    polarity = "favorable" if classification == "favorable" else "unfavorable"
+    return _PD_ADVICE.get(planet, {}).get(area, {}).get(polarity, "")
+
+
+_AREA_LABEL_CASUAL: Dict[str, str] = {
+    "career":          "career",
+    "love_life":       "love and relationships",
+    "health":          "health and energy",
+    "finances":        "money and finances",
+    "family":          "family",
+    "self_confidence": "your self-confidence",
+}
+
+
 def compose_area_narrative(
     rules: "RuleSet",
     natal_chart: Dict,
@@ -1837,58 +1989,83 @@ def compose_area_narrative(
     window_end: datetime,
     ayanamsha_val: float,
 ) -> str:
-    """Three-paragraph prose synthesis for one life area.
+    """Three-paragraph ADVISORY reading for one life area.
 
-    Para 1: current state (active PD + active ingresses + dasha context)
-    Para 2: next inflection (next 1-3 events on the same date, with what changes)
-    Para 3: background (longest-duration ingresses + Sade-Sati if applicable)
+    Voice: knowledgeable astrologer giving forward-looking guidance.
+    Each paragraph translates structured facts into prescriptive advice
+    with concrete dates and verbs ("push forward", "hold off", "brace for").
+
+    Para 1: WHAT'S ACTIVE NOW + the texture you're feeling
+    Para 2: NEXT MAJOR INFLECTION with specific advice for that window
+    Para 3: BIGGER ARC in the background (slow planet placement + Sade-Sati)
     """
     lagna = natal_chart.get("lagna", "")
+    area_label = _AREA_LABEL_CASUAL.get(area, area)
     paras: List[str] = []
 
-    # ── Para 1: CURRENT STATE ──
+    # ── Para 1: WHAT'S ACTIVE NOW ──
     current = sorted(
         [e for e in events if e.get("is_current")],
         key=lambda e: 0 if e.get("event_type") == "pratyantardasha" else 1,
     )
     if current:
         active_pd = next((e for e in current if e.get("event_type") == "pratyantardasha"), None)
-        active_ingresses = [e for e in current if e.get("event_type") == "ingress"]
+        active_ingresses = [
+            e for e in current if e.get("event_type") == "ingress"
+            and e.get("planet") in {"Mars", "Jupiter", "Saturn", "Rahu", "Ketu"}
+        ]
 
         bits: List[str] = []
+        signal = _classify_signal(current)
+        texture = {
+            "favorable":   f"Right now {area_label} has tailwind",
+            "challenging": f"Right now {area_label} feels heavy",
+            "mixed":       f"Right now {area_label} is mixed — some pressure, some support",
+            "neutral":     f"Right now {area_label} is in a quiet phase",
+        }[signal]
+        bits.append(texture + ".")
+
+        # Lead with the active PD (it's the fine driver)
         if active_pd:
-            md = active_pd.get("md_lord")
-            ad = active_pd.get("ad_lord")
-            pd = active_pd.get("planet")
+            md, ad, pd = active_pd.get("md_lord"), active_pd.get("ad_lord"), active_pd.get("planet")
             until_iso = active_pd.get("next_ingress_date")
             until_str = _format_human_date_safe(until_iso) if until_iso else "later this period"
-            bits.append(
-                f"Currently you're in **{md}-{ad}-{pd}** sub-period "
-                f"(running until {until_str})."
+            days_to_pd_end = 0
+            if until_iso:
+                end_dt = _parse_iso_date(until_iso)
+                if end_dt:
+                    days_to_pd_end = max(0, (end_dt - today).days)
+            advice = _advice_for(pd, area, active_pd.get("classification") or "neutral")
+            pd_line = (
+                f"You're in the **{md}-{ad}-{pd}** sub-period — {pd} is steering the next "
+                f"~{days_to_pd_end} days (until **{until_str}**)."
             )
-        if active_ingresses:
-            ingress_phrases = []
-            for e in active_ingresses[:3]:
-                p = e.get("planet")
-                h = e.get("to_house")
-                since_iso = e.get("date")
-                since = _format_human_date_safe(since_iso) if since_iso else ""
-                yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
-                ingress_phrases.append(f"**{p}**{yk_note} has been transiting your H{h} since {since}")
-            if ingress_phrases:
-                bits.append(" and ".join(ingress_phrases) + ".")
+            if advice:
+                pd_line += f" {advice.capitalize()}."
+            bits.append(pd_line)
 
-        signal = _classify_signal(current)
-        if signal == "favorable":
-            bits.append(f"For {area}, the active signals lean **favorable** — momentum is on your side.")
-        elif signal == "challenging":
-            bits.append(f"For {area}, the active signals lean **challenging** — proceed with patience.")
-        elif signal == "mixed":
-            bits.append(f"For {area}, the active signals are **mixed** — read each below to see what's pushing which way.")
+        # Then the supportive / aggravating slow-planet placements
+        for e in active_ingresses[:2]:
+            p = e.get("planet")
+            h = e.get("to_house")
+            yk = _is_yogakaraka(p, lagna)
+            classn = e.get("classification") or "neutral"
+            advice = _advice_for(p, area, classn)
+            yk_note = " (your yogakaraka — friendly to your chart)" if yk else ""
+            if classn == "favorable":
+                bits.append(
+                    f"**{p}**{yk_note} sits in your H{h} supporting this — {advice}."
+                )
+            elif classn == "unfavorable":
+                bits.append(
+                    f"**{p}**{yk_note} in your H{h} is the friction source — {advice}."
+                )
+            else:
+                bits.append(f"**{p}**{yk_note} sits in your H{h} as a neutral background.")
 
         paras.append(" ".join(bits))
 
-    # ── Para 2: NEXT INFLECTION ──
+    # ── Para 2: NEXT MAJOR INFLECTION ──
     future = sorted(
         [e for e in events if not e.get("is_current") and _parse_iso_date(e["date"]) and _parse_iso_date(e["date"]) > today],
         key=lambda e: e["date"],
@@ -1898,123 +2075,142 @@ def compose_area_narrative(
         same_day = [e for e in future if e["date"] == next_date]
         days_away = (_parse_iso_date(next_date) - today).days
         when_str = _format_human_date_safe(next_date)
-
-        if days_away == 0:
-            timing = "today"
-        elif days_away == 1:
-            timing = "tomorrow"
+        if days_away <= 1:
+            timing = "tomorrow" if days_away == 1 else "today"
         elif days_away < 14:
-            timing = f"in **{days_away} days**"
+            timing = f"{days_away} days from now"
         elif days_away < 60:
-            timing = f"in **{round(days_away / 7)} weeks**"
+            timing = f"~{round(days_away / 7)} weeks from now"
         else:
-            timing = f"in **{round(days_away / 30)} months**"
-
-        # Describe what changes
-        change_phrases = []
-        for e in same_day[:3]:
-            if e.get("event_type") == "pratyantardasha":
-                pd = e.get("planet")
-                md = e.get("md_lord")
-                ad = e.get("ad_lord")
-                karaka_note = ""
-                if pd in rules.area_karakas.get(area, {}):
-                    karaka_note = f" — {pd} is a natural significator of {area}"
-                change_phrases.append(
-                    f"the {md}-{ad}-{pd} pratyantardasha begins{karaka_note}"
-                )
-            else:
-                p = e.get("planet")
-                from_h = e.get("from_house")
-                to_h = e.get("to_house")
-                yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
-                change_phrases.append(
-                    f"**{p}**{yk_note} moves from your H{from_h} into H{to_h}"
-                )
+            timing = f"~{round(days_away / 30)} months from now"
 
         signal = _classify_signal(same_day)
-        signal_word = {
-            "favorable": "a more supportive window opens",
-            "challenging": "the tone tightens",
-            "mixed": "the picture shifts in mixed ways",
-            "neutral": "the configuration changes",
+        opener = {
+            "favorable":   f"**{when_str}** ({timing}) is your next opening",
+            "challenging": f"**{when_str}** ({timing}) is when the texture tightens",
+            "mixed":       f"**{when_str}** ({timing}) is your next inflection — mixed signals stack",
+            "neutral":     f"**{when_str}** ({timing}) marks the next configuration shift",
         }[signal]
+        bits = [opener + "."]
 
-        if change_phrases:
-            change_str = "; ".join(change_phrases)
-            paras.append(
-                f"On **{when_str}** ({timing}), {signal_word}: {change_str}."
-            )
+        # Per-event advisory phrasing
+        for e in same_day[:3]:
+            p = e.get("planet")
+            classn = e.get("classification") or "neutral"
+            advice = _advice_for(p, area, classn)
+            if e.get("event_type") == "pratyantardasha":
+                md, ad = e.get("md_lord"), e.get("ad_lord")
+                karaka_note = ""
+                if p in rules.area_karakas.get(area, {}):
+                    karaka_note = f" ({p} is a natural significator of {area_label})"
+                if classn == "favorable" and advice:
+                    bits.append(
+                        f"The **{md}-{ad}-{p}** pratyantardasha begins{karaka_note} — "
+                        f"this is a window to {advice}."
+                    )
+                elif classn == "unfavorable" and advice:
+                    bits.append(
+                        f"The **{md}-{ad}-{p}** pratyantardasha begins{karaka_note}; "
+                        f"during this window, {advice}."
+                    )
+                else:
+                    bits.append(f"The **{md}-{ad}-{p}** pratyantardasha begins{karaka_note}.")
+            else:
+                from_h = e.get("from_house")
+                to_h = e.get("to_house")
+                yk = _is_yogakaraka(p, lagna)
+                yk_note = " (your yogakaraka)" if yk else ""
+                if classn == "favorable" and advice:
+                    bits.append(
+                        f"**{p}**{yk_note} moves from H{from_h} into H{to_h} — {advice}."
+                    )
+                elif classn == "unfavorable" and advice:
+                    bits.append(
+                        f"**{p}**{yk_note} moves from H{from_h} into H{to_h}; {advice}."
+                    )
+                else:
+                    bits.append(f"**{p}**{yk_note} moves H{from_h} → H{to_h}.")
 
-    # ── Para 3: BACKGROUND THEMES ──
+        paras.append(" ".join(bits))
+
+    # ── Para 3: BIGGER ARC ──
     bg_bits: List[str] = []
 
-    # Longest-duration ingress events (slow planets shaping the window)
-    long_ingresses = sorted(
-        [e for e in events if e.get("event_type") == "ingress" and not e.get("is_current")],
-        key=lambda e: e.get("duration_days", 0),
-        reverse=True,
-    )[:1]
-    # Plus any current slow-planet placements
+    long_ingress = next(
+        iter(sorted(
+            [e for e in events if e.get("event_type") == "ingress" and not e.get("is_current")
+             and e.get("planet") in {"Saturn", "Jupiter", "Rahu", "Ketu"}],
+            key=lambda e: e.get("duration_days", 0),
+            reverse=True,
+        )), None,
+    )
     current_slow = [
         e for e in events
         if e.get("is_current") and e.get("event_type") == "ingress"
         and e.get("planet") in {"Saturn", "Jupiter", "Rahu", "Ketu"}
     ]
-    background_events = current_slow + long_ingresses
 
-    for e in background_events[:2]:
+    bg_first_done = False
+    if current_slow:
+        e = current_slow[0]
         p = e.get("planet")
         to_h = e.get("to_house")
-        dur = e.get("duration_days", 0)
+        until_iso = e.get("next_ingress_date")
+        yk = _is_yogakaraka(p, lagna)
+        yk_note = " (your yogakaraka)" if yk else ""
+        until_clause = (
+            f" until **{_format_human_date_safe(until_iso)}**"
+            if until_iso else " for the rest of this window"
+        )
+        bg_bits.append(
+            f"In the background, **{p}**{yk_note} continues to sit in your H{to_h}{until_clause} — "
+            f"that's the slow current shaping {area_label} regardless of the daily noise."
+        )
+        bg_first_done = True
+
+    if long_ingress and (not bg_first_done):
+        e = long_ingress
+        p = e.get("planet")
+        to_h = e.get("to_house")
         until_iso = e.get("next_ingress_date")
         yk_note = " (your yogakaraka)" if _is_yogakaraka(p, lagna) else ""
-        if until_iso:
-            until_str = _format_human_date_safe(until_iso)
-            bg_bits.append(
-                f"**{p}**{yk_note} in your H{to_h} is the slow background "
-                f"({_format_duration_human(dur)} arc, until {until_str})."
-            )
-        else:
-            bg_bits.append(
-                f"**{p}**{yk_note} sits in your H{to_h} as the slow background "
-                f"for the rest of this window."
-            )
+        until_clause = f" until **{_format_human_date_safe(until_iso)}**" if until_iso else ""
+        bg_bits.append(
+            f"Coming up, **{p}**{yk_note} will hold your H{to_h}{until_clause} — that becomes the "
+            f"slow current for {area_label}."
+        )
 
-    # Sade-Sati state
+    # Sade-Sati framed as life-context, not theory
     sade = _compute_sade_sati(natal_chart, today, ayanamsha_val)
     if sade:
         phase = sade["phase"]
         leaves_str = _format_human_date_safe(sade["leaves_on"])
-        moon_sign = sade["moon_sign"]
-        saturn_sign = sade["saturn_sign"]
         is_sat_yk = _is_yogakaraka("Saturn", lagna)
         if phase == 1:
-            phase_text = (
-                f"You're in **Sade-Sati Phase 1** (Saturn in {saturn_sign} = "
-                f"12th from your natal Moon in {moon_sign}), continuing until {leaves_str}."
+            sat_text = (
+                f"You're also in the **first third of your 7.5-year Saturn cycle** "
+                f"(Sade-Sati Phase 1, until **{leaves_str}**) — slow grind, but not breakage."
             )
         elif phase == 2:
-            phase_text = (
-                f"You're in **Sade-Sati Phase 2 — Janma Shani** (Saturn over your "
-                f"natal Moon in {moon_sign}), the classical heaviest phase, until {leaves_str}."
+            sat_text = (
+                f"You're in the **heaviest year-and-a-half of your Saturn cycle** "
+                f"(Sade-Sati Phase 2 — Saturn over your natal Moon, until **{leaves_str}**). "
+                f"Sleep, mother's wellbeing, and public standing all need extra care. "
+                f"Schedule rest, watch what you say in public."
             )
         else:
-            phase_text = (
-                f"You're in **Sade-Sati Phase 3** (Saturn in {saturn_sign} = "
-                f"2nd from your natal Moon in {moon_sign}), the closing phase, until {leaves_str}."
+            sat_text = (
+                f"You're in the **closing third of your Saturn cycle** "
+                f"(Sade-Sati Phase 3, until **{leaves_str}**) — the worst pressure is behind you."
             )
 
         if is_sat_yk:
-            yk_text = (
-                f" Per Phaladeepika Ch. 26 + Sanjay Rath, your Saturn is "
-                f"yogakaraka so the lagna-referenced thread (career, material) tends "
-                f"positive even during Sade-Sati — but Moon-referenced pressure "
-                f"(mind, health, mother, public standing) runs in parallel and is not cancelled."
+            sat_text += (
+                f" The good news: Saturn is your yogakaraka, so the career/material thread "
+                f"holds together even when emotionally things feel heavy. Trust the structure."
             )
-            phase_text += yk_text
 
-        bg_bits.append(phase_text)
+        bg_bits.append(sat_text)
 
     if bg_bits:
         paras.append(" ".join(bg_bits))
