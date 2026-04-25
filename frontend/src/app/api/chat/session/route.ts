@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getOrSetAnonId, readAnonId } from "@/lib/anonSession";
 
 export const dynamic = "force-dynamic";
 
@@ -8,35 +9,47 @@ const FREE_QUESTION_LIMIT = 2;
 const UNLIMITED_LIMIT = 999999;
 
 export async function GET() {
+  // Logged-in users see all their sessions; guests see whatever session
+  // is tied to their anon cookie (at most one).
   const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (session?.user?.id) {
+    const sessions = await prisma.chatSession.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    });
+    return Response.json(sessions);
   }
 
-  const sessions = await prisma.chatSession.findMany({
-    where: { userId: session.user.id },
+  const anonId = await readAnonId();
+  if (!anonId) return Response.json([]);
+  const guestSessions = await prisma.chatSession.findMany({
+    where: { anonSessionId: anonId },
     orderBy: { createdAt: "desc" },
-    include: {
-      messages: {
-        orderBy: { createdAt: "asc" },
-      },
-    },
+    include: { messages: { orderBy: { createdAt: "asc" } } },
   });
-
-  return Response.json(sessions);
+  return Response.json(guestSessions);
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const isGuest = !session?.user?.id;
 
   const body = await req.json();
   const { chartData, birthData, tierId, upiTransactionId, couponCode } = body;
 
   if (!chartData) {
     return Response.json({ error: "chartData is required" }, { status: 400 });
+  }
+
+  // Guests get the free tier only — no coupons, no paid tiers (those
+  // require an account to support refunds and audit). They're nudged to
+  // sign up after their 2 free questions are used.
+  if (isGuest && (couponCode || tierId)) {
+    return Response.json(
+      { error: "Sign in to apply a coupon or buy more questions." },
+      { status: 401 },
+    );
   }
 
   let questionLimit = FREE_QUESTION_LIMIT;
@@ -95,33 +108,51 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Payment required — please provide UPI transaction ID" }, { status: 400 });
     }
   } else {
-    // Free tier — check if user already has a free session
-    const existingFree = await prisma.chatSession.findFirst({
-      where: {
-        userId: session.user.id,
-        amount: 0,
-        couponCode: null,
-      },
-    });
-
-    // Check if admin (admins bypass free limit)
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true },
-    });
-    const isAdmin = user?.role === "admin";
-
-    if (existingFree && !isAdmin) {
-      return Response.json({
-        error: "You've already used your free trial. Purchase a plan for more questions.",
-        existingSessionId: existingFree.id,
-      }, { status: 400 });
+    // Free tier — one free session per identity (user OR anon cookie).
+    if (isGuest) {
+      const anonId = await readAnonId();
+      if (anonId) {
+        const existingFree = await prisma.chatSession.findFirst({
+          where: { anonSessionId: anonId, amount: 0, couponCode: null },
+        });
+        if (existingFree) {
+          return Response.json(
+            {
+              error: "You've already used your free trial. Sign up to buy more questions.",
+              existingSessionId: existingFree.id,
+            },
+            { status: 400 },
+          );
+        }
+      }
+    } else {
+      const existingFree = await prisma.chatSession.findFirst({
+        where: { userId: session!.user!.id, amount: 0, couponCode: null },
+      });
+      const user = await prisma.user.findUnique({
+        where: { id: session!.user!.id },
+        select: { role: true },
+      });
+      const isAdmin = user?.role === "admin";
+      if (existingFree && !isAdmin) {
+        return Response.json(
+          {
+            error: "You've already used your free trial. Purchase a plan for more questions.",
+            existingSessionId: existingFree.id,
+          },
+          { status: 400 },
+        );
+      }
     }
   }
 
+  // For guests, mint (or read) the anon cookie and key the session by it.
+  const anonSessionId = isGuest ? await getOrSetAnonId() : null;
+
   const chatSession = await prisma.chatSession.create({
     data: {
-      userId: session.user.id,
+      userId: isGuest ? null : session!.user!.id,
+      anonSessionId,
       chartData,
       birthData: birthData || null,
       tierId: tierId || null,

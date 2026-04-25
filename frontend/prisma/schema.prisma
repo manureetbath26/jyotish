@@ -236,7 +236,14 @@ model ChatPricingTier {
 
 model ChatSession {
   id               String   @id @default(cuid())
-  userId           String
+  /// Logged-in user, nullable so guests (Ask AI Astrologer 2-question free
+  /// trial) can start a session before signing up. When null, the session
+  /// is identified by anonSessionId via a cookie.
+  userId           String?
+  /// UUID held in the `jyotish_anon_id` cookie. Mutually exclusive with
+  /// userId — exactly one of the two identifies the session owner. On
+  /// later sign-up we can adopt orphans by setting userId from this.
+  anonSessionId    String?  @unique
   chartData        Json              // full ChartResponse snapshot (so no FK needed)
   birthData        Json?             // {date, time, place, name}
   tierId           String?           // nullable for free tier
@@ -249,8 +256,10 @@ model ChatSession {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
+
+  @@index([anonSessionId])
 }
 
 model ChatMessage {

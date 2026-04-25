@@ -21,53 +21,65 @@ import type { CurrentTransitResponse } from "@/lib/api";
 import { resolveQuestionWindow } from "@/lib/questionWindow";
 import { buildWindowContext } from "@/lib/windowContext";
 import { getChatRules } from "@/lib/rulesServer";
+import { readAnonId } from "@/lib/anonSession";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(req: NextRequest) {
+/**
+ * Resolve which identity owns this chat session: a logged-in userId or
+ * an anonymous cookie. Returns the role flags + the matched session row.
+ * `notFound` means neither identity matches — caller returns 404.
+ */
+async function resolveChatSessionAccess(sessionId: string) {
   const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const anonId = await readAnonId();
 
-  const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get("sessionId");
-
-  if (!sessionId) {
-    return Response.json({ error: "sessionId required" }, { status: 400 });
-  }
-
-  // Verify ownership
   const chatSession = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { userId: true },
   });
+  if (!chatSession) return { notFound: true as const };
 
-  if (!chatSession || chatSession.userId !== session.user.id) {
-    // Admin bypass
+  // Logged-in owner
+  if (session?.user?.id && chatSession.userId === session.user.id) {
+    return { chatSession, isAdmin: false, isOwner: true, isGuest: false };
+  }
+  // Admin bypass
+  if (session?.user?.id) {
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { role: true },
     });
-    if (user?.role !== "admin") {
-      return Response.json({ error: "Not found" }, { status: 404 });
+    if (user?.role === "admin") {
+      return { chatSession, isAdmin: true, isOwner: false, isGuest: false };
     }
+  }
+  // Anonymous owner via cookie
+  if (anonId && chatSession.anonSessionId === anonId) {
+    return { chatSession, isAdmin: false, isOwner: true, isGuest: true };
+  }
+  return { notFound: true as const };
+}
+
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const sessionId = searchParams.get("sessionId");
+  if (!sessionId) {
+    return Response.json({ error: "sessionId required" }, { status: 400 });
+  }
+
+  const access = await resolveChatSessionAccess(sessionId);
+  if ("notFound" in access) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   }
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
   });
-
   return Response.json(messages);
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = await req.json();
   const { sessionId, question } = body;
 
@@ -83,28 +95,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Question too long (max 500 characters)" }, { status: 400 });
   }
 
-  // Load session and verify ownership + quota
-  const chatSession = await prisma.chatSession.findUnique({
-    where: { id: sessionId },
-  });
-
-  if (!chatSession) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+  const access = await resolveChatSessionAccess(sessionId);
+  if ("notFound" in access) {
+    return Response.json({ error: "Not found" }, { status: 404 });
   }
-
-  // Check admin bypass
-  let isAdmin = false;
-  if (chatSession.userId !== session.user.id) {
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true },
-    });
-    if (user?.role === "admin") {
-      isAdmin = true;
-    } else {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-  }
+  const { chatSession, isAdmin } = access;
 
   // Check quota (admins bypass)
   if (!isAdmin && chatSession.questionsUsed >= chatSession.questionLimit) {

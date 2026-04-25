@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { readAnonId } from "@/lib/anonSession";
 
 export const dynamic = "force-dynamic";
 
@@ -13,23 +14,25 @@ export const dynamic = "force-dynamic";
  * can revisit their bookmarked answers in context.
  *
  * Question quota is NOT refunded — this is a UI/display action only.
+ * Allowed for both logged-in users and anon-cookie guests.
  */
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const chatSession = await prisma.chatSession.findUnique({
     where: { id },
-    select: { userId: true },
+    select: { userId: true, anonSessionId: true },
   });
   if (!chatSession) return Response.json({ error: "Not found" }, { status: 404 });
-  if (chatSession.userId !== session.user.id) {
+
+  const session = await auth();
+  const anonId = await readAnonId();
+  const isOwner =
+    (session?.user?.id && chatSession.userId === session.user.id) ||
+    (anonId && chatSession.anonSessionId === anonId);
+  if (!isOwner) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
