@@ -374,6 +374,200 @@ const PLANET_AREA_INTERPRETATIONS: {
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
+// PLANET-AREA ADVICE — what to actually DO when a planet drives this area
+// 9 planets × 6 areas × 2 polarities = 108 advisory phrases
+// ────────────────────────────────────────────────────────────────────────────
+const PLANET_AREA_ADVICE: { planet: string; lifeArea: string; polarity: string; text: string }[] = (() => {
+  const A: Record<string, Record<string, { favorable: string; unfavorable: string }>> = {
+    Jupiter: {
+      career:          { favorable: "ask for the promotion, send the proposal, accept advisory or teaching roles — say yes to opportunities you've been holding back",
+                         unfavorable: "be selective; Jupiter overcommits when challenged — don't take on more than you can deliver" },
+      love_life:       { favorable: "good window for engagement, marriage conversations, or deepening commitment",
+                         unfavorable: "expansion can mean loss of focus — don't promise what you can't follow through on" },
+      health:          { favorable: "use this for healing routines that need patience — diet shifts, longer-term recovery, weight management",
+                         unfavorable: "watch overindulgence — liver, weight, blood-sugar themes need attention" },
+      finances:        { favorable: "long-term investments, education spending, charitable giving — wealth karaka is supporting growth",
+                         unfavorable: "don't overextend; Jupiter's optimism in unfavorable houses can lead to losses" },
+      family:          { favorable: "schedule the family gathering, have the difficult conversation, ask elders for guidance",
+                         unfavorable: "watch for moralistic friction with family" },
+      self_confidence: { favorable: "your wisdom and presence are visible — trust your judgement, lead from values",
+                         unfavorable: "watch for preachy or self-righteous moments" },
+    },
+    Saturn: {
+      career:          { favorable: "long-game wins — structured projects, reputation through consistency, slow but durable progress",
+                         unfavorable: "delays expected; persist anyway, the structure pays off later" },
+      love_life:       { favorable: "stable, slow-build commitment is favored — don't rush",
+                         unfavorable: "emotional distance, delays in commitment — patience required" },
+      health:          { favorable: "build routines that require discipline — sleep schedule, exercise consistency, dietary structure",
+                         unfavorable: "chronic conditions surface — rest and routine help" },
+      finances:        { favorable: "disciplined saving and long-term investments win",
+                         unfavorable: "tighten spending; avoid speculation" },
+      family:          { favorable: "step into elder responsibilities; commitment to family duties is rewarded",
+                         unfavorable: "watch for distance or burden with elders" },
+      self_confidence: { favorable: "confidence built through hard-won discipline — trust the slow climb",
+                         unfavorable: "self-doubt and isolation creep in; rebuild slowly through small wins" },
+    },
+    Mars: {
+      career:          { favorable: "good window for assertive moves — leadership pushes, competitive bids, decisive action",
+                         unfavorable: "hold back from confrontation; conflicts with authority risk derailing progress" },
+      love_life:       { favorable: "passion, drive — physical chemistry is high",
+                         unfavorable: "watch arguments and impatience; avoid confrontations" },
+      health:          { favorable: "good for exercise, recovery, stamina-building",
+                         unfavorable: "accidents/inflammation risk — avoid reckless physical activity" },
+      finances:        { favorable: "bold financial moves and real-estate plays can pay off",
+                         unfavorable: "avoid hasty financial decisions and overconfident bets" },
+      family:          { favorable: "lean into protective instincts; brothers/siblings benefit",
+                         unfavorable: "heated arguments with male family members likely; choose silence" },
+      self_confidence: { favorable: "feel bold, decisive, ready to take on challenges",
+                         unfavorable: "false bravado and impulsiveness lead to embarrassment — pause before acting" },
+    },
+    Mercury: {
+      career:          { favorable: "trade, writing, communication accelerate — contracts and negotiations go smoothly",
+                         unfavorable: "verify details before committing; miscommunication risk" },
+      love_life:       { favorable: "meaningful conversations deepen connection",
+                         unfavorable: "over-analysing the relationship hurts it" },
+      health:          { favorable: "nervous-system supportive — mental clarity reduces anxiety",
+                         unfavorable: "anxiety and overthinking surface" },
+      finances:        { favorable: "short-term trading and intellectual income flow",
+                         unfavorable: "watch for paperwork errors and contract pitfalls" },
+      family:          { favorable: "communication resolves misunderstandings",
+                         unfavorable: "siblings tension via miscommunication" },
+      self_confidence: { favorable: "express yourself articulately — visible mental sharpness",
+                         unfavorable: "self-doubt via overthinking; act on instinct sometimes" },
+    },
+    Venus: {
+      career:          { favorable: "creative, fashion, arts, diplomacy favored — charm opens doors",
+                         unfavorable: "indulgence distracts from work" },
+      love_life:       { favorable: "one of the best windows for romance, marriage, deep connection",
+                         unfavorable: "relationship drama and indulgence — pause big decisions" },
+      health:          { favorable: "hormonal/skin/reproductive health supported",
+                         unfavorable: "indulgence themes — moderate consumption" },
+      finances:        { favorable: "luxury purchases and artistic income flow",
+                         unfavorable: "overspending on comforts" },
+      family:          { favorable: "harmony in home, women in family supported",
+                         unfavorable: "domestic tension via comfort/value differences" },
+      self_confidence: { favorable: "personal charm and social ease are at a high",
+                         unfavorable: "vanity and people-pleasing get in the way" },
+    },
+    Sun: {
+      career:          { favorable: "recognition possible — authority figures notice your work",
+                         unfavorable: "ego clashes with bosses; pride blocks progress" },
+      love_life:       { favorable: "natural magnetism draws admiration",
+                         unfavorable: "pride strains relationships; watch authority struggles" },
+      health:          { favorable: "vitality high — start that routine you've been planning",
+                         unfavorable: "heart/eye/head themes — avoid overexertion in heat" },
+      finances:        { favorable: "steady income; government or authority figures help",
+                         unfavorable: "father/government dues or status spending drains resources" },
+      family:          { favorable: "father figures support; lead family events",
+                         unfavorable: "friction with father or authorities; pride blocks reconciliation" },
+      self_confidence: { favorable: "best window for personal empowerment and asserting identity",
+                         unfavorable: "watch arrogance and grandstanding" },
+    },
+    Moon: {
+      career:          { favorable: "public-facing roles favored — popularity rises",
+                         unfavorable: "emotional volatility affects work" },
+      love_life:       { favorable: "deep emotional bonding possible",
+                         unfavorable: "moodiness undermines connection" },
+      health:          { favorable: "mental wellbeing stabilises; sleep improves",
+                         unfavorable: "watch for emotional eating, sleep disruption" },
+      finances:        { favorable: "gains via public dealings or maternal source",
+                         unfavorable: "emotional spending" },
+      family:          { favorable: "mother and female family bonds strengthen",
+                         unfavorable: "domestic mood swings" },
+      self_confidence: { favorable: "intuition is sharp — trust your gut",
+                         unfavorable: "self-image volatile; ground in routine" },
+    },
+    Rahu: {
+      career:          { favorable: "unconventional, foreign, or tech opportunities open — go where others won't",
+                         unfavorable: "verify before committing; scandal/miscommunication risk" },
+      love_life:       { favorable: "unusual or foreign connections surface",
+                         unfavorable: "illusion and deception in relationships — don't act on impulse" },
+      health:          { favorable: "alternative healing helps; sudden improvements possible",
+                         unfavorable: "hard-to-diagnose conditions or anxiety" },
+      finances:        { favorable: "sudden gains via unconventional means possible",
+                         unfavorable: "fraud and speculation risk — slow due-diligence beats hype" },
+      family:          { favorable: "foreign or unconventional family connections form",
+                         unfavorable: "confusion and disruption in family dynamics" },
+      self_confidence: { favorable: "ambition surges — push into new territory",
+                         unfavorable: "ego inflation or existential doubt — ground in reality" },
+    },
+    Ketu: {
+      career:          { favorable: "research, spiritual, or specialist work serves; detach from politics",
+                         unfavorable: "withdrawal and loss of interest — reorient before forcing" },
+      love_life:       { favorable: "deeper spiritual bonding possible",
+                         unfavorable: "sudden disconnection or detachment" },
+      health:          { favorable: "good for cleansing routines, fasts, retreat",
+                         unfavorable: "energy drops; rest more" },
+      finances:        { favorable: "frugal saving + spiritual giving",
+                         unfavorable: "unexplained losses; check accounts" },
+      family:          { favorable: "deepening of roots, spiritual family",
+                         unfavorable: "withdrawal from family events" },
+      self_confidence: { favorable: "clarity through detachment, spiritual insight",
+                         unfavorable: "self-doubt via withdrawal" },
+    },
+  };
+  const out: { planet: string; lifeArea: string; polarity: string; text: string }[] = [];
+  for (const [planet, areaMap] of Object.entries(A)) {
+    for (const [lifeArea, polMap] of Object.entries(areaMap)) {
+      out.push({ planet, lifeArea, polarity: "favorable", text: polMap.favorable });
+      out.push({ planet, lifeArea, polarity: "unfavorable", text: polMap.unfavorable });
+    }
+  }
+  return out;
+})();
+
+// ────────────────────────────────────────────────────────────────────────────
+// YOGAKARAKA — single planet ruling kendra+trikona for each lagna
+// Invariant per BPHS Ch. 7. Other lagnas have no separate yogakaraka.
+// ────────────────────────────────────────────────────────────────────────────
+const YOGAKARAKA: Record<string, [string, string]> = {
+  Taurus:    ["Saturn", "rules H9 (Cap, trikona) and H10 (Aqu, kendra)"],
+  Cancer:    ["Mars",   "rules H5 (Sco, trikona) and H10 (Ari, kendra)"],
+  Leo:       ["Mars",   "rules H4 (Sco, kendra) and H9 (Ari, trikona)"],
+  Libra:     ["Saturn", "rules H4 (Cap, kendra) and H5 (Aqu, trikona)"],
+  Capricorn: ["Venus",  "rules H5 (Tau, trikona) and H10 (Lib, kendra)"],
+  Aquarius:  ["Venus",  "rules H4 (Tau, kendra) and H9 (Lib, trikona)"],
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// LIFE AREA LABEL — casual prose form for narrative composition
+// ────────────────────────────────────────────────────────────────────────────
+const LIFE_AREA_LABEL: Record<string, string> = {
+  career:          "career",
+  love_life:       "love and relationships",
+  health:          "health and energy",
+  finances:        "money and finances",
+  family:          "family",
+  self_confidence: "your self-confidence",
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// PLANET NATURE — universal benefic / malefic classification (BPHS)
+// ────────────────────────────────────────────────────────────────────────────
+const PLANET_NATURE: Record<string, string> = {
+  Sun: "malefic", Moon: "benefic", Mars: "malefic", Mercury: "benefic",
+  Jupiter: "benefic", Venus: "benefic", Saturn: "malefic",
+  Rahu: "malefic", Ketu: "malefic",
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// RULE SETTINGS — operational tunables (which planets to track for ingress
+// events, lookback days per planet for finding "currently here" cards, etc.)
+// ────────────────────────────────────────────────────────────────────────────
+const RULE_SETTINGS: { key: string; value: object; notes?: string }[] = [
+  {
+    key: "ingress_tracked_planets",
+    value: ["Saturn", "Jupiter", "Rahu", "Ketu", "Mars"],
+    notes: "Planets we generate ingress + 'currently here' cards for. Slow planets first (display order). Sun/Mercury/Venus too fast for cards (~30d/sign); Moon excluded entirely.",
+  },
+  {
+    key: "lookback_days",
+    value: { Mars: 60, Jupiter: 400, Saturn: 1100, Rahu: 600, Ketu: 600 },
+    notes: "Per-planet max days to walk backwards from start_date when finding the most recent ingress (slightly bigger than max sign-residency including retrograde loops).",
+  },
+];
+
+// ────────────────────────────────────────────────────────────────────────────
 // SEED EXECUTION
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -485,6 +679,72 @@ async function seed() {
     n++;
   }
   console.log(`  PlanetAreaInterpretation: ${n} rows`);
+
+  // PlanetAreaAdvice (advisory phrases)
+  n = 0;
+  for (const row of PLANET_AREA_ADVICE) {
+    await prisma.planetAreaAdvice.upsert({
+      where: {
+        planet_lifeArea_polarity: {
+          planet: row.planet,
+          lifeArea: row.lifeArea,
+          polarity: row.polarity,
+        },
+      },
+      create: row,
+      update: { text: row.text },
+    });
+    n++;
+  }
+  console.log(`  PlanetAreaAdvice: ${n} rows`);
+
+  // Yogakaraka
+  n = 0;
+  for (const [lagna, [planet, rationale]] of Object.entries(YOGAKARAKA)) {
+    await prisma.yogakaraka.upsert({
+      where: { lagna },
+      create: { lagna, planet, rationale },
+      update: { planet, rationale },
+    });
+    n++;
+  }
+  console.log(`  Yogakaraka: ${n} rows`);
+
+  // LifeAreaLabel
+  n = 0;
+  for (const [lifeArea, casualLabel] of Object.entries(LIFE_AREA_LABEL)) {
+    await prisma.lifeAreaLabel.upsert({
+      where: { lifeArea },
+      create: { lifeArea, casualLabel },
+      update: { casualLabel },
+    });
+    n++;
+  }
+  console.log(`  LifeAreaLabel: ${n} rows`);
+
+  // PlanetNature
+  n = 0;
+  for (const [planet, nature] of Object.entries(PLANET_NATURE)) {
+    await prisma.planetNature.upsert({
+      where: { planet },
+      create: { planet, nature },
+      update: { nature },
+    });
+    n++;
+  }
+  console.log(`  PlanetNature: ${n} rows`);
+
+  // RuleSetting
+  n = 0;
+  for (const row of RULE_SETTINGS) {
+    await prisma.ruleSetting.upsert({
+      where: { key: row.key },
+      create: row,
+      update: { value: row.value, notes: row.notes ?? null },
+    });
+    n++;
+  }
+  console.log(`  RuleSetting: ${n} rows`);
 
   console.log("\nDone.");
 }

@@ -124,41 +124,8 @@ class UserChartResponse(BaseModel):
     chart_data: Dict[str, Any]
 
 
-class TransitDetail(BaseModel):
-    planet: str
-    influence: str  # "favorable" | "unfavorable"
-    transit_rashi: str
-    transit_degree: float
-    transit_house: int
-    reason: str  # e.g. "conjunct natal Venus" or "transiting house 7"
-    transit_date: Optional[str] = None  # YYYY-MM-DD; day this snapshot represents
-
-
-class TransitPeriod(BaseModel):
-    start_date: str
-    end_date: str
-    type: str  # "favorable" | "unfavorable" | "neutral"
-    duration_days: int
-    strength: str  # "strong" | "moderate" | "weak"
-    active_planets: List[str]
-    description: str = ""
-    guidance: str = ""
-    rating: int = 3  # 1-5 scale: 1=Very Challenging, 5=Very Good
-    rating_label: str = "Neutral"
-    transit_details: List[TransitDetail] = []
-
-
-class TransitTimelineResponse(BaseModel):
-    life_area: str
-    periods: List[TransitPeriod]
-
-
-class MajorTransitEvent(BaseModel):
-    date: str
-    type: str
-    planet: str
-    natal_position: float
-    transit_position: float
+# Legacy favorability-period transit models removed Apr 2026 — replaced
+# by IngressEvent / TransitIngressResponse below.
 
 
 class CurrentTransitRequest(BaseModel):
@@ -194,6 +161,7 @@ class CurrentTransitResponse(BaseModel):
 
 
 class TransitChartRequest(BaseModel):
+    """Request body for the /transit-ingresses endpoint."""
     chart_data: Dict[str, Any]
     start_date: str = Field(..., description="Date in YYYY-MM-DD format")
     end_date: str = Field(..., description="Date in YYYY-MM-DD format")
@@ -201,14 +169,6 @@ class TransitChartRequest(BaseModel):
         default=None,
         description="Filter by life areas: love_life, health, career, finances, family, self_confidence"
     )
-
-
-class TransitChartResponse(BaseModel):
-    start_date: str
-    end_date: str
-    timelines: Dict[str, List[TransitPeriod]]
-    major_transits: List[MajorTransitEvent]
-    summary: Dict[str, str]  # Summary text for each life area
 
 
 # ── Ingress-event timeline (Apr 2026 redesign) ───────────────────────────────

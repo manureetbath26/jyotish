@@ -119,44 +119,9 @@ export async function getUserCharts() {
   return res.json();
 }
 
-export interface TransitDetail {
-  planet: string;
-  influence: "favorable" | "unfavorable";
-  transit_rashi: string;
-  transit_degree: number;
-  transit_house: number;
-  reason: string;
-}
-
-export interface TransitPeriod {
-  start_date: string;
-  end_date: string;
-  type: "favorable" | "unfavorable" | "neutral";
-  duration_days: number;
-  strength: "strong" | "moderate" | "weak";
-  active_planets: string[];
-  description: string;
-  guidance: string;
-  rating: number; // 1-5
-  rating_label: string;
-  transit_details: TransitDetail[];
-}
-
-export interface MajorTransitEvent {
-  date: string;
-  type: string;
-  planet: string;
-  natal_position: number;
-  transit_position: number;
-}
-
-export interface TransitChartResponse {
-  start_date: string;
-  end_date: string;
-  timelines: Record<string, TransitPeriod[]>;
-  major_transits: MajorTransitEvent[];
-  summary: Record<string, string>;
-}
+// Legacy favorability-period transit types removed Apr 2026 — replaced by
+// the ingress-event timeline (see /api/chart/transit-ingresses route +
+// IngressEvent in src/components/TransitTimeline.tsx).
 
 export interface CurrentTransitResponse {
   transit_date: string;
@@ -328,27 +293,6 @@ export async function calculatePanchang(data: {
   return res.json();
 }
 
-export async function calculateTransits(
-  chartData: ChartResponse,
-  startDate: string,
-  endDate: string,
-  lifeAreas?: string[]
-): Promise<TransitChartResponse> {
-  const res = await fetch(`${API_BASE}/api/chart/transits`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chart_data: chartData,
-      start_date: startDate,
-      end_date: endDate,
-      life_areas: lifeAreas,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Transit calculation failed");
-  }
-
-  return res.json();
-}
+// calculateTransits() removed Apr 2026 — call /api/chart/transit-ingresses
+// directly (see TransitCalculator.tsx). The old favorability-period model
+// has been replaced by the ingress-event timeline.

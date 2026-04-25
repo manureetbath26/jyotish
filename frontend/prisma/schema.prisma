@@ -477,3 +477,65 @@ model PlanetAreaInterpretation {
   @@id([planet, lifeArea, polarity])
   @@index([lifeArea])
 }
+
+// ---------------------------------------------------------------------------
+// Advisory phrasing + tunables (Apr 2026 — finished DB migration)
+//
+// Closes the loop: every interpretive rule the engine reads now lives in
+// Postgres. The remaining hard-coded constants in transit.py are SHASTRA
+// invariants (Vimshottari periods, zodiac names, planet-to-swisseph
+// number mapping) — definitions of the framework, not interpretive rules.
+// ---------------------------------------------------------------------------
+
+/// Per-(planet, life-area, polarity) ADVISORY phrase — the do/avoid line
+/// the narrative composer uses. Reads like an astrologer's instruction
+/// ("ask for the promotion", "hold back from confrontation"), not a
+/// description ("Mars creates conflicts").
+model PlanetAreaAdvice {
+  planet    String
+  lifeArea  String
+  polarity  String // "favorable" | "unfavorable"
+  text      String
+  updatedAt DateTime @updatedAt
+
+  @@id([planet, lifeArea, polarity])
+  @@index([lifeArea])
+}
+
+/// Yogakaraka mapping — the planet that rules both a kendra (1/4/7/10)
+/// AND a trikona (1/5/9) for a given lagna. Invariant per BPHS Ch. 7
+/// lordship rule, but stored here so admins can override for lineage
+/// variations. Six rows total (Taurus, Cancer, Leo, Libra, Capricorn,
+/// Aquarius). Other lagnas have no separate yogakaraka.
+model Yogakaraka {
+  lagna     String  @id // sign name (Aries, Taurus, ...)
+  planet    String
+  rationale String?
+  updatedAt DateTime @updatedAt
+}
+
+/// Casual display label per life-area, used in narrative prose
+/// ("love and relationships" instead of "love_life").
+model LifeAreaLabel {
+  lifeArea     String  @id
+  casualLabel  String
+  updatedAt    DateTime @updatedAt
+}
+
+/// Universal benefic / malefic / neutral classification per planet.
+/// Used by the composer for tone modifiers (dusthana battlefield rule).
+model PlanetNature {
+  planet    String  @id
+  nature    String  // "benefic" | "malefic" | "neutral"
+  updatedAt DateTime @updatedAt
+}
+
+/// Generic key-value rule settings for operational tunables that don't
+/// warrant their own table (tracked-planet list, lookback days per planet,
+/// gochara thresholds, etc.). Value is JSON to allow lists/maps.
+model RuleSetting {
+  key       String   @id // e.g. "ingress_tracked_planets", "lookback_days"
+  value     Json
+  notes     String?
+  updatedAt DateTime @updatedAt
+}

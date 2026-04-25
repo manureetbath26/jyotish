@@ -3,7 +3,7 @@ from datetime import datetime
 import pytz
 
 from models.schemas import (
-    BirthDataInput, ChartResponse, TransitChartRequest, TransitChartResponse,
+    BirthDataInput, ChartResponse, TransitChartRequest,
     CurrentTransitRequest, CurrentTransitResponse,
     LifetimeTransitRequest, LifetimeTransitResponse,
     PanchangRequest, PanchangResponse,
@@ -14,8 +14,6 @@ from services.astrology import calculate_full_chart
 from services.dasha import build_dasha_sequence, get_current_dasha_antardasha
 from services.yogas import calculate_yogas
 from services.transit import (
-    calculate_transit_periods,
-    get_next_major_transit,
     get_current_transit_positions,
     get_lifetime_transit_snapshots,
     calculate_opening_snapshot,
@@ -136,81 +134,10 @@ async def get_panchang(body: PanchangRequest):
     )
 
 
-@router.post("/transits", response_model=TransitChartResponse)
-async def calculate_transits(body: TransitChartRequest):
-    """
-    Calculate transit periods and major transit events.
-
-    - Analyzes planetary transits against natal positions
-    - Identifies favorable/unfavorable periods for life areas:
-      - Love life, Health, Career, Finances, Family relationships
-    - Includes major transit events (conjunctions, aspects)
-    - Returns timelines and strength assessments
-    """
-    try:
-        # Parse dates
-        start_date = datetime.strptime(body.start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(body.end_date, "%Y-%m-%d")
-
-        if start_date >= end_date:
-            raise ValueError("Start date must be before end date")
-
-        # Get ayanamsha value from chart data
-        ayanamsha_val = body.chart_data.get("ayanamsha_value", 0)
-
-        # Get current dasha from chart
-        current_dasha = body.chart_data.get("current_dasha", {})
-        current_dasha_planet = current_dasha.get("planet") if current_dasha else None
-
-        # Calculate transit periods
-        timelines = calculate_transit_periods(
-            body.chart_data,
-            start_date,
-            end_date,
-            ayanamsha_val,
-            current_dasha=current_dasha_planet
-        )
-
-        # Filter by requested life areas if specified
-        if body.life_areas:
-            timelines = {k: v for k, v in timelines.items() if k in body.life_areas}
-
-        # Get major transit events
-        major_transits = get_next_major_transit(
-            body.chart_data,
-            start_date,
-            ayanamsha_val,
-            months_ahead=int((end_date - start_date).days / 30)
-        )
-
-        # Generate summaries for each life area
-        summary = {}
-        for life_area, periods in timelines.items():
-            favorable = [p for p in periods if p["type"] == "favorable"]
-            unfavorable = [p for p in periods if p["type"] == "unfavorable"]
-
-            favorable_days = sum(p["duration_days"] for p in favorable)
-            unfavorable_days = sum(p["duration_days"] for p in unfavorable)
-
-            if favorable_days > unfavorable_days:
-                summary[life_area] = f"Generally favorable period with {len(favorable)} good periods and {len(unfavorable)} challenging periods"
-            elif unfavorable_days > favorable_days:
-                summary[life_area] = f"Mixed period with {len(favorable)} good periods and {len(unfavorable)} challenging periods. Exercise caution."
-            else:
-                summary[life_area] = f"Balanced period with equal favorable and unfavorable influences"
-
-        return TransitChartResponse(
-            start_date=body.start_date,
-            end_date=body.end_date,
-            timelines=timelines,
-            major_transits=major_transits,
-            summary=summary
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transit calculation error: {e}")
+# Legacy /transits endpoint removed Apr 2026 — replaced by /transit-ingresses.
+# The favorability-period model never matched how astrologers actually read
+# transits; the ingress-event timeline + per-area narrative composer is the
+# canonical replacement.
 
 
 @router.post("/lifetime-transits", response_model=LifetimeTransitResponse)

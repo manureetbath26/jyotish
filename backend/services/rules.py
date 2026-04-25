@@ -48,6 +48,19 @@ class RuleSet:
     # house -> short theme phrase (already DB-backed via HouseSignification table)
     house_signification: Dict[int, str] = field(default_factory=dict)
 
+    # ── Apr 2026 additions: completes the no-static-rules-in-files migration ──
+
+    # (planet, life_area, polarity) -> advisory phrase ("ask for the promotion")
+    planet_area_advice: Dict[Tuple[str, str, str], str] = field(default_factory=dict)
+    # lagna -> yogakaraka planet name
+    yogakaraka_for_lagna: Dict[str, str] = field(default_factory=dict)
+    # life_area -> casual prose label ("love and relationships")
+    life_area_label: Dict[str, str] = field(default_factory=dict)
+    # planet -> "benefic" | "malefic" | "neutral"
+    planet_nature: Dict[str, str] = field(default_factory=dict)
+    # generic key/value tunables (lists, maps); JSON-typed in DB
+    settings: Dict[str, object] = field(default_factory=dict)
+
 
 # ── Frozen fallback baseline (used only if DB unreachable on first load) ────
 # Minimal — just enough to produce a non-empty interpretation. Real content
@@ -95,6 +108,24 @@ _FALLBACK = RuleSet(
         10: "career, public image, authority",
         11: "gains, networks, elder siblings",
         12: "rest, losses, foreign, moksha, privacy",
+    },
+    yogakaraka_for_lagna={
+        "Taurus": "Saturn", "Cancer": "Mars", "Leo": "Mars",
+        "Libra": "Saturn", "Capricorn": "Venus", "Aquarius": "Venus",
+    },
+    life_area_label={
+        "career": "career", "love_life": "love and relationships",
+        "health": "health and energy", "finances": "money and finances",
+        "family": "family", "self_confidence": "your self-confidence",
+    },
+    planet_nature={
+        "Sun": "malefic", "Moon": "benefic", "Mars": "malefic",
+        "Mercury": "benefic", "Jupiter": "benefic", "Venus": "benefic",
+        "Saturn": "malefic", "Rahu": "malefic", "Ketu": "malefic",
+    },
+    settings={
+        "ingress_tracked_planets": ["Saturn", "Jupiter", "Rahu", "Ketu", "Mars"],
+        "lookback_days": {"Mars": 60, "Jupiter": 400, "Saturn": 1100, "Rahu": 600, "Ketu": 600},
     },
 )
 
@@ -174,6 +205,34 @@ async def _load_from_db() -> RuleSet:
         rows = await conn.fetch('SELECT house, short FROM "HouseSignification"')
         for r in rows:
             rs.house_signification[r["house"]] = r["short"]
+
+        rows = await conn.fetch('SELECT planet, "lifeArea", polarity, text FROM "PlanetAreaAdvice"')
+        for r in rows:
+            rs.planet_area_advice[(r["planet"], r["lifeArea"], r["polarity"])] = r["text"]
+
+        rows = await conn.fetch('SELECT lagna, planet FROM "Yogakaraka"')
+        for r in rows:
+            rs.yogakaraka_for_lagna[r["lagna"]] = r["planet"]
+
+        rows = await conn.fetch('SELECT "lifeArea", "casualLabel" FROM "LifeAreaLabel"')
+        for r in rows:
+            rs.life_area_label[r["lifeArea"]] = r["casualLabel"]
+
+        rows = await conn.fetch('SELECT planet, nature FROM "PlanetNature"')
+        for r in rows:
+            rs.planet_nature[r["planet"]] = r["nature"]
+
+        rows = await conn.fetch('SELECT key, value FROM "RuleSetting"')
+        for r in rows:
+            # asyncpg returns JSON columns as a JSON string. Parse once at load.
+            v = r["value"]
+            if isinstance(v, str):
+                import json as _json
+                try:
+                    v = _json.loads(v)
+                except Exception:
+                    pass
+            rs.settings[r["key"]] = v
 
         return rs
     finally:
