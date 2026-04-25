@@ -239,8 +239,10 @@ class IngressEvent(BaseModel):
     duration_days: int            # days the planet stays in to_sign within window
     next_ingress_date: Optional[str] = None  # date planet leaves to_sign (or None if past window)
     classification: str  # "favorable" | "unfavorable" | "neutral"
-    favorable_meaning: Optional[str] = None    # area-specific text if favorable
-    unfavorable_meaning: Optional[str] = None  # area-specific text if unfavorable
+    # Composed interpretation: house theme + planet vibe + area-specific lens.
+    # Built per (planet, to_house, area, classification) so H6 vs H7 reads
+    # genuinely different rather than reusing one (planet,area) string.
+    interpretation: str
     life_area: str
 
 

@@ -1084,6 +1084,92 @@ def get_next_major_transit(
 INGRESS_TRACKED_PLANETS = ["Saturn", "Jupiter", "Rahu", "Ketu", "Mars"]
 
 
+# ── Per-house signification short phrases ────────────────────────────────────
+# Mirrors frontend/src/lib/houseSignifications.ts (the canonical source).
+# Kept in sync by hand — admin DB overrides only affect the frontend display.
+HOUSE_SIGNIFICATIONS_SHORT: Dict[int, str] = {
+    1: "self, body, vitality",
+    2: "wealth, speech, family",
+    3: "courage, siblings, skill, short travel",
+    4: "home, mother, peace, property",
+    5: "children, creativity, intelligence, romance",
+    6: "work, service, enemies, health",
+    7: "spouse, partnerships, open dealings",
+    8: "transformation, research, hidden matters",
+    9: "fortune, dharma, father, higher learning",
+    10: "career, public image, authority",
+    11: "gains, networks, elder siblings",
+    12: "rest, losses, foreign, moksha, privacy",
+}
+
+# ── Per-planet "vibe" — positive when classically favourable, cautious when
+# not. Mirrors PLANET_VIBE in frontend dailyEngine.ts / windowContext.ts so
+# the chat engine, daily reading and transit timeline speak the same dialect.
+PLANET_VIBE: Dict[str, Dict[str, str]] = {
+    "Sun":     {"positive": "confidence, recognition, clarity of purpose",
+                "cautious": "ego friction, clashes with authority"},
+    "Moon":    {"positive": "emotional openness, comfort, social warmth",
+                "cautious": "mood volatility, over-sensitivity"},
+    "Mars":    {"positive": "drive, decisive action, courage",
+                "cautious": "impatience, conflict, accidents"},
+    "Mercury": {"positive": "sharp thinking, communication, deals",
+                "cautious": "over-analysis, miscommunication"},
+    "Jupiter": {"positive": "expansion, grace, opportunities, wisdom",
+                "cautious": "overconfidence, over-committing, weight"},
+    "Venus":   {"positive": "harmony, partnerships, artistic flow",
+                "cautious": "indulgence, relationship drama"},
+    "Saturn":  {"positive": "discipline, structure, slow compounding progress",
+                "cautious": "delays, fatigue, heavy responsibility"},
+    "Rahu":    {"positive": "unexpected openings, unusual gains, innovation",
+                "cautious": "confusion, distraction, inflated promises"},
+    "Ketu":    {"positive": "insight, detachment, spiritual clarity",
+                "cautious": "withdrawal, loss of interest, isolation"},
+}
+
+
+def _compose_ingress_interpretation(
+    planet: str, to_house: int, classification: str, area_lens: Optional[str]
+) -> str:
+    """Build a 2-3 sentence interpretation that's actually house-specific.
+
+    Three parts:
+      1. House activation — what this house governs (HOUSE_SIGNIFICATIONS_SHORT)
+      2. Planet vibe — flavour of the planet, oriented by classification
+         (PLANET_VIBE.positive when favorable, .cautious when unfavorable;
+         neutral is left vibe-less)
+      3. Area lens — area-specific text from PLANET_*_MEANINGS (the existing
+         hand-written line that explains how it lands for love/career/etc.)
+    """
+    house_theme = HOUSE_SIGNIFICATIONS_SHORT.get(to_house, "")
+    vibe_pair = PLANET_VIBE.get(planet, {})
+    if classification == "favorable":
+        vibe_phrase = vibe_pair.get("positive", "")
+        vibe_lead = "supportive flavour active here:"
+    elif classification == "unfavorable":
+        vibe_phrase = vibe_pair.get("cautious", "")
+        vibe_lead = "cautious flavour active here:"
+    else:
+        vibe_phrase = ""
+        vibe_lead = ""
+
+    parts: List[str] = []
+    if house_theme:
+        parts.append(f"{planet} now activates your {to_house}{_ord(to_house)} house — {house_theme}.")
+    else:
+        parts.append(f"{planet} moves into your {to_house}{_ord(to_house)} house.")
+    if vibe_phrase:
+        parts.append(f"With {planet}'s {vibe_lead} {vibe_phrase}.")
+    if area_lens:
+        parts.append(area_lens)
+    return " ".join(parts)
+
+
+def _ord(n: int) -> str:
+    if 11 <= n % 100 <= 13:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
 def _resolve_planet_num(planet_name: str) -> Optional[int]:
     """Map planet name -> swisseph constant. Returns None for Ketu (computed from Rahu)."""
     if planet_name == "Ketu":
@@ -1233,13 +1319,18 @@ def calculate_transit_ingresses(
             else:
                 classification = "neutral"
 
-            fav_text = (
-                PLANET_FAVORABLE_MEANINGS.get(planet, {}).get(area)
-                if classification == "favorable" else None
-            )
-            unfav_text = (
-                PLANET_UNFAVORABLE_MEANINGS.get(planet, {}).get(area)
-                if classification == "unfavorable" else None
+            # Area lens: pick whichever PLANET_*_MEANINGS row matches the
+            # classification. Falls through to None if not in the table —
+            # the composer just omits that sentence.
+            if classification == "favorable":
+                area_lens = PLANET_FAVORABLE_MEANINGS.get(planet, {}).get(area)
+            elif classification == "unfavorable":
+                area_lens = PLANET_UNFAVORABLE_MEANINGS.get(planet, {}).get(area)
+            else:
+                area_lens = None
+
+            interpretation = _compose_ingress_interpretation(
+                planet, to_house, classification, area_lens
             )
 
             events_by_area[area].append({
@@ -1253,8 +1344,7 @@ def calculate_transit_ingresses(
                 "duration_days": ing.get("duration_days", 0),
                 "next_ingress_date": ing.get("next_ingress_date"),
                 "classification": classification,
-                "favorable_meaning": fav_text,
-                "unfavorable_meaning": unfav_text,
+                "interpretation": interpretation,
                 "life_area": area,
             })
 

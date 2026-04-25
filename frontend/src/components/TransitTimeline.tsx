@@ -21,8 +21,9 @@ export interface IngressEvent {
   duration_days: number;
   next_ingress_date: string | null;
   classification: "favorable" | "unfavorable" | "neutral";
-  favorable_meaning: string | null;
-  unfavorable_meaning: string | null;
+  /** Composed interpretation: house theme + planet vibe + area-specific lens.
+   *  House-aware — H6 vs H7 read different. */
+  interpretation: string;
   life_area: string;
 }
 
@@ -100,10 +101,6 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
         <ol className="space-y-3">
           {events.map((e, i) => {
             const styles = classificationStyles(e.classification);
-            const meaning =
-              e.favorable_meaning ??
-              e.unfavorable_meaning ??
-              `${e.planet} moves into your ${e.to_house}${ord(e.to_house)} house — read the house theme alongside your standing dasha for this period's flavour.`;
 
             return (
               <li
@@ -136,7 +133,7 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
                       {!e.next_ingress_date && <> (continues past window)</>}
                     </p>
 
-                    <p className="text-sm text-slate-300 mt-2 leading-relaxed">{meaning}</p>
+                    <p className="text-sm text-slate-300 mt-2 leading-relaxed">{e.interpretation}</p>
                   </div>
                 </div>
               </li>
@@ -148,8 +145,3 @@ export function TransitTimeline({ lifeArea, events }: TransitTimelineProps) {
   );
 }
 
-function ord(n: number): string {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return s[(v - 20) % 10] || s[v] || s[0];
-}
