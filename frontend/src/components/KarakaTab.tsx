@@ -100,13 +100,28 @@ const HOUSE_THEME_TEXT: Record<number, string> = {
  *   House   : trikona (5,9) +2, kendra (1,4,7,10) +1, dusthana (6,8,12) −1
  *   Level   : score ≥ 3 → strong, score ≤ −1 → weak, else moderate
  */
+const DUSTHANAS = [6, 8, 12];
+
+/**
+ * Assess karaka strength from dignity + house placement.
+ *
+ * Dignity  : exalted +3, moolatrikona +2, own +2, debilitated −2
+ * House    : trikona (5,9) +2, kendra (1,4,7,10) +1, dusthana (6,8,12) −1
+ * Viparita : if the planet lords any dusthana AND sits in a dusthana,
+ *            the dusthana penalty is cancelled (BPHS Harsha/Sarala/Vimala yogas —
+ *            dusthana lord in dusthana gives unexpectedly positive results).
+ *
+ * Thresholds: score ≥ 2 → strong | score ≤ −1 → weak | else → moderate
+ */
 function computeKarakaStrength(
   dignity: string | null | undefined,
   house: number,
+  lordOfHouses: number[] = [],
 ): { level: "strong" | "moderate" | "weak"; summary: string } {
   let score = 0;
   const parts: string[] = [];
 
+  // ── Dignity ──────────────────────────────────────────────────────────────
   if (dignity === "exalted") {
     score += 3;
     parts.push("exalted in sign");
@@ -114,7 +129,7 @@ function computeKarakaStrength(
     score += 2;
     parts.push("moolatrikona placement");
   } else if (dignity === "own") {
-    score += 1;
+    score += 2; // own sign: planet fully expresses its nature
     parts.push("own sign");
   } else if (dignity === "debilitated") {
     score -= 2;
@@ -123,24 +138,33 @@ function computeKarakaStrength(
     parts.push("neutral sign");
   }
 
+  // ── House ─────────────────────────────────────────────────────────────────
+  const inDusthana = DUSTHANAS.includes(house);
+  const lordsADusthana = lordOfHouses.some(h => DUSTHANAS.includes(h));
+  const viparita = inDusthana && lordsADusthana;
+
   if ([5, 9].includes(house)) {
     score += 2;
     parts.push(`${ordinal(house)} house — trikona (auspicious)`);
   } else if ([1, 4, 7, 10].includes(house)) {
     score += 1;
     parts.push(`${ordinal(house)} house — kendra (angular, stable)`);
-  } else if ([8, 12].includes(house)) {
-    score -= 1;
-    parts.push(`${ordinal(house)} house — dusthana (challenging)`);
-  } else if (house === 6) {
-    score -= 1;
-    parts.push("6th house — upachaya/dusthana (mixed)");
+  } else if (inDusthana) {
+    if (viparita) {
+      // Dusthana lord in dusthana — penalty cancelled, yoga noted
+      const yogaName = lordOfHouses.includes(6) ? "Harsha" : lordOfHouses.includes(8) ? "Sarala" : "Vimala";
+      parts.push(`${ordinal(house)} house — ${yogaName} Yoga (dusthana lord in dusthana: adverse effects cancelled, unexpected gains)`);
+      // score unchanged — neutral house-effect, no penalty
+    } else {
+      score -= 1;
+      parts.push(`${ordinal(house)} house — dusthana (challenging)`);
+    }
   } else {
     parts.push(`${ordinal(house)} house`);
   }
 
   const level: "strong" | "moderate" | "weak" =
-    score >= 3 ? "strong" : score <= -1 ? "weak" : "moderate";
+    score >= 2 ? "strong" : score <= -1 ? "weak" : "moderate";
 
   return { level, summary: parts.join(" · ") };
 }
@@ -340,7 +364,7 @@ export function KarakaTab({ planets, lagna }: Props) {
 
           // Computed strength for this Chara Karaka
           const { level: strengthLevel, summary: strengthSummary } =
-            computeKarakaStrength(ck.dignity, ck.house);
+            computeKarakaStrength(ck.dignity, ck.house, natalP?.lord_of_houses ?? []);
           const strengthCfg =
             strengthLevel === "strong"
               ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong Placement" }
@@ -593,7 +617,7 @@ export function KarakaTab({ planets, lagna }: Props) {
 
                     {/* Computed strength assessment — based on actual dignity + house */}
                     {natalP && (() => {
-                      const { level, summary } = computeKarakaStrength(natalP.dignity, natalP.house);
+                      const { level, summary } = computeKarakaStrength(natalP.dignity, natalP.house, natalP.lord_of_houses);
                       const cfg =
                         level === "strong"
                           ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong" }
