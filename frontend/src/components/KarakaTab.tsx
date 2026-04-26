@@ -367,16 +367,16 @@ export function KarakaTab({ planets, lagna }: Props) {
             computeKarakaStrength(ck.dignity, ck.house, natalP?.lord_of_houses ?? []);
           const strengthCfg =
             strengthLevel === "strong"
-              ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong Placement" }
+              ? { color: "text-emerald-400", bg: "bg-transparent border-emerald-800/50", label: "Strong Placement" }
               : strengthLevel === "weak"
-              ? { color: "text-red-400",     bg: "bg-red-950/30 border-red-900/40",         label: "Challenged Placement" }
-              : { color: "text-amber-400",   bg: "bg-amber-950/30 border-amber-900/40",     label: "Moderate Placement" };
+              ? { color: "text-red-400",     bg: "bg-transparent border-red-800/50",     label: "Challenged Placement" }
+              : { color: "text-amber-400",   bg: "bg-transparent border-slate-700/60",   label: "Moderate Placement" };
           const strengthOutcome =
             strengthLevel === "strong"
               ? ck.strongPlacement
               : strengthLevel === "weak"
               ? ck.weakPlacement
-              : `${ck.planet}'s ${ck.meaning.toLowerCase()} significations are present but not at full capacity — neither severely blocked nor operating with full authority. Cultivate this karaka consciously; dasha and transit triggers will periodically bring its themes to the foreground.`;
+              : `${ck.planet} as your ${ck.name} is neither at peak capacity nor severely blocked — its ${ck.meaning.toLowerCase()} themes are present but require active cultivation. Dasha and transit triggers will periodically bring them to the foreground.`;
 
           return (
             <div className="border border-slate-700 rounded-xl overflow-hidden mt-2">
@@ -470,7 +470,7 @@ export function KarakaTab({ planets, lagna }: Props) {
                 {/* Computed strength assessment — replaces generic "When Strong / When Afflicted" tabs */}
                 <div className={`border rounded-lg p-3 ${strengthCfg.bg}`}>
                   <p className={`text-xs font-semibold ${strengthCfg.color} mb-1`}>
-                    Current Strength — {strengthCfg.label}
+                    Natal Strength — {strengthCfg.label}
                   </p>
                   <p className="text-xs text-slate-500 mb-2">{strengthSummary}</p>
                   <p className="text-xs text-slate-300 leading-relaxed">{strengthOutcome}</p>
@@ -620,22 +620,22 @@ export function KarakaTab({ planets, lagna }: Props) {
                       const { level, summary } = computeKarakaStrength(natalP.dignity, natalP.house, natalP.lord_of_houses);
                       const cfg =
                         level === "strong"
-                          ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong" }
+                          ? { color: "text-emerald-400", bg: "bg-transparent border-emerald-800/50", label: "Strong" }
                           : level === "weak"
-                          ? { color: "text-red-400",     bg: "bg-red-950/30 border-red-900/40",         label: "Challenged" }
-                          : { color: "text-amber-400",   bg: "bg-amber-950/30 border-amber-900/40",     label: "Moderate" };
+                          ? { color: "text-red-400",     bg: "bg-transparent border-red-800/50",     label: "Challenged" }
+                          : { color: "text-amber-400",   bg: "bg-transparent border-slate-700/60",   label: "Moderate" };
 
                       const outcomeText =
                         level === "strong"
                           ? nk.strongResult
                           : level === "weak"
                           ? nk.weakResult
-                          : `${nk.planet}'s karaka significations — ${nk.significations.slice(0, 3).join(", ").toLowerCase()} — manifest with mixed results. Not severely blocked, but not at full potential either. Pay attention to ${nk.planet}'s dashas and transits, which periodically unlock or suppress these themes.`;
+                          : `${nk.planet} as karaka of ${nk.significations.slice(0, 2).join(" and ").toLowerCase()} is neither at peak capacity nor severely blocked — its themes are present but require active cultivation. Watch ${nk.planet}'s dashas and transits for periods when these significations come fully alive.`;
 
                       return (
                         <div className={`border rounded-lg p-3 ${cfg.bg}`}>
                           <p className={`text-xs font-semibold ${cfg.color} mb-1`}>
-                            {nk.planet} — {cfg.label} as Karaka
+                            {nk.planet} — Natal Strength: {cfg.label}
                           </p>
                           <p className="text-xs text-slate-500 mb-2">{summary}</p>
                           <p className="text-xs text-slate-300 leading-relaxed">{outcomeText}</p>
