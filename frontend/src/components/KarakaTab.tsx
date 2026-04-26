@@ -65,6 +65,176 @@ const DIGNITY_BADGE: Record<string, { label: string; color: string; bg: string }
   debilitated:  { label: "Debilitated",  color: "text-red-400",     bg: "bg-red-500/10 border-red-500/30" },
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function ordinal(n: number): string {
+  if (n === 1) return "1st";
+  if (n === 2) return "2nd";
+  if (n === 3) return "3rd";
+  return `${n}th`;
+}
+
+/**
+ * What each house governs — used to build concrete lordship sentences.
+ * These are standard classical house themes (BPHS Ch. 11).
+ */
+const HOUSE_THEME_TEXT: Record<number, string> = {
+  1:  "self, body, personality, and vitality",
+  2:  "wealth, speech, family, and accumulated resources",
+  3:  "courage, siblings, communication, and short travels",
+  4:  "home, mother, inner peace, and property",
+  5:  "children, intelligence, creativity, and past-life merit",
+  6:  "debts, enemies, health challenges, and service",
+  7:  "marriage, partnerships, and public life",
+  8:  "longevity, transformation, hidden wealth, and occult matters",
+  9:  "dharma, father, fortune, and higher wisdom",
+  10: "career, status, authority, and public reputation",
+  11: "gains, fulfillment of desires, and social networks",
+  12: "losses, foreign lands, expenses, and spiritual liberation",
+};
+
+/**
+ * Assess karaka strength from dignity + house placement.
+ * Score logic:
+ *   Dignity : exalted +3, moolatrikona +2, own +1, debilitated −2
+ *   House   : trikona (5,9) +2, kendra (1,4,7,10) +1, dusthana (6,8,12) −1
+ *   Level   : score ≥ 3 → strong, score ≤ −1 → weak, else moderate
+ */
+function computeKarakaStrength(
+  dignity: string | null | undefined,
+  house: number,
+): { level: "strong" | "moderate" | "weak"; summary: string } {
+  let score = 0;
+  const parts: string[] = [];
+
+  if (dignity === "exalted") {
+    score += 3;
+    parts.push("exalted in sign");
+  } else if (dignity === "moolatrikona") {
+    score += 2;
+    parts.push("moolatrikona placement");
+  } else if (dignity === "own") {
+    score += 1;
+    parts.push("own sign");
+  } else if (dignity === "debilitated") {
+    score -= 2;
+    parts.push("debilitated in sign");
+  } else {
+    parts.push("neutral sign");
+  }
+
+  if ([5, 9].includes(house)) {
+    score += 2;
+    parts.push(`${ordinal(house)} house — trikona (auspicious)`);
+  } else if ([1, 4, 7, 10].includes(house)) {
+    score += 1;
+    parts.push(`${ordinal(house)} house — kendra (angular, stable)`);
+  } else if ([8, 12].includes(house)) {
+    score -= 1;
+    parts.push(`${ordinal(house)} house — dusthana (challenging)`);
+  } else if (house === 6) {
+    score -= 1;
+    parts.push("6th house — upachaya/dusthana (mixed)");
+  } else {
+    parts.push(`${ordinal(house)} house`);
+  }
+
+  const level: "strong" | "moderate" | "weak" =
+    score >= 3 ? "strong" : score <= -1 ? "weak" : "moderate";
+
+  return { level, summary: parts.join(" · ") };
+}
+
+/** Natural significator description for each planet — for convergence text. */
+const NAISARGIKA_ROLE: Record<string, string> = {
+  Sun:     "soul, vitality, authority, and the father",
+  Moon:    "mind, emotions, nourishment, and the mother",
+  Mars:    "courage, siblings, drive, and life-force energy",
+  Mercury: "intellect, communication, trade, and adaptability",
+  Jupiter: "wisdom, children, dharma, and divine grace",
+  Venus:   "love, beauty, relationships, and sensory comfort",
+  Saturn:  "karma, discipline, longevity, and service",
+};
+
+/**
+ * Generate meaningful, role-specific text explaining WHY a planet holding
+ * both a Chara Karaka and Naisargika Karaka role matters — not boilerplate.
+ */
+function charaConvergenceText(
+  planet: string,
+  charaRoleName: string,
+  charaMeaning: string,
+  house: number,
+): string {
+  const nkRole = NAISARGIKA_ROLE[planet] ?? "its classical significations";
+
+  const byRole: Partial<Record<string, string>> = {
+    Atmakaraka:
+      `Both Jaimini and the Naisargika tradition single out ${planet} as the soul's deepest indicator. ` +
+      `The Atmakaraka carries the soul's unfinished lessons from past lives — and because ${planet} is also ` +
+      `the natural significator of ${nkRole}, these very themes ARE the soul lesson itself, not a backdrop. ` +
+      `House ${house} becomes the primary arena where soul-growth, karmic purpose, and ${planet}'s inherent ` +
+      `nature converge. ${planet}'s dasha periods and transits will feel especially destined.`,
+
+    Amatyakaraka:
+      `${planet} governs career, counsel, and your public role as Amatyakaraka — and as natural significator ` +
+      `of ${nkRole}, your vocation is inherently woven into these same themes. Work that channels ${planet}'s ` +
+      `natural qualities will feel purposeful; careers that ignore them tend to feel hollow regardless of ` +
+      `external success. ${planet}'s condition is the single most important indicator of professional fulfilment ` +
+      `in your chart.`,
+
+    Bhratikaraka:
+      `${planet} carries sibling and companion karma in both the Jaimini and Naisargika frameworks. As natural ` +
+      `significator of ${nkRole}, and as your Bhratikaraka, relationships with brothers, sisters, and close ` +
+      `collaborators carry amplified weight in your life story. Pivotal moments of courage, initiative, and ` +
+      `shared effort — House ${house} themes — are strongly tied to ${planet}'s condition and the people ` +
+      `it represents in your chart.`,
+
+    Matrukaraka:
+      `${planet} represents the mother in both systems simultaneously. As natural significator of ${nkRole} ` +
+      `and as Matrukaraka, the mother's nature, the emotional nurturing you received, and your home environment ` +
+      `are read primarily through ${planet}'s dignity and placement. House ${house} shows how and where these ` +
+      `maternal themes manifest — and how deeply they shape your inner emotional world.`,
+
+    Putrakaraka:
+      `${planet} governs children, creative legacy, and the passing of wisdom in both the Naisargika and ` +
+      `Jaimini frameworks. As natural significator of ${nkRole}, children and the acts of teaching, creating, ` +
+      `and mentoring are central karmic themes for you this lifetime. ${planet}'s strength directly governs ` +
+      `ease or difficulty around progeny, creative works, and the joy that comes from nurturing what you ` +
+      `bring into existence.`,
+
+    GnatiKaraka:
+      `As both Gnati Karaka and natural significator of ${nkRole}, ${planet} governs extended family ties, ` +
+      `community obligations, and inherited social karma with amplified force. Conflicts or blessings from ` +
+      `relatives and in-groups, duties toward your broader community, and group karma are recurring life ` +
+      `themes — not incidental events. ${planet}'s condition in House ${house} shows how these dynamics ` +
+      `play out and what resolution looks like.`,
+
+    Darakaraka:
+      `${planet} is the natural significator of ${nkRole} AND your Darakaraka — the Jaimini indicator of ` +
+      `the spouse and intimate partnerships. This is the strongest possible signal that relationships are ` +
+      `a defining karmic arena this lifetime. House ${house} is the focal point: how ${planet} expresses ` +
+      `here — its dignity, aspects received, and dasha timing — describes the nature of significant others ` +
+      `you attract and the lessons partnership is specifically designed to teach you.`,
+
+    Pitrukaraka:
+      `${planet} represents the father in both frameworks. As natural significator of ${nkRole} and as ` +
+      `Pitrukaraka, the father's character, fortune, and the dharmic transmission between generations are ` +
+      `read through ${planet}'s condition. House ${house} shows where and how paternal influence expresses ` +
+      `in your life — and whether that inheritance is one of strength, challenge, or a mix of both.`,
+  };
+
+  return (
+    byRole[charaRoleName] ??
+    `${planet} holds both its universal role as natural significator of ${nkRole} and the personal Jaimini ` +
+    `role of ${charaRoleName} (${charaMeaning}). This convergence means ${planet}'s condition — its dignity, ` +
+    `placement, aspects, and dasha timing — governs the ${charaMeaning.toLowerCase()} themes with amplified ` +
+    `weight. Watch ${planet} closely in transit and dasha for pivotal developments in these life areas.`
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function KarakaTab({ planets, lagna }: Props) {
   const { data: interp, loading, error } = useKarakaInterpretations();
   const [expandedChara, setExpandedChara] = useState<string | null>("AK");
@@ -168,6 +338,22 @@ export function KarakaTab({ planets, lagna }: Props) {
           const planetRoleInterp = interp.charaByPlanet[ck.id]?.[ck.planet];
           const natalP = planets.find(p => p.name === ck.planet);
 
+          // Computed strength for this Chara Karaka
+          const { level: strengthLevel, summary: strengthSummary } =
+            computeKarakaStrength(ck.dignity, ck.house);
+          const strengthCfg =
+            strengthLevel === "strong"
+              ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong Placement" }
+              : strengthLevel === "weak"
+              ? { color: "text-red-400",     bg: "bg-red-950/30 border-red-900/40",         label: "Challenged Placement" }
+              : { color: "text-amber-400",   bg: "bg-amber-950/30 border-amber-900/40",     label: "Moderate Placement" };
+          const strengthOutcome =
+            strengthLevel === "strong"
+              ? ck.strongPlacement
+              : strengthLevel === "weak"
+              ? ck.weakPlacement
+              : `${ck.planet}'s ${ck.meaning.toLowerCase()} significations are present but not at full capacity — neither severely blocked nor operating with full authority. Cultivate this karaka consciously; dasha and transit triggers will periodically bring its themes to the foreground.`;
+
           return (
             <div className="border border-slate-700 rounded-xl overflow-hidden mt-2">
               {/* Header */}
@@ -257,16 +443,13 @@ export function KarakaTab({ planets, lagna }: Props) {
                   </div>
                 )}
 
-                {/* Strong / Weak general outcomes */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="bg-green-950/30 border border-green-900/40 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-green-400 mb-1">When Strong</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">{ck.strongPlacement}</p>
-                  </div>
-                  <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-red-400 mb-1">When Afflicted</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">{ck.weakPlacement}</p>
-                  </div>
+                {/* Computed strength assessment — replaces generic "When Strong / When Afflicted" tabs */}
+                <div className={`border rounded-lg p-3 ${strengthCfg.bg}`}>
+                  <p className={`text-xs font-semibold ${strengthCfg.color} mb-1`}>
+                    Current Strength — {strengthCfg.label}
+                  </p>
+                  <p className="text-xs text-slate-500 mb-2">{strengthSummary}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{strengthOutcome}</p>
                 </div>
               </div>
             </div>
@@ -349,20 +532,32 @@ export function KarakaTab({ planets, lagna }: Props) {
                         </p>
                         <p className="text-sm text-slate-300 leading-relaxed">{houseInterp}</p>
 
-                        {/* Lordship context */}
+                        {/* Lordship context — concrete per-house impact */}
                         {natalP.lord_of_houses.length > 0 && (
-                          <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                            Additionally, {nk.planet} rules house{natalP.lord_of_houses.length > 1 ? "s" : ""}{" "}
-                            <span className="font-semibold text-amber-400">{natalP.lord_of_houses.join(" & ")}</span>{" "}
-                            in your chart — connecting its karaka significations ({nk.significations.slice(0, 2).join(", ").toLowerCase()}) with the themes of those houses.
-                          </p>
+                          <div className="mt-3 space-y-1.5 border-t border-slate-700/40 pt-3">
+                            {natalP.lord_of_houses.map(h => (
+                              <p key={h} className="text-xs text-slate-400 leading-relaxed">
+                                As lord of the{" "}
+                                <span className="font-semibold text-amber-400">{ordinal(h)} house</span>{" "}
+                                ({HOUSE_THEME_TEXT[h] ?? `house ${h} themes`}), {nk.planet}&apos;s karaka themes
+                                of <span className="text-slate-300">{nk.significations.slice(0, 2).join(" and ").toLowerCase()}</span>{" "}
+                                directly colour and shape your {HOUSE_THEME_TEXT[h] ?? `${ordinal(h)}-house`} life domains —
+                                the condition of {nk.planet} in your chart determines how these areas express for you.
+                              </p>
+                            ))}
+                          </div>
                         )}
 
-                        {/* Chara Karaka cross-reference */}
+                        {/* Chara Karaka cross-reference — role-specific, not boilerplate */}
                         {charaRole && (
-                          <p className="text-xs text-slate-400 mt-2 leading-relaxed border-t border-slate-700/50 pt-2">
-                            {nk.planet} is also your <span className="text-amber-400 font-semibold">{charaRole.name}</span> ({charaRole.meaning}) — doubling its importance. Its natural significations and its Jaimini role both express through House {natalP.house}.
-                          </p>
+                          <div className="mt-3 border-t border-slate-700/50 pt-3">
+                            <p className="text-xs font-semibold text-amber-400 mb-1">
+                              {nk.planet} is also your {charaRole.name} ({charaRole.shortName})
+                            </p>
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              {charaConvergenceText(nk.planet, charaRole.name, charaRole.meaning, natalP.house)}
+                            </p>
+                          </div>
                         )}
                       </div>
                     )}
@@ -396,17 +591,33 @@ export function KarakaTab({ planets, lagna }: Props) {
                       </div>
                     )}
 
-                    {/* General strong/weak */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="bg-green-950/30 border border-green-900/40 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-green-400 mb-1">When Strong</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{nk.strongResult}</p>
-                      </div>
-                      <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3">
-                        <p className="text-xs font-semibold text-red-400 mb-1">When Weak</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{nk.weakResult}</p>
-                      </div>
-                    </div>
+                    {/* Computed strength assessment — based on actual dignity + house */}
+                    {natalP && (() => {
+                      const { level, summary } = computeKarakaStrength(natalP.dignity, natalP.house);
+                      const cfg =
+                        level === "strong"
+                          ? { color: "text-emerald-400", bg: "bg-emerald-950/30 border-emerald-900/40", label: "Strong" }
+                          : level === "weak"
+                          ? { color: "text-red-400",     bg: "bg-red-950/30 border-red-900/40",         label: "Challenged" }
+                          : { color: "text-amber-400",   bg: "bg-amber-950/30 border-amber-900/40",     label: "Moderate" };
+
+                      const outcomeText =
+                        level === "strong"
+                          ? nk.strongResult
+                          : level === "weak"
+                          ? nk.weakResult
+                          : `${nk.planet}'s karaka significations — ${nk.significations.slice(0, 3).join(", ").toLowerCase()} — manifest with mixed results. Not severely blocked, but not at full potential either. Pay attention to ${nk.planet}'s dashas and transits, which periodically unlock or suppress these themes.`;
+
+                      return (
+                        <div className={`border rounded-lg p-3 ${cfg.bg}`}>
+                          <p className={`text-xs font-semibold ${cfg.color} mb-1`}>
+                            {nk.planet} — {cfg.label} as Karaka
+                          </p>
+                          <p className="text-xs text-slate-500 mb-2">{summary}</p>
+                          <p className="text-xs text-slate-300 leading-relaxed">{outcomeText}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

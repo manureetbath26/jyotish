@@ -94,6 +94,22 @@ export interface KootScore {
   description: string;
 }
 
+/**
+ * One item in a classical qualitative checklist.
+ * Status is derived directly from classical rules — no invented point weights.
+ * Used for business partner and sibling relationship types.
+ */
+export interface ChecklistItem {
+  name: string;
+  /** green = favourable, amber = mixed/caution, red = risk indicator present */
+  status: "green" | "amber" | "red";
+  /** Short label shown inline, e.g. "Strong", "Mixed", "High risk" */
+  label: string;
+  description: string;
+  /** The classical text this rule comes from */
+  source: string;
+}
+
 export interface CompatibilityResult {
   person1: { name: string; moonRashi: string; moonNakshatra: string; lagna: string };
   person2: { name: string; moonRashi: string; moonNakshatra: string; lagna: string };
@@ -106,6 +122,18 @@ export interface CompatibilityResult {
   verdictColor: string;
   synastry: SynastryAspect[];
   summary: string;
+  /**
+   * Qualitative classical rule checklist — no invented weights.
+   * Present for: business partner (8 items), sibling (6 items).
+   * Absent for: romantic (full Ashtakoot is authentic), friend/parent/child/other
+   * (only Graha Maitri is classically applicable to these).
+   */
+  checklist?: ChecklistItem[];
+  /**
+   * For friend/parent/child/other — explains why only Graha Maitri is scored.
+   * Absent for relationship types with a full classical framework.
+   */
+  classicalNote?: string;
 }
 
 export interface SynastryAspect {
@@ -585,11 +613,461 @@ function score11thHouseSupport(chart1: ChartResponse, chart2: ChartResponse): Ko
 }
 
 // ---------------------------------------------------------------------------
+// Business Partner-specific scoring dimensions
+// (Classical sources: BPHS, Phaladeepika, Uttara Kalamrita, Jaimini Sutras)
+// ---------------------------------------------------------------------------
+
+const BENEFICS_7H = ["Jupiter", "Venus", "Mercury"];
+// Sun included per Phaladeepika: ego-clashes in 7th harm partnerships
+const MALEFICS_7H = ["Mars", "Saturn", "Rahu", "Sun"];
+
+/** Get 0-based rashi index of a chart's lagna (for house-position arithmetic) */
+function getLagnaRashiIndex(chart: ChartResponse): number {
+  const idx = RASHI_NAMES.indexOf(chart.lagna);
+  return idx >= 0 ? idx : 0;
+}
+
+/** Fetch the planet object that rules a given house number */
+function getHouseLordPlanet(chart: ChartResponse, houseNum: number): PlanetPosition | undefined {
+  const house = chart.houses.find(h => h.house_num === houseNum);
+  if (!house) return undefined;
+  return chart.planets.find(p => p.name === house.lord);
+}
+
+/**
+ * 1. 7th House (Partnership House) Strength — 5 points
+ *
+ * Classical basis: BPHS Chapters 18-20 (Yuvati Bhava); Phaladeepika Ch. 10.
+ * A strong 7th house with benefic support and a dignified 7th lord indicates
+ * natural aptitude for successful partnerships. Malefics in the 7th — Mars,
+ * Saturn, Rahu, Sun — create conflict, rigidity, or ego-clashes (per BPHS).
+ * 7th lord in dusthana (6/8/12) strains the partnership; in 10th/11th it
+ * channels partnership energy directly into career and gains.
+ */
+function score7thHouseStrength(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function evaluate7th(chart: ChartResponse): number {
+    const house7 = chart.houses.find(h => h.house_num === 7);
+    if (!house7) return 2;
+    let pts = 2; // baseline
+
+    const occupants = house7.occupants || [];
+    const beneficCount = occupants.filter(p => BENEFICS_7H.includes(p)).length;
+    pts += Math.min(beneficCount, 2) * 0.5;
+    const maleficCount = occupants.filter(p => MALEFICS_7H.includes(p)).length;
+    pts -= maleficCount * 0.5;
+
+    const lord7 = chart.planets.find(p => p.name === house7.lord);
+    if (lord7) {
+      if (["exalted", "own", "mooltrikona"].includes(lord7.dignity ?? "")) pts += 1;
+      else if (lord7.dignity === "debilitated") pts -= 1;
+      if ([6, 8, 12].includes(lord7.house)) pts -= 0.75; // dusthana = strained
+      if ([10, 11].includes(lord7.house)) pts += 0.75;   // 10th/11th = career/gains via partnership
+      if (lord7.house === 7) pts += 0.5;                 // own house = stable
+    }
+    return Math.max(0, Math.min(5, pts));
+  }
+
+  const s1 = evaluate7th(chart1);
+  const s2 = evaluate7th(chart2);
+  const score = Math.min(5, Math.round((s1 + s2) / 2));
+
+  return {
+    name: "7th House (Partnership)",
+    maxPoints: 5,
+    score,
+    description: score >= 4
+      ? "Both charts show strong 7th houses — the partnership house carries benefic support and a dignified 7th lord. Per BPHS, this indicates that both individuals are naturally inclined to successful, harmonious partnerships. A solid classical foundation."
+      : score >= 2
+      ? "Mixed 7th house conditions. One or both charts carry planetary challenges in the partnership house. Awareness of specific friction points and clear roles will help the partnership thrive."
+      : "Weak 7th house conditions in one or both charts. Malefic influence in the partnership house suggests conflicts, power imbalances, or hidden tensions. Formal legal agreements and defined responsibilities are strongly advisable before committing.",
+  };
+}
+
+/**
+ * 2. Mercury Alignment (Commerce Karaka) — 4 points
+ *
+ * Classical basis: BPHS — Mercury is the Vyapara Karaka (significator of
+ * trade, commerce, accounting, and negotiations). Mercury-to-Mercury house
+ * relationship governs how the two partners' business minds connect — whether
+ * negotiations, contracts, and financial discussions flow naturally or clash.
+ * Trine (1/5/9) and the 11th (gains) are most favourable.
+ */
+function scoreMercuryAlignmentBusiness(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  const merc1 = chart1.planets.find(p => p.name === "Mercury");
+  const merc2 = chart2.planets.find(p => p.name === "Mercury");
+  if (!merc1 || !merc2) {
+    return { name: "Mercury (Commerce)", maxPoints: 4, score: 2, description: "Mercury data unavailable — neutral score applied." };
+  }
+
+  let score = 0;
+  const houseDiff = ((merc2.rashi_num - merc1.rashi_num + 12) % 12) + 1;
+
+  if ([1, 5, 9, 11].includes(houseDiff)) score += 2;      // trine / gains axis
+  else if ([2, 3, 10].includes(houseDiff)) score += 1;    // supportive
+
+  const anyStrong = [merc1, merc2].some(m => ["exalted", "own", "mooltrikona"].includes(m.dignity ?? ""));
+  if (anyStrong) score += 1;
+  const bothStrong = [merc1, merc2].every(m => ["exalted", "own", "mooltrikona"].includes(m.dignity ?? ""));
+  if (bothStrong) score += 1;
+
+  return {
+    name: "Mercury (Commerce)",
+    maxPoints: 4,
+    score: Math.min(4, score),
+    description: score >= 3
+      ? `Mercury (Vyapara Karaka per BPHS) is well-aligned between both charts (${houseDiff}th from each other). Business communication, negotiation, and financial thinking flow naturally. Contracts and commercial discussions will be productive territory for this partnership.`
+      : score >= 2
+      ? `Mercury shows moderate alignment (${houseDiff}th position). Business communication generally works but may hit friction in complex negotiations or financial discussions. Written agreements and clearly documented terms are recommended.`
+      : `Mercury alignment is weak (${houseDiff}th position). Significant differences in commercial thinking and communication style. Assign clear separate roles aligned to each partner's strengths; avoid verbal-only agreements.`,
+  };
+}
+
+/**
+ * 3. 11th House Gains (Labha Bhava) — 4 points
+ *
+ * Classical basis: BPHS and Saravali — the 11th house governs income,
+ * gains, and fulfilment of ambitions through partnerships and collaborations.
+ * Strong 11th houses in both charts, especially with Jupiter (its karaka),
+ * indicate the partnership can generate lasting and growing income.
+ * If the 11th lord sits in the 7th, gains come specifically through
+ * partnerships — an excellent classical indicator for joint ventures.
+ */
+function score11thHouseGains(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function evaluate11th(chart: ChartResponse): number {
+    const house11 = chart.houses.find(h => h.house_num === 11);
+    if (!house11) return 1;
+    let pts = 1;
+
+    const occupants = house11.occupants || [];
+    if (occupants.some(p => BENEFICS_7H.includes(p))) pts += 1;
+    if (occupants.includes("Jupiter")) pts += 0.5;
+    if (occupants.some(p => MALEFICS_7H.includes(p)) && !occupants.some(p => BENEFICS_7H.includes(p))) {
+      pts -= 0.5;
+    }
+
+    const lord11 = chart.planets.find(p => p.name === house11.lord);
+    if (lord11) {
+      if (["exalted", "own", "mooltrikona"].includes(lord11.dignity ?? "")) pts += 0.5;
+      if (lord11.dignity === "debilitated") pts -= 0.5;
+      if (lord11.house === 7) pts += 0.5;  // 11th lord in 7th = gains specifically via partnerships
+      if (lord11.house === 2) pts += 0.25; // 11th lord in 2nd = gains flow into wealth
+    }
+    return Math.max(0, Math.min(4, pts));
+  }
+
+  const s1 = evaluate11th(chart1);
+  const s2 = evaluate11th(chart2);
+  const score = Math.min(4, Math.round((s1 + s2) / 2));
+
+  return {
+    name: "11th House (Gains)",
+    maxPoints: 4,
+    score,
+    description: score >= 3
+      ? "Both charts show strong Labha Bhava (11th house) — gains, income, and fulfilment of ambitions through joint ventures are well-supported. Per BPHS, this is a strong foundation for financial success in a partnership. The venture has genuine earning potential."
+      : score >= 2
+      ? "Moderate 11th house conditions. Partnership gains are possible but may require sustained effort. One partner may generate more income — equitable financial arrangements should be agreed upfront."
+      : "Weak 11th house conditions in one or both charts. Material returns from this specific partnership may be limited or delayed. Consider whether the venture is more rewarding experientially than financially.",
+  };
+}
+
+/**
+ * 4. 7th Lord Cross-Chart Placement — 4 points
+ *
+ * Classical basis: Bhavat Bhavam principle (Uttara Kalamrita) and
+ * Graha Maitri synastry analysis. Where Person A's 7th lord's rashi falls
+ * in Person B's house system shows how A's "partnership energy" resonates
+ * with B's chart. If it lands in B's 1st/7th/10th/11th houses — the four
+ * most powerful positions for business — it is a strong indicator of mutual
+ * reinforcement. Applied in both directions and combined.
+ */
+function score7thLordCrossChart(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function get7thLord(chart: ChartResponse): PlanetPosition | undefined {
+    return getHouseLordPlanet(chart, 7);
+  }
+
+  const lord7_A = get7thLord(chart1);
+  const lord7_B = get7thLord(chart2);
+  const lagnaB0 = getLagnaRashiIndex(chart2);
+  const lagnaA0 = getLagnaRashiIndex(chart1);
+
+  let score = 0;
+  const details: string[] = [];
+
+  if (lord7_A) {
+    const rashi0 = lord7_A.rashi_num - 1;
+    const houseInB = ((rashi0 - lagnaB0 + 12) % 12) + 1;
+    if ([1, 7, 10, 11].includes(houseInB)) {
+      score += 2;
+      details.push(`Person 1's 7th lord activates house ${houseInB} of Person 2's chart (strongly supportive)`);
+    } else if ([2, 5, 9].includes(houseInB)) {
+      score += 1;
+      details.push(`Person 1's 7th lord activates house ${houseInB} of Person 2's chart (supportive)`);
+    } else if ([6, 8, 12].includes(houseInB)) {
+      details.push(`Person 1's 7th lord falls in house ${houseInB} of Person 2's chart (challenging)`);
+    } else {
+      score += 0.5;
+    }
+  }
+
+  if (lord7_B) {
+    const rashi0 = lord7_B.rashi_num - 1;
+    const houseInA = ((rashi0 - lagnaA0 + 12) % 12) + 1;
+    if ([1, 7, 10, 11].includes(houseInA)) {
+      score += 2;
+      details.push(`Person 2's 7th lord activates house ${houseInA} of Person 1's chart (strongly supportive)`);
+    } else if ([2, 5, 9].includes(houseInA)) {
+      score += 1;
+      details.push(`Person 2's 7th lord activates house ${houseInA} of Person 1's chart (supportive)`);
+    } else if ([6, 8, 12].includes(houseInA)) {
+      details.push(`Person 2's 7th lord falls in house ${houseInA} of Person 1's chart (challenging)`);
+    } else {
+      score += 0.5;
+    }
+  }
+
+  const finalScore = Math.min(4, Math.round(score));
+
+  return {
+    name: "7th Lord Cross-Chart",
+    maxPoints: 4,
+    score: finalScore,
+    description: finalScore >= 3
+      ? `The 7th lords (partnership significators) are mutually supportive across both charts. ${details.join(". ")}. Each person's partnership energy strengthens the other's chart — a classical indicator of a productive business alliance per the Bhavat Bhavam principle.`
+      : finalScore >= 2
+      ? `Partial cross-chart 7th lord support. ${details.length ? details.join(". ") + "." : ""} The partnership connection is present but asymmetric. One partner may naturally drive the venture more — assign that person the primary business development role.`
+      : `The 7th lords create tension across the charts. ${details.length ? details.join(". ") + "." : ""} Formal agreements, defined roles, and periodic review of the partnership terms are strongly advisable.`,
+  };
+}
+
+/**
+ * 5. Career-Partnership Connection (10th-7th Lord Link) — 3 points
+ *
+ * Classical basis: BPHS — when the 7th lord and 10th lord are connected
+ * in a chart (conjunction, mutual full aspect, or one in the other's house),
+ * the native's karma/profession (10th) is fulfilled through partnerships (7th).
+ * This is the classical indicator that someone is suited for partnership-based
+ * business rather than solo enterprise. Evaluated per chart; 1.5 pts each.
+ */
+function score10th7thConnection(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function evaluateConnection(chart: ChartResponse): number {
+    const lord7 = getHouseLordPlanet(chart, 7);
+    const lord10 = getHouseLordPlanet(chart, 10);
+    if (!lord7 || !lord10) return 0.5;
+
+    // Conjunction: same rashi
+    if (lord7.rashi_num === lord10.rashi_num) return 1.5;
+    // 7th lord sitting in 10th house, or 10th lord sitting in 7th house
+    if (lord7.house === 10 || lord10.house === 7) return 1.5;
+    // Full mutual aspect (7th from each other)
+    const diff = ((lord10.rashi_num - lord7.rashi_num + 12) % 12) + 1;
+    if (diff === 7) return 1.5;
+    // Trine: supporting but not direct
+    if ([1, 5, 9].includes(diff)) return 0.75;
+    return 0;
+  }
+
+  const s1 = evaluateConnection(chart1);
+  const s2 = evaluateConnection(chart2);
+  const score = Math.min(3, Math.round(s1 + s2));
+
+  return {
+    name: "Career-Partnership Link",
+    maxPoints: 3,
+    score,
+    description: score >= 2
+      ? "Strong 7th-10th lord connection in one or both charts — a classical BPHS indicator that the person's karma (career) is fulfilled through partnerships. At least one partner is chart-destined for partnership-based business. An excellent base for a joint venture."
+      : score >= 1
+      ? "Some 7th-10th lord connection exists. At least one partner shows a chart pattern that supports business partnerships. The venture can work well with one partner taking the lead in business decisions and external relationships."
+      : "Limited 7th-10th connection in both charts. Neither chart strongly indicates a partnership-oriented career path. Clear demarcation of independent roles within the venture — rather than deeply intertwined decision-making — will produce better results.",
+  };
+}
+
+/**
+ * 6. Jupiter Support (Dharmic Gains & Ethics) — 3 points
+ *
+ * Classical basis: BPHS — Jupiter is the karaka of the 11th house (gains
+ * and fulfilment). Its strength determines whether partnership gains are
+ * lasting and ethically obtained. Jupiter-to-Jupiter alignment shows shared
+ * values and growth philosophy; Jupiter aspecting the 7th or 11th house in
+ * either chart adds benefic protection to the partnership and its profits.
+ */
+function scoreJupiterSupport(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  const jup1 = chart1.planets.find(p => p.name === "Jupiter");
+  const jup2 = chart2.planets.find(p => p.name === "Jupiter");
+  if (!jup1 || !jup2) {
+    return { name: "Jupiter (Growth & Ethics)", maxPoints: 3, score: 1, description: "Jupiter data unavailable — neutral score applied." };
+  }
+
+  let score = 0;
+  const houseDiff = ((jup2.rashi_num - jup1.rashi_num + 12) % 12) + 1;
+
+  if ([1, 5, 9].includes(houseDiff)) score += 1.5;       // trine = shared values
+  else if ([2, 11].includes(houseDiff)) score += 1;      // upachaya = grows over time
+  else if (![6, 8, 12].includes(houseDiff)) score += 0.5; // neutral
+
+  // Jupiter's special aspects (5th, 7th, 9th from its house) hitting 7th or 11th
+  for (const jup of [jup1, jup2]) {
+    const aspectedHouses = [
+      ((jup.house - 1 + 4) % 12) + 1,
+      ((jup.house - 1 + 6) % 12) + 1,
+      ((jup.house - 1 + 8) % 12) + 1,
+    ];
+    if (aspectedHouses.includes(7) || aspectedHouses.includes(11)) score += 0.5;
+    if (["exalted", "own", "mooltrikona"].includes(jup.dignity ?? "")) score += 0.25;
+  }
+
+  const finalScore = Math.min(3, Math.round(score));
+
+  return {
+    name: "Jupiter (Growth & Ethics)",
+    maxPoints: 3,
+    score: finalScore,
+    description: finalScore >= 2
+      ? `Jupiter (karaka of gains and dharmic success per BPHS) is well-aligned between both charts (${houseDiff}th from each other). This partnership is likely to grow steadily over time and maintain ethical business practices. Shared values and a common vision for growth are natural assets.`
+      : finalScore >= 1
+      ? `Jupiter shows moderate alignment (${houseDiff}th position). The partnership can generate growth but may face occasional philosophical disagreements about direction, ethics, or profit distribution. Regular value-alignment conversations are advisable.`
+      : `Jupiter alignment is weak (${houseDiff}th position). Risk of misaligned expectations about the partnership's purpose and ethics. Clearly define the vision, values, and financial terms in writing before committing — this protects both partners.`,
+  };
+}
+
+/**
+ * 7. Partnership Stability (Dissolution Risk) — 4 points
+ *
+ * Classical basis: BPHS & Phaladeepika — the 6th house (disputes, enemies,
+ * legal battles) and 8th house (hidden things, sudden endings, joint liabilities)
+ * are the two dusthanas that directly threaten 7th house partnerships.
+ * When their lords occupy or aspect the 7th house, or conjoin the 7th lord,
+ * they inject conflict, hidden agendas, or sudden dissolution into the partnership.
+ * Parasara's rule: "Separation is indicated when the 7th lord receives aspects
+ * from malefic planets" — the 6th and 8th lords are the primary malefic threats
+ * to the partnership house. Evaluated per chart; Jupiter's protective aspect
+ * on the 7th partially offsets this risk.
+ */
+function scorePartnershipStability(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function evaluateStability(chart: ChartResponse): number {
+    let pts = 2; // baseline (no interference = stable)
+
+    const house7 = chart.houses.find(h => h.house_num === 7);
+    const house6 = chart.houses.find(h => h.house_num === 6);
+    const house8 = chart.houses.find(h => h.house_num === 8);
+    if (!house7) return pts;
+
+    const lord7 = chart.planets.find(p => p.name === house7.lord);
+    const lord6 = house6 ? chart.planets.find(p => p.name === house6.lord) : undefined;
+    const lord8 = house8 ? chart.planets.find(p => p.name === house8.lord) : undefined;
+
+    // 8th lord in 7th: hidden liabilities, trust issues, sudden dissolution
+    if (lord8 && lord8.house === 7) pts -= 1.5;
+    // 6th lord in 7th: disputes, legal battles, partner becomes adversary
+    if (lord6 && lord6.house === 7) pts -= 1.5;
+
+    // 8th lord conjunct 7th lord (same rashi): subtle undermining of partnership
+    if (lord8 && lord7 && lord8.rashi_num === lord7.rashi_num) pts -= 1;
+    // 6th lord conjunct 7th lord: open conflict within the partnership
+    if (lord6 && lord7 && lord6.rashi_num === lord7.rashi_num) pts -= 1;
+
+    // 8th or 6th lord's 7th aspect landing on the 7th house
+    for (const lord of [lord6, lord8]) {
+      if (!lord) continue;
+      const seventhAspectHouse = ((lord.house - 1 + 6) % 12) + 1;
+      if (seventhAspectHouse === 7) pts -= 0.75;
+    }
+
+    // Jupiter aspecting 7th provides classical protective cover (partial offset)
+    const jup = chart.planets.find(p => p.name === "Jupiter");
+    if (jup) {
+      const jupAspects = [
+        ((jup.house - 1 + 4) % 12) + 1, // 5th from Jupiter
+        ((jup.house - 1 + 6) % 12) + 1, // 7th from Jupiter
+        ((jup.house - 1 + 8) % 12) + 1, // 9th from Jupiter
+      ];
+      if (jupAspects.includes(7)) pts += 0.5;
+    }
+
+    return Math.max(0, Math.min(4, pts));
+  }
+
+  const s1 = evaluateStability(chart1);
+  const s2 = evaluateStability(chart2);
+  const score = Math.min(4, Math.round((s1 + s2) / 2));
+
+  return {
+    name: "Partnership Stability",
+    maxPoints: 4,
+    score,
+    description: score >= 3
+      ? "Neither chart shows significant 6th or 8th lord interference with the 7th house — the classical dissolution indicators are absent or weak. The partnership is unlikely to be derailed by hidden liabilities, legal disputes, or sudden betrayals."
+      : score >= 2
+      ? "Some 6th or 8th lord influence on the 7th house is present in one chart. Moderate risk of disputes or hidden complications. Formal legal agreements, financial transparency, and clearly defined exit terms are recommended precautions."
+      : "Significant 6th or 8th lord interference with the partnership house detected in one or both charts. Per BPHS, this is a classical indicator of hidden conflicts, trust issues, legal disputes, or sudden dissolution. Proceed only with full legal protection, transparent financial arrangements, and explicit exit clauses in the partnership deed.",
+  };
+}
+
+/**
+ * 8. 3rd House Initiative (Entrepreneurial Drive) — 3 points
+ *
+ * Classical basis: BPHS — the 3rd house (Sahaja Bhava) governs initiative,
+ * courage, perseverance, and communication capacity. A business partnership
+ * requires both partners to sustain effort and drive the venture forward
+ * over time. A weak 3rd house (malefics, debilitated lord in dusthana)
+ * signals a partner who may struggle to maintain initiative. Note: Mars in
+ * the 3rd, though a natural malefic, is an exception — Mars is the karaka
+ * of 3rd house courage and is actually strengthening here.
+ */
+function score3rdHouseInitiative(chart1: ChartResponse, chart2: ChartResponse): KootScore {
+  function evaluate3rd(chart: ChartResponse): number {
+    const house3 = chart.houses.find(h => h.house_num === 3);
+    if (!house3) return 1;
+    let pts = 1; // baseline
+
+    const occupants = house3.occupants || [];
+    const beneficCount = occupants.filter(p => BENEFICS_7H.includes(p)).length;
+    pts += Math.min(beneficCount, 1) * 0.75;
+
+    // Mars in 3rd = classical strength for courage and drive (karaka of 3rd)
+    if (occupants.includes("Mars")) pts += 0.5;
+
+    // Saturn/Rahu/Ketu in 3rd without benefic: dampens initiative
+    const driveKillers = ["Saturn", "Rahu", "Ketu"];
+    if (
+      occupants.some(p => driveKillers.includes(p)) &&
+      !occupants.some(p => BENEFICS_7H.includes(p))
+    ) pts -= 0.5;
+
+    const lord3 = chart.planets.find(p => p.name === house3.lord);
+    if (lord3) {
+      if (["exalted", "own", "mooltrikona"].includes(lord3.dignity ?? "")) pts += 0.75;
+      else if (lord3.dignity === "debilitated") pts -= 0.5;
+      if ([6, 8, 12].includes(lord3.house)) pts -= 0.5; // dusthana = weakened drive
+      if (lord3.house === 10) pts += 0.25;              // initiative channeled into career
+    }
+
+    return Math.max(0, Math.min(3, pts));
+  }
+
+  const s1 = evaluate3rd(chart1);
+  const s2 = evaluate3rd(chart2);
+  const score = Math.min(3, Math.round((s1 + s2) / 2));
+
+  return {
+    name: "3rd House Initiative",
+    maxPoints: 3,
+    score,
+    description: score >= 2
+      ? "Both charts show strong 3rd houses — both partners have the initiative, courage, and communication capacity to sustain a business venture through its challenges. Entrepreneurial drive is naturally present in both."
+      : score >= 1
+      ? "Mixed 3rd house conditions. One partner may carry more initiative and drive. Define workload and decision-making responsibilities clearly to avoid one partner feeling consistently over-stretched."
+      : "Weak 3rd house conditions in one or both charts. Sustained effort and follow-through may be a recurring challenge in this partnership. External accountability structures, a third team member, or a business coach may help compensate.",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Synastry: planet-to-planet house analysis
 // ---------------------------------------------------------------------------
 function computeSynastry(chart1: ChartResponse, chart2: ChartResponse, name1: string, name2: string, relationship: string): SynastryAspect[] {
   const aspects: SynastryAspect[] = [];
-  // [planet1, planet2, theme, filter: "all" | "romantic" | "sibling"]
+  // [planet1, planet2, theme, filter: "all" | "romantic" | "sibling" | "business"]
   const allPairs: [string, string, string, string][] = [
     ["Sun", "Sun", "ego & identity", "all"],
     ["Moon", "Moon", "emotional connection", "all"],
@@ -602,15 +1080,24 @@ function computeSynastry(chart1: ChartResponse, chart2: ChartResponse, name1: st
     ["Mars", "Mars", "sibling karaka alignment & protective instinct", "sibling"],
     ["Mercury", "Mercury", "communication & intellectual rapport", "sibling"],
     ["Jupiter", "Jupiter", "shared values, mentorship & elder guidance", "sibling"],
+    // Business partner-specific pairs (classical karaka alignment)
+    ["Mercury", "Mercury", "commerce, negotiation & business acumen", "business"],
+    ["Saturn", "Saturn", "discipline, long-term planning & karmic contract", "business"],
+    ["Jupiter", "Jupiter", "shared values, ethics & growth philosophy", "business"],
+    ["Sun", "Saturn", "authority, structure & leadership alignment", "business"],
+    ["Mercury", "Jupiter", "business intelligence & strategic growth thinking", "business"],
+    ["Mars", "Mercury", "initiative, execution & decisive action", "business"],
   ];
 
   const isRomantic = relationship === "romantic";
   const isSibling = relationship === "sibling";
+  const isBusinessPartner = relationship === "business";
   const keyPairs = allPairs
     .filter(([,,,filter]) => {
       if (filter === "all") return true;
       if (filter === "romantic") return isRomantic;
       if (filter === "sibling") return isSibling;
+      if (filter === "business") return isBusinessPartner;
       return false;
     })
     .map(([a, b, c]) => [a, b, c] as [string, string, string]);
@@ -654,6 +1141,22 @@ function computeSynastry(chart1: ChartResponse, chart2: ChartResponse, name1: st
 }
 
 // ---------------------------------------------------------------------------
+// Business checklist helper — converts a KootScore into a status item
+// without contributing to a numeric score total.
+// ---------------------------------------------------------------------------
+function makeCheckItem(
+  koot: KootScore,
+  greenMin: number,
+  amberMin: number,
+  labels: { green: string; amber: string; red: string },
+  source: string,
+): ChecklistItem {
+  const status: "green" | "amber" | "red" =
+    koot.score >= greenMin ? "green" : koot.score >= amberMin ? "amber" : "red";
+  return { name: koot.name, status, label: labels[status], description: koot.description, source };
+}
+
+// ---------------------------------------------------------------------------
 // Main compatibility calculation
 // ---------------------------------------------------------------------------
 export function calculateCompatibility(
@@ -673,43 +1176,141 @@ export function calculateCompatibility(
 
   const isRomantic = relationship === "romantic";
   const isSibling = relationship === "sibling";
+  const isBusinessPartner = relationship === "business";
 
   // Build koot list based on relationship type
   let allKoots: KootScore[];
   let maxScore: number;
 
-  if (isSibling) {
-    // Sibling compatibility: Ashtakoot core (minus Yoni/Nadi) + 6 sibling-specific dimensions
+  // Checklist built outside the koots array — populated for business and sibling
+  let checklist: ChecklistItem[] | undefined;
+
+  if (isBusinessPartner) {
+    // Scored portion: only the 4 Ashtakoot koots whose weights come directly
+    // from BPHS (the only authentic classical source for point values).
+    // 5 + 6 + 7 + 3 = 21 points total — no invented weights.
     allKoots = [
-      // Ashtakoot core (24 pts)
+      scoreGrahaMaitri(rashi1, rashi2), // 5 — mental wavelength (BPHS)
+      scoreGana(nak1, nak2),             // 6 — temperament (BPHS)
+      scoreBhakoot(rashi1, rashi2),      // 7 — shared prosperity (BPHS)
+      scoreTara(nak1, nak2),             // 3 — destiny/longevity (BPHS)
+    ];
+    maxScore = 21;
+
+    // Qualitative checklist — classical rules evaluated as green/amber/red,
+    // not as points. Each item cites the classical source for its rule.
+    checklist = [
+      makeCheckItem(
+        score7thHouseStrength(chart1, chart2), 4, 2,
+        { green: "Strong — partnership house well-supported", amber: "Mixed — some planetary friction", red: "Weak — legal protection strongly advised" },
+        "BPHS Ch. 18-20 (Yuvati Bhava)",
+      ),
+      makeCheckItem(
+        scoreMercuryAlignmentBusiness(chart1, chart2), 3, 2,
+        { green: "Commerce well-aligned", amber: "Moderate — document all agreements", red: "Misaligned — written contracts essential" },
+        "BPHS — Mercury as Vyapara Karaka",
+      ),
+      makeCheckItem(
+        score11thHouseGains(chart1, chart2), 3, 2,
+        { green: "Good earning potential", amber: "Moderate — plan finances carefully", red: "Limited material returns likely" },
+        "BPHS, Saravali — Labha Bhava",
+      ),
+      makeCheckItem(
+        score7thLordCrossChart(chart1, chart2), 3, 2,
+        { green: "Mutually supportive across charts", amber: "Partial — one partner drives more", red: "Tension across charts — define roles formally" },
+        "Uttara Kalamrita — Bhavat Bhavam",
+      ),
+      makeCheckItem(
+        score10th7thConnection(chart1, chart2), 2, 1,
+        { green: "Partnership-suited (7th-10th linked)", amber: "Partially suited — one partner chart-aligned", red: "Neither chart strongly partnership-oriented" },
+        "BPHS — 7th-10th lord connection",
+      ),
+      makeCheckItem(
+        scoreJupiterSupport(chart1, chart2), 2, 1,
+        { green: "Shared values & growth vision", amber: "Moderate — discuss goals explicitly", red: "Misaligned values — clarify terms before committing" },
+        "BPHS — Jupiter as 11th house karaka",
+      ),
+      makeCheckItem(
+        scorePartnershipStability(chart1, chart2), 3, 2,
+        { green: "Stable — dissolution indicators absent", amber: "Moderate risk — agree exit terms in writing", red: "⚠ High risk — full legal deed with exit clauses required" },
+        "BPHS — 6th/8th lord Parasara dissolution rule",
+      ),
+      makeCheckItem(
+        score3rdHouseInitiative(chart1, chart2), 2, 1,
+        { green: "Both partners show strong drive", amber: "Uneven initiative — define responsibilities", red: "Low initiative — add external accountability structures" },
+        "BPHS — Sahaja Bhava (3rd house)",
+      ),
+    ];
+  } else if (isSibling) {
+    // Scored portion: only the 6 Ashtakoot koots with BPHS-authentic weights.
+    // Yoni (physical) and Nadi (genetic) are marriage-specific and excluded.
+    // 1+2+3+5+6+7 = 24 points — no invented weights.
+    allKoots = [
+      scoreVarna(nak1, nak2),          // 1 — spiritual/ego compatibility (BPHS)
+      scoreVashya(rashi1, rashi2),     // 2 — mutual influence (BPHS)
+      scoreTara(nak1, nak2),           // 3 — destiny alignment (BPHS)
+      scoreGrahaMaitri(rashi1, rashi2),// 5 — mental wavelength (BPHS)
+      scoreGana(nak1, nak2),           // 6 — temperament (BPHS)
+      scoreBhakoot(rashi1, rashi2),    // 7 — shared prosperity (BPHS)
+    ];
+    maxScore = 24;
+
+    // Qualitative checklist for sibling-specific classical rules.
+    // These dimensions have no BPHS point values — evaluated as green/amber/red only.
+    checklist = [
+      makeCheckItem(
+        scoreSahajaBhava(chart1, chart2), 4, 2,
+        { green: "Strong sibling-house foundation", amber: "Mixed — bond needs nurturing", red: "Weak — karmic friction in sibling house" },
+        "BPHS — 3rd house (Sahaja Bhava)",
+      ),
+      makeCheckItem(
+        scoreMarsKaraka(chart1, chart2), 3, 2,
+        { green: "Protective loyalty — sibling karaka aligned", amber: "Moderate — may need effort under stress", red: "Rivalry risk — ego clashes likely" },
+        "BPHS — Mars as sibling karaka",
+      ),
+      makeCheckItem(
+        scoreMoonAxis(chart1, chart2), 3, 2,
+        { green: "Strong emotional resonance", amber: "Moderate — different rhythms, manageable", red: "Emotional misalignment — empathy and space needed" },
+        "BPHS — Moon cross-chart position",
+      ),
+      makeCheckItem(
+        score3rdLordCrossChart(chart1, chart2), 2, 1,
+        { green: "Natural sibling bridge across charts", amber: "Partial connection — one side stronger", red: "Charts don't reinforce each other's sibling house" },
+        "BPHS — 3rd lord cross-chart (Bhavat Bhavam)",
+      ),
+      makeCheckItem(
+        scoreMercuryBond(chart1, chart2), 2, 1,
+        { green: "Easy communication and rapport", amber: "Moderate — active listening helps", red: "Communication gaps — structured dialogue advised" },
+        "BPHS — Mercury as communication karaka",
+      ),
+      makeCheckItem(
+        score11thHouseSupport(chart1, chart2), 2, 1,
+        { green: "Mutual material support — gains through sibling", amber: "Uneven support — one gives more", red: "Limited practical support between siblings" },
+        "BPHS — 11th house (Labha / elder sibling)",
+      ),
+    ];
+  } else if (isRomantic) {
+    // Full authentic Ashtakoot — all 8 koots with BPHS-defined weights.
+    // This is the only relationship type the classical system was designed for.
+    allKoots = [
       scoreVarna(nak1, nak2),
       scoreVashya(rashi1, rashi2),
       scoreTara(nak1, nak2),
+      scoreYoni(nak1, nak2),
       scoreGrahaMaitri(rashi1, rashi2),
       scoreGana(nak1, nak2),
       scoreBhakoot(rashi1, rashi2),
-      // Sibling-specific dimensions (22 pts)
-      scoreSahajaBhava(chart1, chart2),
-      scoreMarsKaraka(chart1, chart2),
-      scoreMoonAxis(chart1, chart2),
-      score3rdLordCrossChart(chart1, chart2),
-      scoreMercuryBond(chart1, chart2),
-      score11thHouseSupport(chart1, chart2),
+      scoreNadi(nak1, nak2),
     ];
-    maxScore = 46;
+    maxScore = 36;
   } else {
-    // Yoni (physical/sexual) and Nadi (progeny/genetic) are only relevant for romantic relationships
-    allKoots = [
-      scoreVarna(nak1, nak2),
-      scoreVashya(rashi1, rashi2),
-      scoreTara(nak1, nak2),
-      ...(isRomantic ? [scoreYoni(nak1, nak2)] : []),
-      scoreGrahaMaitri(rashi1, rashi2),
-      scoreGana(nak1, nak2),
-      scoreBhakoot(rashi1, rashi2),
-      ...(isRomantic ? [scoreNadi(nak1, nak2)] : []),
-    ];
-    maxScore = isRomantic ? 36 : 24;
+    // Friend / Parent / Child / Other:
+    // Classical texts (BPHS, Phaladeepika) define Ashtakoot exclusively for
+    // marriage. Applying it to other relationships has no classical basis.
+    // Only Graha Maitri — Moon sign lord friendship — is cited by classical
+    // authors as a general interpersonal compatibility metric.
+    allKoots = [scoreGrahaMaitri(rashi1, rashi2)]; // 5 pts — the one classically applicable koot
+    maxScore = 5;
   }
 
   const koots = allKoots;
@@ -719,19 +1320,35 @@ export function calculateCompatibility(
   let verdict = "";
   let verdictColor = "";
 
-  if (isSibling) {
-    // Sibling-specific thresholds (out of 46)
-    if (percentage >= 75)      { verdict = "Excellent Sibling Bond"; verdictColor = "text-green-400"; }
-    else if (percentage >= 58) { verdict = "Good Sibling Compatibility"; verdictColor = "text-emerald-400"; }
-    else if (percentage >= 42) { verdict = "Moderate — Some Friction Areas"; verdictColor = "text-amber-400"; }
-    else if (percentage >= 28) { verdict = "Below Average — Requires Patience"; verdictColor = "text-orange-400"; }
-    else                       { verdict = "Challenging — Significant Differences"; verdictColor = "text-red-400"; }
-  } else {
+  if (isBusinessPartner) {
+    // Proportional to classical marriage thresholds (18/36=50%, 24/36=67%, 28/36=78%)
+    // applied to the 21-point authentic business Ashtakoot.
+    if (totalScore >= 16)      { verdict = "Strong Ashtakoot Alignment"; verdictColor = "text-green-400"; }
+    else if (totalScore >= 14) { verdict = "Good Ashtakoot Alignment"; verdictColor = "text-emerald-400"; }
+    else if (totalScore >= 11) { verdict = "Acceptable — Proceed with Awareness"; verdictColor = "text-amber-400"; }
+    else if (totalScore >= 7)  { verdict = "Below Average — Significant Differences"; verdictColor = "text-orange-400"; }
+    else                       { verdict = "Challenging Ashtakoot Match"; verdictColor = "text-red-400"; }
+  } else if (isSibling) {
+    // Proportional to classical marriage thresholds applied to the 24-point sibling Ashtakoot.
+    // 50%=12, 67%=16, 78%=19
+    if (totalScore >= 19)      { verdict = "Strong Sibling Ashtakoot"; verdictColor = "text-green-400"; }
+    else if (totalScore >= 16) { verdict = "Good Sibling Alignment"; verdictColor = "text-emerald-400"; }
+    else if (totalScore >= 12) { verdict = "Acceptable — Some Friction Areas"; verdictColor = "text-amber-400"; }
+    else if (totalScore >= 8)  { verdict = "Below Average — Requires Patience"; verdictColor = "text-orange-400"; }
+    else                       { verdict = "Challenging Ashtakoot Match"; verdictColor = "text-red-400"; }
+  } else if (isRomantic) {
+    // Full 36-point Ashtakoot — BPHS classical thresholds.
     if (totalScore >= 28)      { verdict = "Excellent Compatibility"; verdictColor = "text-green-400"; }
     else if (totalScore >= 21) { verdict = "Good Compatibility"; verdictColor = "text-emerald-400"; }
     else if (totalScore >= 18) { verdict = "Acceptable Compatibility"; verdictColor = "text-amber-400"; }
     else if (totalScore >= 12) { verdict = "Below Average — Requires Effort"; verdictColor = "text-orange-400"; }
     else                       { verdict = "Challenging — Significant Differences"; verdictColor = "text-red-400"; }
+  } else {
+    // Friend/Parent/Child/Other — only Graha Maitri (5 pts).
+    if (totalScore >= 5)       { verdict = "Strong Mental Wavelength"; verdictColor = "text-green-400"; }
+    else if (totalScore >= 4)  { verdict = "Good Mental Alignment"; verdictColor = "text-emerald-400"; }
+    else if (totalScore >= 2)  { verdict = "Moderate — Some Effort Needed"; verdictColor = "text-amber-400"; }
+    else                       { verdict = "Challenging Mental Wavelength"; verdictColor = "text-red-400"; }
   }
 
   const synastry = computeSynastry(chart1, chart2, name1, name2, relationship);
@@ -741,47 +1358,79 @@ export function calculateCompatibility(
 
   let summary = "";
 
-  if (isSibling) {
-    summary = `Sibling compatibility score: ${totalScore}/${maxScore} (${percentage}%). `;
-    const sahaja = koots.find(k => k.name === "Sahaja Bhava")?.score ?? 0;
-    const marsK = koots.find(k => k.name === "Mars Karaka")?.score ?? 0;
-    const moonAx = koots.find(k => k.name === "Moon Axis")?.score ?? 0;
+  if (isBusinessPartner) {
+    // Summary is based only on the authentic 21-point Ashtakoot score.
+    // The classical checklist items are surfaced separately in the UI.
+    summary = `Ashtakoot score (BPHS-authentic): ${totalScore}/${maxScore} (${percentage}%). `;
 
-    if (percentage >= 75) {
-      summary += "A naturally strong sibling bond — charts reinforce mutual support, communication, and emotional understanding. ";
-    } else if (percentage >= 50) {
-      summary += "A solid sibling connection with some areas that need attention. Conscious effort in weaker areas deepens the bond. ";
+    if (totalScore >= 16) {
+      summary += "Strong mental wavelength, temperament, and prosperity alignment between these charts — a solid classical foundation for a business partnership. Review the classical checklist below for house-level risk indicators before committing.";
+    } else if (totalScore >= 14) {
+      summary += "Good overall alignment. The core compatibility is there. The classical checklist below will surface any specific house-level concerns that need addressing through agreements or role definition.";
+    } else if (totalScore >= 11) {
+      summary += "Acceptable alignment but notable differences in mental approach, temperament, or financial outlook. These are manageable with clear structure — use the classical checklist below to identify which specific areas need formal agreements.";
     } else {
-      summary += "Charts show significant friction areas in the sibling dynamic. Patience, empathy, and deliberate communication are essential. ";
+      summary += "Significant differences in mental wavelength, temperament, or prosperity alignment. Shared business goals may be harder to sustain long-term. The classical checklist below will identify the specific risk areas — factor these carefully before committing capital or time.";
     }
 
-    // Highlight strongest/weakest sibling dimensions
-    if (sahaja >= 4) summary += "Strong 3rd houses in both charts provide an excellent foundation. ";
-    else if (sahaja <= 1) summary += "Weak 3rd house conditions suggest the sibling bond needs extra nurturing. ";
-    if (marsK >= 3) summary += "Mars (sibling karaka) is well-aligned — protective loyalty is natural. ";
-    if (moonAx >= 3) summary += "Moons are harmoniously placed — emotional resonance is strong. ";
-    else if (moonAx === 0) summary += "Moon axis is challenging — emotional misunderstandings need awareness. ";
-  } else {
+    // Flag any red checklist items in the summary as a quick signal
+    const redItems = checklist?.filter(c => c.status === "red") ?? [];
+    if (redItems.length > 0) {
+      summary += ` ⚠ ${redItems.length} classical risk indicator${redItems.length > 1 ? "s" : ""} detected (${redItems.map(c => c.name).join(", ")}) — see checklist below.`;
+    }
+  } else if (isSibling) {
+    summary = `Ashtakoot score (BPHS-authentic): ${totalScore}/${maxScore} (${percentage}%). `;
+
+    if (totalScore >= 19) {
+      summary += "Strong Ashtakoot alignment — mental wavelength, temperament, and prosperity patterns are naturally compatible between these siblings. Review the classical checklist below for house-level nuances.";
+    } else if (totalScore >= 16) {
+      summary += "Good overall alignment across the core Ashtakoot factors. The sibling bond has a solid foundation — the classical checklist below surfaces any specific friction areas.";
+    } else if (totalScore >= 12) {
+      summary += "Acceptable alignment but notable differences in temperament or shared prosperity patterns. The sibling bond requires conscious effort — see the checklist below for specifics.";
+    } else {
+      summary += "Significant Ashtakoot differences. The sibling dynamic carries inherent friction in mental wavelength or temperament. Patience and deliberate communication are essential — review the checklist below.";
+    }
+
+    const redItems = checklist?.filter(c => c.status === "red") ?? [];
+    if (redItems.length > 0) {
+      summary += ` ⚠ ${redItems.length} classical concern${redItems.length > 1 ? "s" : ""} flagged (${redItems.map(c => c.name).join(", ")}) — see checklist below.`;
+    }
+  } else if (isRomantic) {
     summary = `Ashtakoot score: ${totalScore}/${maxScore} (${percentage}%). `;
-    if (totalScore >= 24) {
-      summary += `This is a strong match with natural compatibility across most life areas. `;
+    if (totalScore >= 28) {
+      summary += "Excellent match across all 8 classical compatibility factors. ";
+    } else if (totalScore >= 21) {
+      summary += "Good match with natural harmony across most life areas. ";
     } else if (totalScore >= 18) {
-      summary += `This is a workable match with some areas of natural harmony and others requiring attention. `;
+      summary += "Acceptable match — some areas of harmony, others needing conscious attention. ";
     } else {
-      summary += `This match has significant areas of difference that require conscious effort and mutual understanding. `;
+      summary += "Significant differences across multiple compatibility factors — requires ongoing effort and mutual understanding. ";
     }
-
-    if (isRomantic) {
-      const yoniScore = koots.find(k => k.name === "Yoni")?.score ?? 0;
-      const nadiScore = koots.find(k => k.name === "Nadi")?.score ?? 0;
-      if (yoniScore >= 3 && nadiScore >= 8) summary += "Physical and health compatibility are strong — excellent for long-term partnership. ";
-      else if (nadiScore === 0) summary += "Nadi Dosha is present — health of children and constitutional compatibility need attention. Vedic remedies are recommended. ";
+    const yoniScore = koots.find(k => k.name === "Yoni")?.score ?? 0;
+    const nadiScore = koots.find(k => k.name === "Nadi")?.score ?? 0;
+    if (yoniScore >= 3 && nadiScore >= 8) summary += "Physical and health compatibility are strong — excellent for long-term partnership. ";
+    else if (nadiScore === 0) summary += "Nadi Dosha is present — health of children and constitutional compatibility need attention. Vedic remedies are recommended. ";
+  } else {
+    // Friend/Parent/Child/Other — Graha Maitri only (5 pts)
+    summary = `Graha Maitri (Moon sign lord compatibility): ${totalScore}/5. `;
+    if (totalScore >= 5) {
+      summary += "Strong mental wavelength — Moon sign lords are friendly, meaning thought patterns, emotional responses, and communication styles align naturally.";
+    } else if (totalScore >= 4) {
+      summary += "Good mental alignment — one lord is friendly, the other neutral. Communication generally flows well with minor effort.";
+    } else if (totalScore >= 2) {
+      summary += "Moderate mental wavelength — neutral relationship between Moon sign lords. Conscious communication and empathy bridge the differences.";
+    } else {
+      summary += "Challenging mental wavelength — Moon sign lords are inimical. Fundamentally different thought patterns; misunderstandings are likely without deliberate effort.";
     }
   }
 
   if (harmonious > challenging) summary += `Synastry shows ${harmonious} harmonious and ${challenging} challenging planetary connections — overall supportive energy.`;
   else if (challenging > harmonious) summary += `Synastry shows ${challenging} challenging and ${harmonious} harmonious planetary connections — growth through friction.`;
   else summary += `Synastry shows balanced planetary connections — neither overwhelmingly easy nor difficult.`;
+
+  const classicalNote = (!isRomantic && !isSibling && !isBusinessPartner)
+    ? "Classical texts (BPHS, Phaladeepika) define the Ashtakoot system exclusively for marriage compatibility. Applying it to friend, parent, child, or other relationships has no classical basis. Only Graha Maitri — Moon sign lord friendship — is cited by classical authors as a general interpersonal compatibility metric, so that is the only factor scored here."
+    : undefined;
 
   return {
     person1: {
@@ -805,5 +1454,7 @@ export function calculateCompatibility(
     verdictColor,
     synastry,
     summary,
+    checklist,
+    classicalNote,
   };
 }

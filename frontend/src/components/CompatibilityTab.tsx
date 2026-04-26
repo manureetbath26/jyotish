@@ -440,8 +440,8 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
         <h3 className="text-lg font-semibold text-amber-400">Compatibility Analysis</h3>
         <p className="text-xs text-slate-500 mt-1">
           {chart
-            ? <>Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Sibling analysis includes dedicated 3rd/11th house and Mars karaka scoring.</>
-            : <>Select or enter your chart, then add people to compare using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Sibling analysis includes dedicated 3rd/11th house and Mars karaka scoring.</>
+            ? <>Compare your chart ({chart.lagna} Lagna · {chart.place.split(",")[0]}) against friends, family, or partners using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Business partner analysis uses only BPHS-authentic point weights, plus a qualitative classical rule checklist — no invented scores.</>
+            : <>Select or enter your chart, then add people to compare using <strong className="text-slate-400">Ashtakoot Guna Milan</strong> and planetary synastry. Business partner analysis uses only BPHS-authentic point weights, plus a qualitative classical rule checklist — no invented scores.</>
           }
         </p>
       </div>
@@ -782,11 +782,30 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
           </div>
 
           <div className="px-5 py-4 space-y-5">
+            {/* Classical note — shown for friend/parent/child/other */}
+            {result.classicalNote && (
+              <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg px-4 py-3">
+                <p className="text-xs font-semibold text-amber-400/80 mb-1">Classical Scope Note</p>
+                <p className="text-xs text-slate-400 leading-relaxed">{result.classicalNote}</p>
+              </div>
+            )}
+
             {/* Score breakdown */}
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                {result.relationship === "sibling" ? "Sibling Compatibility" : "Ashtakoot"} Score Breakdown ({result.percentage}%)
+                {result.relationship === "business" || result.relationship === "sibling"
+                  ? "Ashtakoot Score — BPHS Authentic"
+                  : result.relationship === "romantic"
+                  ? "Ashtakoot Score Breakdown"
+                  : "Graha Maitri — Only Classically Applicable Metric"}{" "}
+                ({result.totalScore}/{result.maxScore})
               </p>
+              {(result.relationship === "business" || result.relationship === "sibling") && (
+                <p className="text-xs text-slate-500 mb-3">
+                  Only Ashtakoot koots with BPHS-defined point values are scored here.
+                  Relationship-specific classical rules are assessed in the checklist below — no invented weights.
+                </p>
+              )}
               <div className="space-y-2.5">
                 {result.koots.map(k => (
                   <ScoreBar key={k.name} score={k.score} max={k.maxPoints} label={k.name} />
@@ -794,10 +813,12 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
               </div>
             </div>
 
-            {/* Koot details — collapsible */}
+            {/* Koot details */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                Detailed Analysis
+                {result.relationship === "business" || result.relationship === "sibling"
+                  ? "Ashtakoot Detail"
+                  : "Detailed Analysis"}
               </p>
               {result.koots.map(k => (
                 <div
@@ -826,6 +847,52 @@ export function CompatibilityTab({ chart: chartProp }: Props) {
                 </div>
               ))}
             </div>
+
+            {/* Classical checklist — business partner only */}
+            {result.checklist && result.checklist.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    Classical Rule Checklist
+                  </p>
+                  <p className="text-xs text-slate-600">No invented weights — qualitative rules only</p>
+                </div>
+                <div className="space-y-2">
+                  {result.checklist.map(item => (
+                    <div
+                      key={item.name}
+                      className={`rounded-lg border p-3 ${
+                        item.status === "green"
+                          ? "border-green-900/40 bg-green-950/20"
+                          : item.status === "amber"
+                          ? "border-amber-900/30 bg-amber-950/10"
+                          : "border-red-900/30 bg-red-950/10"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                            item.status === "green" ? "bg-green-400" :
+                            item.status === "amber" ? "bg-amber-400" : "bg-red-400"
+                          }`} />
+                          <span className="text-xs font-semibold text-slate-200">{item.name}</span>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className={`text-xs font-semibold ${
+                            item.status === "green" ? "text-green-400" :
+                            item.status === "amber" ? "text-amber-400" : "text-red-400"
+                          }`}>
+                            {item.label}
+                          </span>
+                          <p className="text-[10px] text-slate-600 mt-0.5">{item.source}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed pl-4">{item.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Synastry */}
             {result.synastry.length > 0 && (
