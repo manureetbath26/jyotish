@@ -12,10 +12,14 @@ interface Message {
 
 interface ChatInterfaceProps {
   sessionId: string;
+  /// Wallet aggregate — pooled across ALL the user's chat threads.
   questionsUsed: number;
   questionLimit: number;
   initialMessages: Message[];
   onUpgrade: () => void;
+  /// Notify parent to refresh wallet from /api/chat/balance after each
+  /// successful answer (the message route returns the new aggregate).
+  onQuestionAnswered?: () => void;
 }
 
 function formatMarkdown(text: string): string {
@@ -34,6 +38,7 @@ export function ChatInterface({
   questionLimit,
   initialMessages,
   onUpgrade,
+  onQuestionAnswered,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -98,6 +103,9 @@ export function ChatInterface({
         data.assistantMessage,
       ]);
       setQuestionsUsed(data.questionsUsed);
+      // Wallet may have shifted (FIFO consume from oldest balance) — let
+      // the parent refresh its aggregate so "Buy more" CTA is accurate.
+      onQuestionAnswered?.();
     } catch {
       setError("Network error — please try again.");
       setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id));
@@ -190,6 +198,7 @@ export function ChatInterface({
               <>
                 <span className="text-amber-400 font-medium">{remaining}</span>
                 {" "}question{remaining === 1 ? "" : "s"} remaining
+                {" "}<span className="text-slate-500">(across all your charts)</span>
               </>
             )}
           </span>
@@ -318,17 +327,20 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Exhausted CTA */}
+      {/* Exhausted CTA — wallet is pooled across ALL the user's chat threads */}
       {isExhausted && (
         <div className="px-4 py-4 bg-slate-900/80 border-t border-slate-800 text-center">
-          <p className="text-slate-400 text-sm mb-3">
-            You&apos;ve used all {questionLimit} questions in this session.
+          <p className="text-slate-400 text-sm mb-1">
+            You&apos;ve used all {questionLimit} questions across your charts.
+          </p>
+          <p className="text-xs text-slate-500 mb-3">
+            Buy more — added to your wallet, usable on any chart you discuss here.
           </p>
           <button
             onClick={onUpgrade}
             className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2 rounded-lg transition-colors text-sm"
           >
-            Get More Questions
+            Buy more questions
           </button>
         </div>
       )}

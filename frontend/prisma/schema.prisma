@@ -25,6 +25,7 @@ model User {
   payments        Payment[]
   reportPurchases ReportPurchase[]
   chatSessions    ChatSession[]
+  questionBalances UserQuestionBalance[]
   profiles        Profile[]
 }
 
@@ -232,6 +233,40 @@ model ChatPricingTier {
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+/// Wallet of chat-question grants for one user (or one guest, keyed by
+/// email). Each row is one purchase or grant — the free-tier 2-pack, a
+/// paid tier, or an unlimited coupon. Quota is enforced by SUM across
+/// active rows, FIFO-consumed (oldest first) when a question is asked.
+///
+/// Strictly chat-only — does NOT pool with report purchases or
+/// subscriptions. Stacking: two paid 25-packs show as 50 remaining at
+/// the user level but stay separate rows for audit.
+model UserQuestionBalance {
+  id               String   @id @default(cuid())
+  /// Owner — exactly one of userId / guestEmail is set. Guests can only
+  /// hold a free-tier balance; paid balances always belong to a user.
+  userId           String?
+  guestEmail       String?
+  /// Where this balance came from: "free" | "tier" | "coupon"
+  source           String
+  sourceTierId     String?
+  sourceCouponCode String?
+  upiTransactionId String?
+  questionLimit    Int      // 2 / N / 999999
+  questionsUsed    Int      @default(0)
+  amount           Int      @default(0) // paise
+  /// "active" while questionsUsed < questionLimit, "exhausted" when reached.
+  /// FIFO consumer skips exhausted rows; UI hides them from the breakdown.
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([guestEmail, status])
 }
 
 model ChatSession {

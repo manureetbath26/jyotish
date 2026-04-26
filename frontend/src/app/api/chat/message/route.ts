@@ -22,6 +22,7 @@ import { resolveQuestionWindow } from "@/lib/questionWindow";
 import { buildWindowContext } from "@/lib/windowContext";
 import { getChatRules } from "@/lib/rulesServer";
 import { readAnonId } from "@/lib/anonSession";
+import { consumeQuestion, getQuotaSummary, type QuotaIdentity } from "@/lib/chatQuota";
 
 /**
  * Resolve which identity owns this chat session: a logged-in userId or
@@ -101,12 +102,19 @@ export async function POST(req: NextRequest) {
   }
   const { chatSession, isAdmin } = access;
 
-  // Check quota (admins bypass)
-  if (!isAdmin && chatSession.questionsUsed >= chatSession.questionLimit) {
+  // Wallet quota check — pooled across all the user's chat threads (so
+  // buying once gives questions usable across every profile chart).
+  // Admins bypass.
+  const quotaIdentity: QuotaIdentity = chatSession.userId
+    ? { userId: chatSession.userId }
+    : { guestEmail: chatSession.guestEmail };
+  const quotaBefore = isAdmin ? null : await getQuotaSummary(quotaIdentity);
+  if (!isAdmin && quotaBefore && quotaBefore.remaining <= 0) {
     return Response.json({
-      error: "You've used all your questions. Please upgrade your plan for more.",
-      questionsUsed: chatSession.questionsUsed,
-      questionLimit: chatSession.questionLimit,
+      error: "You've used all your questions. Buy more to keep asking.",
+      remaining: 0,
+      totalLimit: quotaBefore.totalLimit,
+      totalUsed: quotaBefore.totalUsed,
     }, { status: 403 });
   }
 
@@ -233,29 +241,26 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Increment question count atomically (skip for admin)
+  // Wallet consume: FIFO from the oldest active balance. Admins skip.
   if (!isAdmin) {
-    const updated = await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        questionsUsed: { increment: 1 },
-        status: chatSession.questionsUsed + 1 >= chatSession.questionLimit ? "exhausted" : "active",
-      },
-    });
-
-    return Response.json({
-      userMessage,
-      assistantMessage,
-      questionsUsed: updated.questionsUsed,
-      questionLimit: updated.questionLimit,
-    });
+    const result = await consumeQuestion(quotaIdentity);
+    if (!result.ok) {
+      // Should be impossible since we checked remaining > 0 above, but
+      // guard against the rare race window where the only active balance
+      // got exhausted between check and consume.
+      console.warn("[chat] consumeQuestion failed:", result.reason);
+    }
   }
 
+  const quotaAfter = await getQuotaSummary(quotaIdentity);
   return Response.json({
     userMessage,
     assistantMessage,
-    questionsUsed: chatSession.questionsUsed,
-    questionLimit: chatSession.questionLimit,
+    quota: quotaAfter,
+    // Legacy fields for backward compat with the existing client. Will
+    // remove after the UI migrates to reading `quota` directly.
+    questionsUsed: quotaAfter.totalUsed,
+    questionLimit: quotaAfter.totalLimit,
   });
 }
 

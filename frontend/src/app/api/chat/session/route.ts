@@ -2,15 +2,26 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOrSetAnonId, readAnonId } from "@/lib/anonSession";
+import {
+  createBalance,
+  getQuotaSummary,
+  hasExistingFreeBalance,
+} from "@/lib/chatQuota";
 
 export const dynamic = "force-dynamic";
 
 const FREE_QUESTION_LIMIT = 2;
-const UNLIMITED_LIMIT = 999999;
 
+/**
+ * GET /api/chat/session
+ * List the caller's chat sessions (one per chart they've discussed).
+ * Logged-in users see all their sessions; guests see whatever sessions
+ * are tied to their anon cookie.
+ *
+ * Quota lives in UserQuestionBalance (wallet) — sessions no longer carry
+ * questionLimit/questionsUsed. Use GET /api/chat/balance for quota info.
+ */
 export async function GET() {
-  // Logged-in users see all their sessions; guests see whatever session
-  // is tied to their anon cookie (at most one).
   const session = await auth();
   if (session?.user?.id) {
     const sessions = await prisma.chatSession.findMany({
@@ -31,30 +42,32 @@ export async function GET() {
   return Response.json(guestSessions);
 }
 
+/**
+ * POST /api/chat/session
+ * Open (or resume) a chat thread for a given chart.
+ *
+ * Quota model (Apr 2026 wallet refactor): this endpoint NO LONGER carries
+ * paid-tier purchase logic. It just:
+ *   - validates the caller (logged-in or guest with name+email)
+ *   - ensures the caller has a free balance if they don't already
+ *   - creates a ChatSession row (one per chart thread)
+ *
+ * To buy more questions, use POST /api/chat/balance — that's the wallet
+ * top-up endpoint. The wallet pools across all of a user's chat threads,
+ * so they buy ONCE and use across all profile charts.
+ */
 export async function POST(req: NextRequest) {
   const session = await auth();
   const isGuest = !session?.user?.id;
 
   const body = await req.json();
-  const { chartData, birthData, tierId, upiTransactionId, couponCode, guestName, guestEmail } = body;
+  const { chartData, birthData, guestName, guestEmail } = body;
 
   if (!chartData) {
     return Response.json({ error: "chartData is required" }, { status: 400 });
   }
 
-  // Guests get the free tier only — no coupons, no paid tiers (those
-  // require an account to support refunds and audit). They're nudged to
-  // sign up after their 2 free questions are used.
-  if (isGuest && (couponCode || tierId)) {
-    return Response.json(
-      { error: "Sign in to apply a coupon or buy more questions." },
-      { status: 401 },
-    );
-  }
-
-  // Guests must identify themselves with name + email. Email is the
-  // primary quota key — one free trial per email, harder to bypass than
-  // the cookie alone (clear cookies → still blocked by email).
+  // ── Guest validation: name + email required ───────────────────────────
   let normalisedGuestEmail: string | null = null;
   let normalisedGuestName: string | null = null;
   if (isGuest) {
@@ -64,7 +77,10 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    if (typeof guestEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
+    if (
+      typeof guestEmail !== "string" ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())
+    ) {
       return Response.json(
         { error: "Please enter a valid email address." },
         { status: 400 },
@@ -73,8 +89,6 @@ export async function POST(req: NextRequest) {
     normalisedGuestEmail = guestEmail.trim().toLowerCase();
     normalisedGuestName = guestName.trim();
 
-    // If this email already has a registered account, ask them to sign in
-    // — otherwise we'd give an existing user another free trial as a guest.
     const existingUser = await prisma.user.findUnique({
       where: { email: normalisedGuestEmail },
       select: { id: true },
@@ -90,103 +104,37 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let questionLimit = FREE_QUESTION_LIMIT;
-  let amount = 0;
+  // ── Free-balance provisioning ─────────────────────────────────────────
+  // First time the caller opens a chat → grant the free 2-question balance.
+  // If they already have a free balance (used or unused), skip — they can't
+  // get a second free grant on the same identity.
+  const identity = isGuest
+    ? { guestEmail: normalisedGuestEmail }
+    : { userId: session!.user!.id };
 
-  // Check coupon first
-  if (couponCode) {
-    const code = couponCode.trim().toUpperCase();
-    const coupon = await prisma.coupon.findUnique({ where: { code } });
-
-    if (coupon && coupon.active) {
-      if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
-        return Response.json({ error: "Coupon has expired" }, { status: 400 });
-      }
-      if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) {
-        return Response.json({ error: "Coupon usage limit reached" }, { status: 400 });
-      }
-
-      if (coupon.type === "unlimited") {
-        // Full free access — unlimited questions
-        questionLimit = UNLIMITED_LIMIT;
-        amount = 0;
-
-        // Increment coupon usage
-        await prisma.coupon.update({
-          where: { id: coupon.id },
-          data: { usedCount: { increment: 1 } },
-        });
-      } else if (coupon.type === "percentage" && coupon.value) {
-        // Percentage discount — still need a tier
-        if (tierId) {
-          const tier = await prisma.chatPricingTier.findUnique({ where: { id: tierId } });
-          if (tier) {
-            questionLimit = tier.questionCount;
-            amount = Math.round(tier.price * (1 - coupon.value / 100));
-          }
-        }
-        await prisma.coupon.update({
-          where: { id: coupon.id },
-          data: { usedCount: { increment: 1 } },
-        });
-      }
-    } else {
-      return Response.json({ error: "Invalid coupon code" }, { status: 400 });
-    }
-  } else if (tierId) {
-    // Paid tier
-    const tier = await prisma.chatPricingTier.findUnique({ where: { id: tierId } });
-    if (!tier || !tier.active) {
-      return Response.json({ error: "Invalid pricing tier" }, { status: 400 });
-    }
-    questionLimit = tier.questionCount;
-    amount = tier.price;
-
-    if (!upiTransactionId && amount > 0) {
-      return Response.json({ error: "Payment required — please provide UPI transaction ID" }, { status: 400 });
-    }
-  } else {
-    // Free tier — one free session per identity (user OR guest email).
-    if (isGuest) {
-      // Primary check: email. Even if cookie is cleared, the email is the
-      // authoritative quota key.
-      const existingFreeForEmail = await prisma.chatSession.findFirst({
-        where: { guestEmail: normalisedGuestEmail!, amount: 0, couponCode: null },
-        orderBy: { createdAt: "desc" },
-      });
-      if (existingFreeForEmail) {
-        return Response.json(
-          {
-            error: "You've already used your free trial. Sign up with this email to buy more questions.",
-            existingSessionId: existingFreeForEmail.id,
-            email: normalisedGuestEmail,
-          },
-          { status: 400 },
-        );
-      }
-    } else {
-      const existingFree = await prisma.chatSession.findFirst({
-        where: { userId: session!.user!.id, amount: 0, couponCode: null },
-      });
-      const user = await prisma.user.findUnique({
-        where: { id: session!.user!.id },
-        select: { role: true },
-      });
-      const isAdmin = user?.role === "admin";
-      if (existingFree && !isAdmin) {
-        return Response.json(
-          {
-            error: "You've already used your free trial. Purchase a plan for more questions.",
-            existingSessionId: existingFree.id,
-          },
-          { status: 400 },
-        );
-      }
-    }
+  // Admins are exempt — they can get unlimited free sessions for testing.
+  let isAdmin = false;
+  if (!isGuest) {
+    const user = await prisma.user.findUnique({
+      where: { id: session!.user!.id },
+      select: { role: true },
+    });
+    isAdmin = user?.role === "admin";
   }
 
-  // For guests, mint (or read) the anon cookie and key the session by it
-  // for browser continuity; the authoritative quota key is guestEmail.
+  const alreadyHasFree = isAdmin ? false : await hasExistingFreeBalance(identity);
+  if (!alreadyHasFree) {
+    await createBalance({
+      ...identity,
+      source: "free",
+      questionLimit: FREE_QUESTION_LIMIT,
+      amount: 0,
+    });
+  }
+
+  // ── Create the chat thread row ────────────────────────────────────────
+  // Quota fields on ChatSession are deprecated (kept on the model for
+  // backward compat with old rows). New rows leave them at default 0.
   const anonSessionId = isGuest ? await getOrSetAnonId() : null;
 
   const chatSession = await prisma.chatSession.create({
@@ -197,14 +145,16 @@ export async function POST(req: NextRequest) {
       guestName: normalisedGuestName,
       chartData,
       birthData: birthData || null,
-      tierId: tierId || null,
-      questionLimit,
-      amount,
-      upiTransactionId: upiTransactionId || null,
-      couponCode: couponCode?.trim().toUpperCase() || null,
+      // Legacy quota fields — set to 0 so old code paths reading them
+      // see "no quota" and defer to the wallet.
+      questionLimit: 0,
+      questionsUsed: 0,
+      amount: 0,
       status: "active",
     },
   });
 
-  return Response.json(chatSession, { status: 201 });
+  // Return the session + current quota snapshot for the UI.
+  const quota = await getQuotaSummary(identity);
+  return Response.json({ ...chatSession, quota }, { status: 201 });
 }

@@ -33,6 +33,9 @@ interface PricingTier {
 
 interface ChatSessionData {
   id: string;
+  /// Legacy session-level quota fields — always 0 for new sessions.
+  /// Real quota lives in the wallet (UserQuestionBalance), aggregated
+  /// across all the user's chat threads. See WalletQuota below.
   questionLimit: number;
   questionsUsed: number;
   status: string;
@@ -43,6 +46,22 @@ interface ChatSessionData {
     content: string;
     createdAt: string;
     saved?: boolean;
+  }>;
+}
+
+interface WalletQuota {
+  totalLimit: number;
+  totalUsed: number;
+  remaining: number;
+  hasUnlimited: boolean;
+  balances: Array<{
+    id: string;
+    source: string;
+    questionLimit: number;
+    questionsUsed: number;
+    remaining: number;
+    sourceTierId: string | null;
+    sourceCouponCode: string | null;
   }>;
 }
 
@@ -120,6 +139,21 @@ function ChatPageContent() {
 
   // Chat session
   const [chatSession, setChatSession] = useState<ChatSessionData | null>(null);
+  const [walletQuota, setWalletQuota] = useState<WalletQuota | null>(null);
+
+  // Refresh the wallet quota — called after session create / message send
+  // / balance top-up so the UI always shows accurate "X remaining".
+  const refreshWallet = async () => {
+    try {
+      const res = await fetch("/api/chat/balance");
+      if (res.ok) {
+        const data = (await res.json()) as WalletQuota;
+        setWalletQuota(data);
+      }
+    } catch {
+      // Wallet refresh is non-critical; UI falls back to last known value
+    }
+  };
 
   // Fetch pricing tiers on mount
   useEffect(() => {
@@ -171,6 +205,7 @@ function ChatPageContent() {
             });
             if (match && !cancelled) {
               setChatSession(match);
+              void refreshWallet();
               setStep("chat");
               return;
             }
@@ -313,6 +348,7 @@ function ChatPageContent() {
         const existing = sessions.find((s: ChatSessionData) => s.id === data.existingSessionId);
         if (existing) {
           setChatSession(existing);
+          void refreshWallet();
           setStep("chat");
           return;
         }
@@ -321,6 +357,8 @@ function ChatPageContent() {
     }
 
     setChatSession({ ...data, messages: [] });
+    if (data.quota) setWalletQuota(data.quota as WalletQuota);
+    else void refreshWallet();
     setStep("chat");
   };
 
@@ -334,13 +372,37 @@ function ChatPageContent() {
     }
   };
 
+  // Buy more questions → POST /api/chat/balance. Adds a balance row to
+  // the wallet, pooled with any existing balances. Stays in the chat
+  // session if one is already open.
+  const buyBalance = async (tierId: string, upiTransactionId?: string) => {
+    const body: Record<string, unknown> = { tierId };
+    if (upiTransactionId) body.upiTransactionId = upiTransactionId;
+    if (couponApplied && coupon.trim()) body.couponCode = coupon.trim();
+    const res = await fetch("/api/chat/balance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to add questions");
+    if (data.quota) setWalletQuota(data.quota as WalletQuota);
+    setStep("chat");
+  };
+
   const handleSelectTier = (tier: PricingTier) => {
     setSelectedTier(tier);
     if (couponApplied && couponDiscount === 100) {
-      // Full discount — skip payment
-      createSession(tier.id).catch(err => {
-        setPayError(err instanceof Error ? err.message : "Failed to start session");
-      });
+      // Full discount — skip payment. If there's no chat session yet,
+      // create one first (chart thread); otherwise just top up the wallet.
+      (async () => {
+        try {
+          if (!chatSession) await createSession();
+          await buyBalance(tier.id);
+        } catch (err) {
+          setPayError(err instanceof Error ? err.message : "Failed to add questions");
+        }
+      })();
     } else {
       setStep("payment");
     }
@@ -353,7 +415,9 @@ function ChatPageContent() {
     setPayLoading(true);
     setPayError(null);
     try {
-      await createSession(selectedTier.id, upiRef.trim());
+      // Ensure chart thread exists; then add the paid balance to the wallet.
+      if (!chatSession) await createSession();
+      await buyBalance(selectedTier.id, upiRef.trim());
     } catch (err) {
       setPayError(err instanceof Error ? err.message : "Payment failed");
     } finally {
@@ -734,13 +798,17 @@ function ChatPageContent() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           <ChatInterface
             sessionId={chatSession.id}
-            questionsUsed={chatSession.questionsUsed}
-            questionLimit={chatSession.questionLimit}
+            // Wallet aggregate — pooled across ALL the user's chat threads,
+            // so buying once gives questions usable across every profile chart.
+            questionsUsed={walletQuota?.totalUsed ?? 0}
+            questionLimit={walletQuota?.totalLimit ?? 0}
             initialMessages={chatSession.messages || []}
             onUpgrade={() => {
-              setChatSession(null);
+              // Keep the chat session — user is just topping up the wallet,
+              // not switching charts. Tier picker → POST /api/chat/balance.
               setStep("plan");
             }}
+            onQuestionAnswered={refreshWallet}
           />
         </div>
       )}
