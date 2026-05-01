@@ -12,7 +12,8 @@ import type { AnswerFacts } from "@/lib/chatEngine";
  * deterministic template if needed.
  */
 
-const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+// Default to gpt-4o for quality. Override via env var for cost/speed trade-offs.
+const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o";
 
 let client: OpenAI | null = null;
 function getClient(): OpenAI {
@@ -268,16 +269,44 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
 }
 
 /**
+ * Build a compact conversation summary from prior messages.
+ * Q truncated to 100 chars, A to 150 chars — enough for the model to
+ * understand follow-up context without bloating the prompt.
+ */
+export function buildConversationSummary(
+  messages: Array<{ role: string; content: string }>,
+): string {
+  if (messages.length === 0) return "";
+  const lines = messages.map((m) => {
+    const isUser = m.role === "user";
+    const limit = isUser ? 100 : 150;
+    const text = m.content.replace(/\n+/g, " ").slice(0, limit);
+    const ellipsis = m.content.length > limit ? "…" : "";
+    return `${isUser ? "Q" : "A"}: ${text}${ellipsis}`;
+  });
+  return lines.join("\n");
+}
+
+/**
  * Compose a natural-language answer from structured facts. Returns the
  * assistant's text. Throws on API failure — caller should catch and fall
  * back to the deterministic template answer.
+ *
+ * @param conversationSummary - Compact Q/A summary of the last ~5 exchanges,
+ *   appended to the facts prompt so the model can handle follow-up questions.
  */
 export async function composeNaturalAnswer(
   facts: AnswerFacts,
   chart: ChartResponse,
+  conversationSummary: string = "",
 ): Promise<string> {
   const openai = getClient();
-  const userPrompt = serializeFacts(facts, chart);
+  let userPrompt = serializeFacts(facts, chart);
+  if (conversationSummary) {
+    userPrompt =
+      `PRIOR CONVERSATION (context for follow-ups — do not repeat unless directly relevant):\n${conversationSummary}\n\n` +
+      userPrompt;
+  }
 
   const response = await openai.chat.completions.create({
     model: MODEL,
@@ -285,7 +314,7 @@ export async function composeNaturalAnswer(
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
-    temperature: 0.85,
+    temperature: 0.55,
     max_tokens: 420,
     presence_penalty: 0.3,
     frequency_penalty: 0.3,

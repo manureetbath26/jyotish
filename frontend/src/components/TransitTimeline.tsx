@@ -168,20 +168,20 @@ export function TransitTimeline({ lifeArea, events, narrative }: TransitTimeline
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${styles.dot}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
+
+                    {/* Row 1: planet name + status badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-slate-200">
-                        {e.planet}
-                        {e.is_retrograde ? " ᴿ" : ""}
+                        {e.planet}{e.is_retrograde ? " ᴿ" : ""}
                       </span>
                       {isPD && (
                         <span className="text-[10px] font-bold tracking-wide text-purple-400">
                           PRATYANTARDASHA
                         </span>
                       )}
-                      {headline}
                       {isCurrent && (
                         <span className="text-[10px] font-bold tracking-wide text-amber-400">
-                          CURRENTLY HERE
+                          ACTIVE NOW
                         </span>
                       )}
                       <span className={`text-[10px] font-bold tracking-wide ${styles.label}`}>
@@ -189,16 +189,32 @@ export function TransitTimeline({ lifeArea, events, narrative }: TransitTimeline
                       </span>
                     </div>
 
+                    {/* Row 2: what is happening — the transit action */}
+                    {!isPD && (
+                      <p className="text-sm font-medium text-slate-100 mt-0.5">
+                        {isCurrent
+                          ? <>In <span className="text-amber-300">{e.to_sign}</span> · House {e.to_house}</>
+                          : <>Entering <span className="text-amber-300">{e.to_sign}</span> · House {e.to_house}</>
+                        }
+                      </p>
+                    )}
+                    {isPD && headline}
+
+                    {/* Row 3: date + duration + origin context */}
                     <p className="text-xs text-slate-400 mt-1">
-                      <span className="text-slate-300 font-medium">
-                        {isCurrent ? `since ${formatDate(e.date)}` : formatDate(e.date)}
-                      </span>
+                      {isCurrent
+                        ? <>Active since <span className="text-slate-300 font-medium">{formatDate(e.date)}</span></>
+                        : <><span className="text-slate-300 font-medium">{formatDate(e.date)}</span></>
+                      }
                       {" · stays "}
                       {formatDuration(e.duration_days)}
-                      {e.next_ingress_date && (
-                        <> (until {formatDate(e.next_ingress_date)})</>
-                      )}
+                      {e.next_ingress_date && <> (until {formatDate(e.next_ingress_date)})</>}
                       {!e.next_ingress_date && <> (continues past window)</>}
+                      {!isPD && (
+                        <span className="text-slate-600">
+                          {" · from "}{e.from_sign} H{e.from_house}
+                        </span>
+                      )}
                     </p>
 
                     <p className="text-sm text-slate-300 mt-2 leading-relaxed">{e.interpretation}</p>

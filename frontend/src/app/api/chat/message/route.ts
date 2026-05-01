@@ -10,7 +10,7 @@ import {
   type DailyContext,
 } from "@/lib/chatEngine";
 import { computeChatEnrichment } from "@/lib/chatEnrichment";
-import { composeNaturalAnswer, isLlmComposerAvailable } from "@/lib/llmComposer";
+import { composeNaturalAnswer, buildConversationSummary, isLlmComposerAvailable } from "@/lib/llmComposer";
 import { extractDailyFacts } from "@/lib/dailyEngine";
 import {
   computeAshtakvarga,
@@ -223,7 +223,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      answer = await composeNaturalAnswer(facts, chartData);
+      // Fetch last 10 messages (5 exchanges) before this question for context.
+      // Exclude the just-saved user message; summarise compactly to save tokens.
+      const priorMessages = await prisma.chatMessage.findMany({
+        where: { sessionId, id: { not: userMessage.id } },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: { role: true, content: true },
+      });
+      const conversationSummary = buildConversationSummary(
+        priorMessages.reverse(),
+      );
+
+      answer = await composeNaturalAnswer(facts, chartData, conversationSummary);
       composer = "openai";
     } catch (err) {
       console.warn("[chat] LLM composer failed, using template:", err);
