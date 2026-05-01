@@ -220,18 +220,28 @@ export function buildWindowContext(
   const jaiminiWindows = clipJaiminiWindows(enriched, window);
   const categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign, rules);
 
-  // Chara Dasha — only compute for non-pure-past windows
-  const charaDasha = !window.isPurePast
-    ? buildCharaDashaContext(chart, window, todayIso)
-    : [];
+  // Chara Dasha — only compute for non-pure-past windows; fails open
+  let charaDasha: CharaDashaSeg[] = [];
+  if (!window.isPurePast) {
+    try {
+      charaDasha = buildCharaDashaContext(chart, window, todayIso);
+    } catch (err) {
+      console.warn("[windowContext] charaDasha failed:", err);
+    }
+  }
 
-  // Planet BAV — current transit positions gated by BAV threshold
-  const planetBav = buildPlanetBavContext(
-    opts.currentTransits,
-    opts.ashtakvarga,
-    chart.lagna as Sign,
-    rules,
-  );
+  // Planet BAV — fails open
+  let planetBav: PlanetBavEntry[] = [];
+  try {
+    planetBav = buildPlanetBavContext(
+      opts.currentTransits,
+      opts.ashtakvarga,
+      chart.lagna as Sign,
+      rules,
+    );
+  } catch (err) {
+    console.warn("[windowContext] planetBav failed:", err);
+  }
 
   const summary = buildSummary(
     window,
@@ -294,20 +304,23 @@ function sliceDashas(
 
       // Compute pratyantardashas for near-term segments only (avoids bloat)
       let pratyantardashas: PratyantardashaSeg[] | undefined;
-      if (adStart <= nearFutureCutoff && adEnd >= now) {
-        const allPDs = computePratyantardashas(
-          ad.planet,
-          ad.start_date,
-          ad.end_date,
-          todayIso,
-        );
-        // Only keep PDs that overlap the window
-        const windowStartIso = toIsoDate(windowStart);
-        const windowEndIso = toIsoDate(windowEnd);
-        const clipped = allPDs.filter(
-          (pd) => pd.end >= windowStartIso && pd.start <= windowEndIso,
-        );
-        if (clipped.length > 0) pratyantardashas = clipped;
+      try {
+        if (adStart <= nearFutureCutoff && adEnd >= now) {
+          const allPDs = computePratyantardashas(
+            ad.planet,
+            ad.start_date,
+            ad.end_date,
+            todayIso,
+          );
+          const windowStartIso = toIsoDate(windowStart);
+          const windowEndIso = toIsoDate(windowEnd);
+          const clipped = allPDs.filter(
+            (pd) => pd.end >= windowStartIso && pd.start <= windowEndIso,
+          );
+          if (clipped.length > 0) pratyantardashas = clipped;
+        }
+      } catch {
+        // fail open — PDs are additive context, not critical
       }
 
       segments.push({

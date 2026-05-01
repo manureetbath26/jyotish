@@ -169,19 +169,26 @@ export async function POST(req: NextRequest) {
 
   // Build the window-scoped context (dasha slice, clipped highlights,
   // projected slow-planet transits, Jaimini overlap, house SAV focus).
+  // Fails open — a crash here must not kill the whole request.
   const classification = classifyQuestion(rules, trimmedQuestion);
-  const windowContext = buildWindowContext({
-    chart: chartData,
-    report,
-    window: questionWindow,
-    categories: classification.categories,
-    houses: classification.houses,
-    rules,
-    enriched,
-    currentTransits,
-    ashtakvarga,
-    now,
-  });
+  let windowContext;
+  try {
+    windowContext = buildWindowContext({
+      chart: chartData,
+      report,
+      window: questionWindow,
+      categories: classification.categories,
+      houses: classification.houses,
+      rules,
+      enriched,
+      currentTransits,
+      ashtakvarga,
+      now,
+    });
+  } catch (err) {
+    console.warn("[chat] buildWindowContext failed:", err);
+    windowContext = undefined;
+  }
 
   // Deterministic extraction first — this is our source of truth and our
   // fallback if the LLM composer is unavailable or fails.
