@@ -118,6 +118,39 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
         lines.push(
           `- ${s.mahadasha}-${s.antardasha} from ${s.includedFrom} to ${s.includedTo}${flag}${nature}${themes}`,
         );
+        // Pratyantardashas (sub-sub-periods) for near-term segments
+        if (s.pratyantardashas?.length) {
+          for (const pd of s.pratyantardashas) {
+            const pdFlag = pd.isCurrent ? " [CURRENT PD]" : "";
+            lines.push(
+              `    PD ${s.mahadasha}-${s.antardasha}-${pd.planet}: ${pd.start.slice(0, 7)} → ${pd.end.slice(0, 7)}${pdFlag}`,
+            );
+          }
+        }
+      }
+    }
+
+    // Chara Dasha (Jaimini sign-based dasha system)
+    if (wc.charaDasha?.length) {
+      lines.push("");
+      lines.push("CHARA DASHA (Jaimini sign-based — cross-check timing with Vimshottari above):");
+      for (const seg of wc.charaDasha) {
+        const flag = seg.isCurrent ? " [CURRENT]" : "";
+        const indent = seg.level === "major" ? "" : seg.level === "sub" ? "  " : "    ";
+        const levelLabel = seg.level === "major" ? "Major" : seg.level === "sub" ? "Sub" : "Sub-sub";
+        lines.push(
+          `${indent}- ${levelLabel}: ${seg.sign} (lord ${seg.lord}) ${seg.start.slice(0, 7)}–${seg.end.slice(0, 7)}${flag}`,
+        );
+      }
+    }
+
+    // Planet BAV — gochara gate for each transiting planet
+    if (wc.planetBav?.length) {
+      lines.push("");
+      lines.push("PLANET BAV IN CURRENT TRANSIT SIGN (gochara gate — active means full effect):");
+      for (const pb of wc.planetBav) {
+        const bavStr = pb.gate === "nodal" ? "nodal" : `${pb.bav}/${pb.threshold} bindus`;
+        lines.push(`- ${pb.planet} in ${pb.transitSign} H${pb.houseFromLagna}: ${bavStr} [${pb.gate}]`);
       }
     }
     if (wc.transits.length) {

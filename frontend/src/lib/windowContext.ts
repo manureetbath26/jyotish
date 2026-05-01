@@ -21,7 +21,7 @@ import type {
   AshtakvargaPlanet,
 } from "./ashtakvargaEngine";
 import { ASHTAKVARGA_PLANETS } from "./ashtakvargaEngine";
-import { SIGN_INDEX, ZODIAC_ORDER, type Sign } from "./charaDashaEngine";
+import { calculateCharaDasha, SIGN_INDEX, ZODIAC_ORDER, type Sign } from "./charaDashaEngine";
 import type { EnrichedChatContext } from "./chatEnrichment";
 import type { ChatRules } from "./rulesServer";
 import type {
@@ -31,6 +31,18 @@ import type {
 } from "./lifeEventsReport";
 import type { QuestionWindow } from "./questionWindow";
 import { formatMonth, toIsoDate } from "./questionWindow";
+
+// ─── Vimshottari Pratyantardasha constants ────────────────────────────────────
+
+const VIMSHOTTARI_YEARS: Record<string, number> = {
+  Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16,
+  Saturn: 19, Mercury: 17, Ketu: 7, Venus: 20,
+};
+const VIMSHOTTARI_ORDER = [
+  "Sun", "Moon", "Mars", "Rahu", "Jupiter",
+  "Saturn", "Mercury", "Ketu", "Venus",
+];
+const VIMSHOTTARI_TOTAL = 120;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Interpretive constants (gochara threshold, planet vibe, tracked planets,
@@ -55,6 +67,34 @@ const MEAN_MOTION_DEG_PER_DAY: Record<string, number> = {
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
+/** One Vimshottari pratyantardasha (sub-sub-period) inside an antardasha. */
+export interface PratyantardashaSeg {
+  planet: string;
+  start: string;   // YYYY-MM-DD
+  end: string;
+  isCurrent: boolean;
+}
+
+/** One Chara Dasha segment at major / sub / sub-sub level. */
+export interface CharaDashaSeg {
+  level: "major" | "sub" | "subsub";
+  sign: string;
+  lord: string;
+  start: string;   // YYYY-MM-DD
+  end: string;
+  isCurrent: boolean;
+}
+
+/** BAV of a transiting planet in its current sign — shows gochara strength. */
+export interface PlanetBavEntry {
+  planet: string;
+  transitSign: string;
+  houseFromLagna: number;
+  bav: number;         // 0-8 (0 for nodes)
+  threshold: number;
+  gate: "active" | "muted" | "nodal";
+}
+
 export interface WindowContext {
   window: QuestionWindow;
   dashaSegments: DashaSegment[];
@@ -64,6 +104,10 @@ export interface WindowContext {
   categoryHouseFocus: HouseFocus[];
   /** Human-readable summary line for the LLM/template to weave in */
   summary: string;
+  /** Chara Dasha (Jaimini sign-based) periods overlapping the window */
+  charaDasha: CharaDashaSeg[];
+  /** BAV of each transiting planet in its current sign */
+  planetBav: PlanetBavEntry[];
 }
 
 export interface DashaSegment {
@@ -79,6 +123,11 @@ export interface DashaSegment {
   /** Derived from report.dashaPredictions when available */
   nature?: "very_favorable" | "favorable" | "mixed" | "challenging";
   themes?: string[];
+  /**
+   * Vimshottari pratyantardashas within this AD that overlap the window.
+   * Only populated for near-term segments (within 2 years of now).
+   */
+  pratyantardashas?: PratyantardashaSeg[];
 }
 
 export interface WindowHighlight {
@@ -153,8 +202,9 @@ export function buildWindowContext(
 ): WindowContext {
   const { chart, report, window, categories, houses, enriched, rules } = opts;
   const now = opts.now ?? new Date();
+  const todayIso = toIsoDate(now);
 
-  const dashaSegments = sliceDashas(chart, report, window);
+  const dashaSegments = sliceDashas(chart, report, window, todayIso, now);
   const highlights = clipHighlights(report, window, categories);
   const transits =
     opts.currentTransits && !window.isPurePast
@@ -169,6 +219,19 @@ export function buildWindowContext(
       : [];
   const jaiminiWindows = clipJaiminiWindows(enriched, window);
   const categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign, rules);
+
+  // Chara Dasha — only compute for non-pure-past windows
+  const charaDasha = !window.isPurePast
+    ? buildCharaDashaContext(chart, window, todayIso)
+    : [];
+
+  // Planet BAV — current transit positions gated by BAV threshold
+  const planetBav = buildPlanetBavContext(
+    opts.currentTransits,
+    opts.ashtakvarga,
+    chart.lagna as Sign,
+    rules,
+  );
 
   const summary = buildSummary(
     window,
@@ -185,6 +248,8 @@ export function buildWindowContext(
     jaiminiWindows,
     categoryHouseFocus,
     summary,
+    charaDasha,
+    planetBav,
   };
 }
 
@@ -196,11 +261,15 @@ function sliceDashas(
   chart: ChartResponse,
   report: LifeEventsReport,
   window: QuestionWindow,
+  todayIso: string,
+  now: Date,
 ): DashaSegment[] {
   const segments: DashaSegment[] = [];
   const windowStart = window.start;
   const windowEnd = window.end;
-  const todayIso = toIsoDate(new Date());
+  // Only compute pratyantardashas for segments within 2 years of today
+  const twoYearsMs = 2 * 365.25 * 86_400_000;
+  const nearFutureCutoff = new Date(now.getTime() + twoYearsMs);
 
   // Build a lookup from MD planet → DashaPrediction for nature/themes
   const predByPlanet = new Map<string, DashaPrediction>();
@@ -223,6 +292,24 @@ function sliceDashas(
       const clippedStart = adStart < windowStart ? windowStart : adStart;
       const clippedEnd = adEnd > windowEnd ? windowEnd : adEnd;
 
+      // Compute pratyantardashas for near-term segments only (avoids bloat)
+      let pratyantardashas: PratyantardashaSeg[] | undefined;
+      if (adStart <= nearFutureCutoff && adEnd >= now) {
+        const allPDs = computePratyantardashas(
+          ad.planet,
+          ad.start_date,
+          ad.end_date,
+          todayIso,
+        );
+        // Only keep PDs that overlap the window
+        const windowStartIso = toIsoDate(windowStart);
+        const windowEndIso = toIsoDate(windowEnd);
+        const clipped = allPDs.filter(
+          (pd) => pd.end >= windowStartIso && pd.start <= windowEndIso,
+        );
+        if (clipped.length > 0) pratyantardashas = clipped;
+      }
+
       segments.push({
         mahadasha: md.planet,
         antardasha: ad.planet,
@@ -233,10 +320,131 @@ function sliceDashas(
         isCurrent: ad.start_date <= todayIso && todayIso <= ad.end_date,
         nature: pred?.overallNature,
         themes: pred?.themes?.slice(0, 3),
+        pratyantardashas,
       });
     }
   }
   return segments;
+}
+
+// ─── Vimshottari Pratyantardasha computation ──────────────────────────────────
+
+function computePratyantardashas(
+  adPlanet: string,
+  adStartIso: string,
+  adEndIso: string,
+  todayIso: string,
+): PratyantardashaSeg[] {
+  const adStartMs = new Date(adStartIso).getTime();
+  const adEndMs = new Date(adEndIso).getTime();
+  const adDays = (adEndMs - adStartMs) / 86_400_000;
+  const startIdx = VIMSHOTTARI_ORDER.indexOf(adPlanet);
+  if (startIdx < 0) return [];
+
+  const pds: PratyantardashaSeg[] = [];
+  let cursorMs = adStartMs;
+  for (let i = 0; i < 9; i++) {
+    const pdPlanet = VIMSHOTTARI_ORDER[(startIdx + i) % 9];
+    const pdDays = adDays * (VIMSHOTTARI_YEARS[pdPlanet] / VIMSHOTTARI_TOTAL);
+    const pdStart = toIsoDate(new Date(cursorMs));
+    cursorMs += pdDays * 86_400_000;
+    const pdEnd = toIsoDate(new Date(cursorMs));
+    pds.push({
+      planet: pdPlanet,
+      start: pdStart,
+      end: pdEnd,
+      isCurrent: pdStart <= todayIso && todayIso < pdEnd,
+    });
+  }
+  return pds;
+}
+
+// ─── Chara Dasha clipping ─────────────────────────────────────────────────────
+
+function buildCharaDashaContext(
+  chart: ChartResponse,
+  window: QuestionWindow,
+  todayIso: string,
+): CharaDashaSeg[] {
+  let result;
+  try {
+    result = calculateCharaDasha(chart);
+  } catch {
+    return [];
+  }
+
+  const windowStartIso = toIsoDate(window.start);
+  const windowEndIso = toIsoDate(window.end);
+  const segs: CharaDashaSeg[] = [];
+
+  for (const major of result.dashaSequence) {
+    if (major.endDate < windowStartIso || major.startDate > windowEndIso) continue;
+    segs.push({
+      level: "major",
+      sign: major.sign,
+      lord: major.lord,
+      start: major.startDate,
+      end: major.endDate,
+      isCurrent: major.startDate <= todayIso && todayIso <= major.endDate,
+    });
+
+    for (const sub of major.subPeriods) {
+      if (sub.endDate < windowStartIso || sub.startDate > windowEndIso) continue;
+      segs.push({
+        level: "sub",
+        sign: sub.sign,
+        lord: sub.lord,
+        start: sub.startDate,
+        end: sub.endDate,
+        isCurrent: sub.startDate <= todayIso && todayIso <= sub.endDate,
+      });
+
+      for (const ss of sub.subSubPeriods) {
+        if (ss.endDate < windowStartIso || ss.startDate > windowEndIso) continue;
+        segs.push({
+          level: "subsub",
+          sign: ss.sign,
+          lord: ss.lord,
+          start: ss.startDate,
+          end: ss.endDate,
+          isCurrent: ss.startDate <= todayIso && todayIso <= ss.endDate,
+        });
+      }
+    }
+  }
+  return segs;
+}
+
+// ─── Planet BAV in current transit sign ──────────────────────────────────────
+
+function buildPlanetBavContext(
+  transits: CurrentTransitResponse | undefined,
+  ashtakvarga: AshtakvargaAnalysis | undefined,
+  natalLagna: Sign,
+  rules: ChatRules,
+): PlanetBavEntry[] {
+  if (!transits) return [];
+  const out: PlanetBavEntry[] = [];
+
+  for (const tp of transits.planets) {
+    const isNode = tp.name === "Rahu" || tp.name === "Ketu";
+    const signIdx = Math.floor(normalizeDeg(tp.longitude) / 30) % 12;
+    const sign = ZODIAC_ORDER[signIdx];
+    const house = houseFromLagna(sign, natalLagna);
+    const threshold = rules.gocharaThreshold[tp.name] ?? 0;
+    const bav =
+      ashtakvarga && !isNode
+        ? bavForPlanetInSign(ashtakvarga, tp.name, signIdx)
+        : 0;
+    const gate: PlanetBavEntry["gate"] = isNode
+      ? "nodal"
+      : bav >= threshold
+      ? "active"
+      : "muted";
+
+    out.push({ planet: tp.name, transitSign: sign, houseFromLagna: house, bav, threshold, gate });
+  }
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
