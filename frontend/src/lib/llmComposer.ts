@@ -41,6 +41,7 @@ STRICT RULES:
 6. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs after the window note is the usual shape.
 7. Plain language. Vedic terms are fine; gloss them briefly when useful.
 8. Vary your openings question-to-question — but always preserve the window note as line 1.
+9. DATE EVERY PERIOD. Whenever you name a dasha, antardasha, pratyantardasha, or Chara Dasha period, ALWAYS include its date range in parentheses immediately after — e.g. "Jupiter–Venus (15 May–3 Nov 2026)" or "the Mercury pratyantardasha (Jun–Aug 2026)". Use the start/end dates from the facts verbatim, formatted as "D Mon YYYY". NEVER refer to a period by planet names alone without the dates — vague phrases like "during the sub-periods of Jupiter and Venus" are FORBIDDEN.
 
 STRUCTURE:
   Line 1: the USER_WINDOW_NOTE verbatim (or close paraphrase for explicit ranges).
@@ -59,6 +60,27 @@ PAST-DIRECTION WINDOWS (WINDOW.direction == "past"):
   - If highlights in the window are thin, say so honestly and pivot to the natal chart reason (which lord is weak, which yoga was muted, etc.).
 
 You are never diagnostic or fatalistic. Tone: a knowledgeable friend who sees the pattern and names it.`;
+
+/** Format an ISO date string (YYYY-MM-DD or YYYY-MM) to "D Mon YYYY" or "Mon YYYY". */
+function fmtDate(iso: string): string {
+  // Full date: 2026-05-15 → "15 May 2026"
+  const full = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (full) {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const d = parseInt(full[3], 10);
+    const m = parseInt(full[2], 10) - 1;
+    const y = full[1];
+    return `${d} ${months[m]} ${y}`;
+  }
+  // Year-month only: 2026-05 → "May 2026"
+  const ym = /^(\d{4})-(\d{2})/.exec(iso);
+  if (ym) {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const m = parseInt(ym[2], 10) - 1;
+    return `${months[m]} ${ym[1]}`;
+  }
+  return iso;
+}
 
 function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
   const lines: string[] = [];
@@ -116,14 +138,14 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
         const nature = s.nature ? ` nature=${s.nature}` : "";
         const themes = s.themes?.length ? ` themes=${s.themes.join(", ")}` : "";
         lines.push(
-          `- ${s.mahadasha}-${s.antardasha} from ${s.includedFrom} to ${s.includedTo}${flag}${nature}${themes}`,
+          `- ${s.mahadasha}-${s.antardasha} (${fmtDate(s.includedFrom)} – ${fmtDate(s.includedTo)})${flag}${nature}${themes}`,
         );
         // Pratyantardashas (sub-sub-periods) for near-term segments
         if (s.pratyantardashas?.length) {
           for (const pd of s.pratyantardashas) {
             const pdFlag = pd.isCurrent ? " [CURRENT PD]" : "";
             lines.push(
-              `    PD ${s.mahadasha}-${s.antardasha}-${pd.planet}: ${pd.start.slice(0, 7)} → ${pd.end.slice(0, 7)}${pdFlag}`,
+              `    PD ${s.mahadasha}-${s.antardasha}-${pd.planet}: ${fmtDate(pd.start)} – ${fmtDate(pd.end)}${pdFlag}`,
             );
           }
         }
@@ -139,7 +161,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
         const indent = seg.level === "major" ? "" : seg.level === "sub" ? "  " : "    ";
         const levelLabel = seg.level === "major" ? "Major" : seg.level === "sub" ? "Sub" : "Sub-sub";
         lines.push(
-          `${indent}- ${levelLabel}: ${seg.sign} (lord ${seg.lord}) ${seg.start.slice(0, 7)}–${seg.end.slice(0, 7)}${flag}`,
+          `${indent}- ${levelLabel}: ${seg.sign} (lord ${seg.lord}) ${fmtDate(seg.start)} – ${fmtDate(seg.end)}${flag}`,
         );
       }
     }
@@ -240,7 +262,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
   if (facts.currentPeriod && !hasWindow) {
     lines.push("");
     lines.push(
-      `CURRENT DASHA (standing background, not today-specific): ${facts.currentPeriod.mahadasha}\u2013${facts.currentPeriod.antardasha} until ${facts.currentPeriod.endDate.slice(0, 7)}.`,
+      `CURRENT DASHA (standing background, not today-specific): ${facts.currentPeriod.mahadasha}\u2013${facts.currentPeriod.antardasha} until ${fmtDate(facts.currentPeriod.endDate)}.`,
     );
     if (facts.currentPeriod.themes) lines.push(`  Themes: ${facts.currentPeriod.themes}`);
     if (facts.currentPeriod.relevantPredictions.length) {
