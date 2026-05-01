@@ -204,23 +204,59 @@ export function buildWindowContext(
   const now = opts.now ?? new Date();
   const todayIso = toIsoDate(now);
 
-  const dashaSegments = sliceDashas(chart, report, window, todayIso, now);
-  const highlights = clipHighlights(report, window, categories);
-  const transits =
-    opts.currentTransits && !window.isPurePast
-      ? projectWindowTransits(
-          chart,
-          opts.currentTransits,
-          opts.ashtakvarga,
-          window,
-          now,
-          rules,
-        )
-      : [];
-  const jaiminiWindows = clipJaiminiWindows(enriched, window);
-  const categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign, rules);
+  // ── Each engine is independently fail-open. A crash in one must never
+  //    prevent the remaining engines from contributing to the answer. ──────────
 
-  // Chara Dasha — only compute for non-pure-past windows; fails open
+  // 1. Vimshottari dasha segments (core timing backbone)
+  let dashaSegments: DashaSegment[] = [];
+  try {
+    dashaSegments = sliceDashas(chart, report, window, todayIso, now);
+  } catch (err) {
+    console.warn("[windowContext] sliceDashas failed:", err);
+  }
+
+  // 2. Life-events highlights clipped to window
+  let highlights: WindowHighlight[] = [];
+  try {
+    highlights = clipHighlights(report, window, categories);
+  } catch (err) {
+    console.warn("[windowContext] clipHighlights failed:", err);
+  }
+
+  // 3. Slow-planet transit projections
+  let transits: WindowTransit[] = [];
+  if (opts.currentTransits && !window.isPurePast) {
+    try {
+      transits = projectWindowTransits(
+        chart,
+        opts.currentTransits,
+        opts.ashtakvarga,
+        window,
+        now,
+        rules,
+      );
+    } catch (err) {
+      console.warn("[windowContext] projectWindowTransits failed:", err);
+    }
+  }
+
+  // 4. Jaimini marriage / career windows
+  let jaiminiWindows: JaiminiWindowHit[] = [];
+  try {
+    jaiminiWindows = clipJaiminiWindows(enriched, window);
+  } catch (err) {
+    console.warn("[windowContext] clipJaiminiWindows failed:", err);
+  }
+
+  // 5. Category-specific house SAV focus
+  let categoryHouseFocus: HouseFocus[] = [];
+  try {
+    categoryHouseFocus = collectHouseFocus(enriched, houses, chart.lagna as Sign, rules);
+  } catch (err) {
+    console.warn("[windowContext] collectHouseFocus failed:", err);
+  }
+
+  // 6. Chara Dasha (Jaimini sign-based) — only for non-pure-past windows
   let charaDasha: CharaDashaSeg[] = [];
   if (!window.isPurePast) {
     try {
@@ -230,7 +266,7 @@ export function buildWindowContext(
     }
   }
 
-  // Planet BAV — fails open
+  // 7. Planet BAV in current transit sign (gochara gate)
   let planetBav: PlanetBavEntry[] = [];
   try {
     planetBav = buildPlanetBavContext(
