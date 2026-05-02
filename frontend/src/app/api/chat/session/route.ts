@@ -21,23 +21,47 @@ const FREE_QUESTION_LIMIT = 2;
  * Quota lives in UserQuestionBalance (wallet) — sessions no longer carry
  * questionLimit/questionsUsed. Use GET /api/chat/balance for quota info.
  */
+// Fields needed for the session list UI — omits chartData/birthData blobs
+// (large JSON, not needed for the list view) and raw message content
+// (fetched on demand via GET /api/chat/message?sessionId=...).
+const SESSION_LIST_SELECT = {
+  id: true,
+  userId: true,
+  anonSessionId: true,
+  guestEmail: true,
+  guestName: true,
+  tierId: true,
+  questionLimit: true,
+  questionsUsed: true,
+  amount: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  // Include only the first message as a preview snippet
+  messages: {
+    orderBy: { createdAt: "asc" as const },
+    take: 1,
+    select: { id: true, role: true, content: true, createdAt: true },
+  },
+} as const;
+
 export async function GET() {
-  const session = await auth();
+  const [session, anonId] = await Promise.all([auth(), readAnonId()]);
+
   if (session?.user?.id) {
     const sessions = await prisma.chatSession.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
-      include: { messages: { orderBy: { createdAt: "asc" } } },
+      select: SESSION_LIST_SELECT,
     });
     return Response.json(sessions);
   }
 
-  const anonId = await readAnonId();
   if (!anonId) return Response.json([]);
   const guestSessions = await prisma.chatSession.findMany({
     where: { anonSessionId: anonId },
     orderBy: { createdAt: "desc" },
-    include: { messages: { orderBy: { createdAt: "asc" } } },
+    select: SESSION_LIST_SELECT,
   });
   return Response.json(guestSessions);
 }

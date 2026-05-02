@@ -93,6 +93,7 @@ function savStrength(bindus: number): "Weak" | "Average" | "Strong" {
 
 export async function computeChatEnrichment(
   chart: ChartResponse,
+  preloadedAshtakRules?: AshtakvargaRule[],
 ): Promise<EnrichedChatContext> {
   const lagnaSign = chart.lagna as Sign;
   const predInput = preparePredictionInput(chart);
@@ -138,18 +139,23 @@ export async function computeChatEnrichment(
     career = null;
   }
 
-  // ── Ashtakvarga (load rules from DB) ──
+  // ── Ashtakvarga (use pre-loaded rules if provided, else fetch from DB) ──
   let houseSav: HouseSav[] = [];
   let sarvaTotal = 0;
   try {
-    const rulesRaw = await prisma.ashtakvargaRule.findMany({
-      select: { planet: true, source: true, houses: true },
-    });
-    const rules: AshtakvargaRule[] = rulesRaw.map((r) => ({
-      planet: r.planet as AshtakvargaRule["planet"],
-      source: r.source as AshtakvargaRule["source"],
-      houses: r.houses,
-    }));
+    let rules: AshtakvargaRule[];
+    if (preloadedAshtakRules && preloadedAshtakRules.length >= 56) {
+      rules = preloadedAshtakRules;
+    } else {
+      const rulesRaw = await prisma.ashtakvargaRule.findMany({
+        select: { planet: true, source: true, houses: true },
+      });
+      rules = rulesRaw.map((r) => ({
+        planet: r.planet as AshtakvargaRule["planet"],
+        source: r.source as AshtakvargaRule["source"],
+        houses: r.houses,
+      }));
+    }
 
     if (rules.length >= 56) {
       const analysis = computeAshtakvarga(chart, rules);

@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { ChartResponse, CurrentTransitResponse } from "@/lib/api";
-import { computeAshtakvarga, type AshtakvargaRule } from "@/lib/ashtakvargaEngine";
+import { computeAshtakvarga } from "@/lib/ashtakvargaEngine";
+import { getChatRules, getCachedAshtakvargaRules } from "@/lib/rulesServer";
 import { extractDailyFacts, type DailyFacts } from "@/lib/dailyEngine";
-import { getChatRules } from "@/lib/rulesServer";
 import {
   composeDailyReading,
   composeDailyTemplate,
@@ -75,17 +75,25 @@ export async function GET(req: NextRequest) {
 
   // ── Compute today's facts ─────────────────────────────────────────────────
   const natal = profile.chart.chartData as unknown as ChartResponse;
-
-  // 1. Today's transits (via backend)
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const transitRes = await fetch(`${backendUrl}/api/chart/current-transits`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ayanamsha_value: natal.ayanamsha_value,
-      natal_lagna_degree: natal.lagna_degree,
+
+  // Steps 1–3 are independent — run them in parallel.
+  //   1. Today's transits from the Python backend
+  //   2. Ashtakvarga rules (cached in-process, ~56 static rows)
+  //   3. Chat / interpretive rules (cached in-process)
+  const [transitRes, ashtakRules, chatRules] = await Promise.all([
+    fetch(`${backendUrl}/api/chart/current-transits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ayanamsha_value: natal.ayanamsha_value,
+        natal_lagna_degree: natal.lagna_degree,
+      }),
     }),
-  });
+    getCachedAshtakvargaRules(),
+    getChatRules(),
+  ]);
+
   if (!transitRes.ok) {
     return Response.json(
       { error: `Failed to compute today's transits (${transitRes.status})` },
@@ -93,18 +101,7 @@ export async function GET(req: NextRequest) {
     );
   }
   const transits = (await transitRes.json()) as CurrentTransitResponse;
-
-  // 2. Ashtakvarga (for BAV gochara thresholds)
-  const rulesRaw = await prisma.ashtakvargaRule.findMany();
-  const rules: AshtakvargaRule[] = rulesRaw.map((r) => ({
-    planet: r.planet as AshtakvargaRule["planet"],
-    source: r.source as AshtakvargaRule["source"],
-    houses: r.houses,
-  }));
-  const ashtakvarga = computeAshtakvarga(natal, rules);
-
-  // 3. Extract structured facts (DB-backed interpretive rules)
-  const chatRules = await getChatRules();
+  const ashtakvarga = computeAshtakvarga(natal, ashtakRules);
   const facts: DailyFacts = extractDailyFacts(
     natal,
     transits,

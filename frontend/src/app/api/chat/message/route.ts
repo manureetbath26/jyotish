@@ -20,7 +20,7 @@ import {
 import type { CurrentTransitResponse } from "@/lib/api";
 import { resolveQuestionWindow } from "@/lib/questionWindow";
 import { buildWindowContext } from "@/lib/windowContext";
-import { getChatRules } from "@/lib/rulesServer";
+import { getChatRules, getCachedAshtakvargaRules } from "@/lib/rulesServer";
 import { readAnonId } from "@/lib/anonSession";
 import { consumeQuestion, getQuotaSummary, type QuotaIdentity } from "@/lib/chatQuota";
 
@@ -30,8 +30,7 @@ import { consumeQuestion, getQuotaSummary, type QuotaIdentity } from "@/lib/chat
  * `notFound` means neither identity matches — caller returns 404.
  */
 async function resolveChatSessionAccess(sessionId: string) {
-  const session = await auth();
-  const anonId = await readAnonId();
+  const [session, anonId] = await Promise.all([auth(), readAnonId()]);
 
   const chatSession = await prisma.chatSession.findUnique({
     where: { id: sessionId },
@@ -61,6 +60,27 @@ async function resolveChatSessionAccess(sessionId: string) {
 
 export const dynamic = "force-dynamic";
 
+// ── Per-session LifeEventsReport cache ───────────────────────────────────────
+// generateLifeEventsReport is pure + expensive (full chart walk). The chart
+// never mutates within a session, so we cache the result in-process keyed by
+// sessionId and let it expire after 30 minutes (covers any realistic session
+// length without accumulating stale entries indefinitely).
+import type { LifeEventsReport } from "@/lib/lifeEventsReport";
+const REPORT_CACHE = new Map<string, { report: LifeEventsReport; ts: number }>();
+const REPORT_TTL_MS = 30 * 60 * 1000;
+function getCachedReport(sessionId: string, chartData: ChartResponse): LifeEventsReport {
+  const hit = REPORT_CACHE.get(sessionId);
+  if (hit && Date.now() - hit.ts < REPORT_TTL_MS) return hit.report;
+  const report = generateLifeEventsReport(chartData);
+  REPORT_CACHE.set(sessionId, { report, ts: Date.now() });
+  // Evict entries older than TTL to prevent unbounded growth
+  if (REPORT_CACHE.size > 500) {
+    const cutoff = Date.now() - REPORT_TTL_MS;
+    for (const [k, v] of REPORT_CACHE) if (v.ts < cutoff) REPORT_CACHE.delete(k);
+  }
+  return report;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId");
@@ -76,6 +96,7 @@ export async function GET(req: NextRequest) {
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true, saved: true, createdAt: true },
   });
   return Response.json(messages);
 }
@@ -129,7 +150,9 @@ export async function POST(req: NextRequest) {
 
   // Generate answer using the engine — enriched with Jaimini + Ashtakvarga
   const chartData = chatSession.chartData as unknown as ChartResponse;
-  const report = generateLifeEventsReport(chartData);
+  // Use cached report — generateLifeEventsReport is pure but expensive;
+  // the chart never changes within a session.
+  const report = getCachedReport(sessionId, chartData);
 
   // Resolve the question's time window. Hard-capped to 5 years; the
   // resolver returns a user-facing note describing the focus.
@@ -141,7 +164,7 @@ export async function POST(req: NextRequest) {
   // throws, answer just lacks the "Jaimini + Ashtakvarga check" section.
   let enriched;
   try {
-    enriched = await computeChatEnrichment(chartData);
+    enriched = await computeChatEnrichment(chartData, ashtakRules);
   } catch (err) {
     console.warn("[chat] enrichment failed:", err);
     enriched = undefined;
@@ -158,14 +181,18 @@ export async function POST(req: NextRequest) {
       console.warn("[chat] current transits fetch failed:", err);
     }
     try {
-      ashtakvarga = await computeAshtakvargaForChat(chartData);
+      ashtakvarga = computeAshtakvargaForChat(chartData, ashtakRules);
     } catch (err) {
       console.warn("[chat] ashtakvarga compute failed:", err);
     }
   }
 
-  // Load the DB-backed interpretive rules (5-min in-process cache).
-  const rules = await getChatRules();
+  // Load the DB-backed interpretive rules + ashtakvarga rules in parallel.
+  // Both use 5-min in-process caches so concurrent questions share one DB fetch.
+  const [rules, ashtakRules] = await Promise.all([
+    getChatRules(),
+    getCachedAshtakvargaRules(),
+  ]);
 
   // Build the window-scoped context (dasha slice, clipped highlights,
   // projected slow-planet transits, Jaimini overlap, house SAV focus).
@@ -302,15 +329,10 @@ async function fetchCurrentTransits(
   return res.json();
 }
 
-async function computeAshtakvargaForChat(
+function computeAshtakvargaForChat(
   chartData: ChartResponse,
-): Promise<AshtakvargaAnalysis> {
-  const rulesRaw = await prisma.ashtakvargaRule.findMany();
-  const rules: AshtakvargaRule[] = rulesRaw.map((r) => ({
-    planet: r.planet as AshtakvargaRule["planet"],
-    source: r.source as AshtakvargaRule["source"],
-    houses: r.houses,
-  }));
+  rules: AshtakvargaRule[],
+): AshtakvargaAnalysis {
   return computeAshtakvarga(chartData, rules);
 }
 

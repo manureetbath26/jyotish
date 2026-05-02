@@ -187,3 +187,42 @@ export function invalidateChatRules(): void {
   cached = null;
   loadedAt = 0;
 }
+
+// ── AshtakvargaRule cache (56 static rows, admin-edited only) ───────────────
+
+import type { AshtakvargaRule } from "./ashtakvargaEngine";
+
+let ashtakCached: AshtakvargaRule[] | null = null;
+let ashtakLoadedAt = 0;
+let ashtakInFlight: Promise<AshtakvargaRule[]> | null = null;
+
+/**
+ * Returns the cached AshtakvargaRule rows, refreshing every 5 minutes.
+ * Concurrent callers share the in-flight promise — only one DB round-trip
+ * per TTL window regardless of how many routes call this simultaneously.
+ */
+export async function getCachedAshtakvargaRules(): Promise<AshtakvargaRule[]> {
+  const now = Date.now();
+  if (ashtakCached && now - ashtakLoadedAt < TTL_MS) return ashtakCached;
+  if (ashtakInFlight) return ashtakInFlight;
+  ashtakInFlight = (async () => {
+    try {
+      const rows = await prisma.ashtakvargaRule.findMany({
+        select: { planet: true, source: true, houses: true },
+      });
+      ashtakCached = rows.map((r) => ({
+        planet: r.planet as AshtakvargaRule["planet"],
+        source: r.source as AshtakvargaRule["source"],
+        houses: r.houses,
+      }));
+      ashtakLoadedAt = now;
+      return ashtakCached;
+    } catch (err) {
+      console.warn("[rulesServer] ashtakvargaRule load failed:", err);
+      return ashtakCached ?? [];
+    } finally {
+      ashtakInFlight = null;
+    }
+  })();
+  return ashtakInFlight;
+}
