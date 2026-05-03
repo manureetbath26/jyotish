@@ -117,7 +117,7 @@ function computeKarakaStrength(
   dignity: string | null | undefined,
   house: number,
   lordOfHouses: number[] = [],
-): { level: "strong" | "moderate" | "weak"; summary: string } {
+): { level: "strong" | "moderate" | "weak"; summary: string; score: number } {
   let score = 0;
   const parts: string[] = [];
 
@@ -166,7 +166,86 @@ function computeKarakaStrength(
   const level: "strong" | "moderate" | "weak" =
     score >= 2 ? "strong" : score <= -1 ? "weak" : "moderate";
 
-  return { level, summary: parts.join(" · ") };
+  return { level, summary: parts.join(" · "), score };
+}
+
+/**
+ * Differentiated moderate-strength text. "Moderate" can arise from five
+ * genuinely different combinations — each deserves its own concrete description
+ * rather than a single "neither peak nor blocked" placeholder.
+ *
+ * @param planet   - Planet name (e.g. "Jupiter")
+ * @param themes   - Short theme phrase (e.g. "children and wisdom")
+ * @param dignity  - Natal dignity (null = neutral sign)
+ * @param house    - Natal house number
+ * @param lordOfHouses - Houses this planet lords
+ */
+function moderateOutcomeText(
+  planet: string,
+  themes: string,
+  dignity: string | null | undefined,
+  house: number,
+  lordOfHouses: number[],
+): string {
+  const inDusthana = DUSTHANAS.includes(house);
+  const lordsADusthana = lordOfHouses.some(h => DUSTHANAS.includes(h));
+  const viparita = inDusthana && lordsADusthana;
+  const inTrikona = [5, 9].includes(house);
+  const inKendra = [1, 4, 7, 10].includes(house);
+  const isStrong = dignity === "exalted" || dignity === "moolatrikona" || dignity === "own";
+  const houseDesc = HOUSE_THEME_TEXT[house] ?? `${ordinal(house)}-house themes`;
+
+  // Trikona + debilitated: auspicious house, undermined by dignity
+  if (inTrikona && dignity === "debilitated") {
+    return (
+      `${planet} occupies the ${ordinal(house)} trikona — an inherently auspicious house for ${themes} — ` +
+      `but its debilitation constrains how freely that potential flows. The house environment is supportive; ` +
+      `it is the planet's own condition that limits full delivery. Remediating ${planet} through ` +
+      `appropriate practices (mantra, charity, or gem) can meaningfully unlock the trikona's promise for these themes.`
+    );
+  }
+
+  // Strong dignity + dusthana + Viparita Yoga
+  if (inDusthana && viparita) {
+    const yogaName = lordOfHouses.includes(6) ? "Harsha" : lordOfHouses.includes(8) ? "Sarala" : "Vimala";
+    return (
+      `${planet} is in the ${ordinal(house)} house (a dusthana), but as lord of another dusthana it forms ` +
+      `${yogaName} Yoga — classically turning adversity into unexpected gain. The ${themes} themes may arise ` +
+      `through difficult or unconventional circumstances, but tend to resolve in your favour. ` +
+      `Challenges in these areas carry the seeds of surprising resilience and often strengthen over time.`
+    );
+  }
+
+  // Strong dignity + dusthana (no Viparita): capacity vs hostile house
+  if (isStrong && inDusthana) {
+    return (
+      `${planet} is dignified — its intrinsic capacity for ${themes} is genuine — but the ` +
+      `${ordinal(house)} house (${houseDesc}) creates friction in how those themes express outwardly. ` +
+      `The strength is present; the environment poses hurdles. With sustained effort, the dignity does ` +
+      `assert itself, and ${planet}'s own dasha periods typically mark the clearest breakthroughs ` +
+      `despite the house challenge.`
+    );
+  }
+
+  // Kendra + neutral sign: stable, angular, but unexceptional
+  if (inKendra) {
+    return (
+      `${planet} sits in the ${ordinal(house)} kendra — an angular house linked to ${houseDesc}. ` +
+      `Angular placement gives ${planet}'s ${themes} significations structural visibility: ` +
+      `these themes show up reliably in your life rather than sporadically or in hidden ways. ` +
+      `Without exceptional dignity, the expression is steady rather than spectacular — dependable ` +
+      `and activating most fully during ${planet}'s dasha and antardasha periods.`
+    );
+  }
+
+  // Neutral sign + neutral house (2, 3, 11): quietly middling, background operation
+  return (
+    `${planet}'s ${themes} themes operate steadily in the background — neither lifted by ` +
+    `exceptional dignity nor an angular or trikona house, but equally not under any particular ` +
+    `stress. The significations are present and functional, surfacing most clearly during ${planet}'s ` +
+    `own dasha and antardasha periods, or when transits activate the ${ordinal(house)} house ` +
+    `(${houseDesc}).`
+  );
 }
 
 /** Natural significator description for each planet — for convergence text. */
@@ -376,7 +455,7 @@ export function KarakaTab({ planets, lagna }: Props) {
               ? ck.strongPlacement
               : strengthLevel === "weak"
               ? ck.weakPlacement
-              : `${ck.planet} as your ${ck.name} is neither at peak capacity nor severely blocked — its ${ck.meaning.toLowerCase()} themes are present but require active cultivation. Dasha and transit triggers will periodically bring them to the foreground.`;
+              : moderateOutcomeText(ck.planet, ck.meaning.toLowerCase(), ck.dignity, ck.house, natalP?.lord_of_houses ?? []);
 
           return (
             <div className="border border-slate-700 rounded-xl overflow-hidden mt-2">
@@ -630,7 +709,13 @@ export function KarakaTab({ planets, lagna }: Props) {
                           ? nk.strongResult
                           : level === "weak"
                           ? nk.weakResult
-                          : `${nk.planet} as karaka of ${nk.significations.slice(0, 2).join(" and ").toLowerCase()} is neither at peak capacity nor severely blocked — its themes are present but require active cultivation. Watch ${nk.planet}'s dashas and transits for periods when these significations come fully alive.`;
+                          : moderateOutcomeText(
+                              nk.planet,
+                              nk.significations.slice(0, 2).join(" and ").toLowerCase(),
+                              natalP.dignity,
+                              natalP.house,
+                              natalP.lord_of_houses,
+                            );
 
                       return (
                         <div className={`border rounded-lg p-3 ${cfg.bg}`}>
