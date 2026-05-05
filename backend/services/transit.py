@@ -71,14 +71,21 @@ NAKSHATRA_NAMES = [
 def get_current_transit_positions(
     ayanamsha_val: float,
     natal_lagna_degree: float,
+    transit_date: str | None = None,
 ) -> Dict:
     """
-    Get current planet positions for today, mapped onto the natal house framework.
+    Get planet positions for the given date (YYYY-MM-DD, UTC), mapped onto
+    the natal house framework. Defaults to today (UTC) when omitted.
 
     Returns dict with transit_date, planets (PlanetPosition-compatible dicts),
     houses (HouseInfo list based on natal lagna), lagna, and lagna_degree.
     """
-    now = datetime.utcnow()
+    if transit_date:
+        from datetime import date as _date
+        d = _date.fromisoformat(transit_date)
+        now = datetime(d.year, d.month, d.day, 12, 0, 0)  # noon UTC for that day
+    else:
+        now = datetime.utcnow()
     natal_lagna_rashi_num = int(natal_lagna_degree / 30)  # 0-indexed
 
     # Compute natal house framework (12 houses from natal lagna)

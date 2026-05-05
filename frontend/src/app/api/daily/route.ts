@@ -15,18 +15,33 @@ import {
 export const dynamic = "force-dynamic";
 
 const VALID_TONES = new Set<DailyTone>(["thoughtful", "coffee", "classical"]);
+const MAX_DAYS_AHEAD = 5;
 
 function todayISODate(): string {
-  // Strict "today" in UTC — good enough for daily cache dedupe. A stricter
-  // per-user-TZ implementation can layer on later if needed.
   return new Date().toISOString().slice(0, 10);
 }
 
 /**
- * GET /api/daily?profileId=...&tone=thoughtful
+ * Validate a requested date string: must be YYYY-MM-DD, today or up to
+ * MAX_DAYS_AHEAD in the future (UTC). Returns the validated ISO string or
+ * null if invalid/out-of-range.
+ */
+function validateReadingDate(dateParam: string | null): string | null {
+  if (!dateParam) return todayISODate();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return null;
+  const today = new Date(todayISODate());
+  const requested = new Date(dateParam);
+  if (isNaN(requested.getTime())) return null;
+  const diffDays = Math.round((requested.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0 || diffDays > MAX_DAYS_AHEAD) return null;
+  return dateParam;
+}
+
+/**
+ * GET /api/daily?profileId=...&tone=thoughtful&date=YYYY-MM-DD
  *
- * Returns today's reading for the active profile. Cached per
- * (profile, date, tone) — one LLM call per user per day per tone.
+ * Returns the reading for the given date (today by default, up to 5 days ahead).
+ * Cached per (profile, date, tone) — one LLM call per unique combination.
  */
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -38,6 +53,14 @@ export async function GET(req: NextRequest) {
   const profileId = searchParams.get("profileId");
   const toneParam = (searchParams.get("tone") ?? "thoughtful") as DailyTone;
   const tone: DailyTone = VALID_TONES.has(toneParam) ? toneParam : "thoughtful";
+
+  const readingDate = validateReadingDate(searchParams.get("date"));
+  if (!readingDate) {
+    return Response.json(
+      { error: `date must be today or within ${MAX_DAYS_AHEAD} days ahead (YYYY-MM-DD)` },
+      { status: 400 },
+    );
+  }
 
   if (!profileId) {
     return Response.json({ error: "profileId required" }, { status: 400 });
@@ -54,8 +77,6 @@ export async function GET(req: NextRequest) {
   if (!profile.chart) {
     return Response.json({ error: "Profile has no cached chart" }, { status: 409 });
   }
-
-  const readingDate = todayISODate();
 
   // Cache hit?
   const cached = await prisma.dailyReading.findUnique({
@@ -88,6 +109,7 @@ export async function GET(req: NextRequest) {
       body: JSON.stringify({
         ayanamsha_value: natal.ayanamsha_value,
         natal_lagna_degree: natal.lagna_degree,
+        transit_date: readingDate,
       }),
     }),
     getCachedAshtakvargaRules(),

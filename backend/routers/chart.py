@@ -157,11 +157,15 @@ async def lifetime_transits(body: LifetimeTransitRequest):
 
 @router.post("/current-transits", response_model=CurrentTransitResponse)
 async def current_transits(body: CurrentTransitRequest):
-    """Get current planet positions for today, in the natal house framework."""
+    """
+    Get planet positions for the given date (or today), in the natal house
+    framework. Pass transit_date (YYYY-MM-DD) to compute for a specific day.
+    """
     try:
         result = get_current_transit_positions(
             body.ayanamsha_value,
             body.natal_lagna_degree,
+            body.transit_date,
         )
         return CurrentTransitResponse(**result)
     except Exception as e:

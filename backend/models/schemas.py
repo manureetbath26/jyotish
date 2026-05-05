@@ -131,6 +131,7 @@ class UserChartResponse(BaseModel):
 class CurrentTransitRequest(BaseModel):
     ayanamsha_value: float
     natal_lagna_degree: float
+    transit_date: Optional[str] = None  # YYYY-MM-DD; defaults to today (UTC)
 
 
 class LifetimeTransitRequest(BaseModel):
