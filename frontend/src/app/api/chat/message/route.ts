@@ -159,6 +159,13 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const questionWindow = resolveQuestionWindow(trimmedQuestion, now);
 
+  // Load the DB-backed interpretive rules + ashtakvarga rules in parallel.
+  // Both use 5-min in-process caches so concurrent questions share one DB fetch.
+  const [rules, ashtakRules] = await Promise.all([
+    getChatRules(),
+    getCachedAshtakvargaRules(),
+  ]);
+
   // Compute enriched context (Jaimini marriage/career windows + Ashtakvarga
   // house-level SAV + karaka BAV). Fails open — chat still works if this
   // throws, answer just lacks the "Jaimini + Ashtakvarga check" section.
@@ -186,13 +193,6 @@ export async function POST(req: NextRequest) {
       console.warn("[chat] ashtakvarga compute failed:", err);
     }
   }
-
-  // Load the DB-backed interpretive rules + ashtakvarga rules in parallel.
-  // Both use 5-min in-process caches so concurrent questions share one DB fetch.
-  const [rules, ashtakRules] = await Promise.all([
-    getChatRules(),
-    getCachedAshtakvargaRules(),
-  ]);
 
   // Build the window-scoped context (dasha slice, clipped highlights,
   // projected slow-planet transits, Jaimini overlap, house SAV focus).
