@@ -191,11 +191,22 @@ function buildCategoryAnswer(
   // the single "current" MD-AD when we have a real range to cover.
   if (windowContext && windowContext.dashaSegments.length > 0) {
     const segs = windowContext.dashaSegments.slice(0, 3);
-    const segLines = segs.map((s) => {
+    const segLines = segs.flatMap((s) => {
       const flag = s.isCurrent ? " ← you are here" : "";
       const themes = s.themes?.length ? ` — themes: ${s.themes.join(", ")}` : "";
       const monthRange = `${s.includedFrom.slice(0, 7)} → ${s.includedTo.slice(0, 7)}`;
-      return `• **${s.mahadasha}-${s.antardasha}** (${monthRange})${flag}${themes}`;
+      const lines = [`• **${s.mahadasha}-${s.antardasha}** (${monthRange})${flag}${themes}`];
+      // Surface the current pratyantardasha (sub-sub-period) when present
+      if (s.pratyantardashas?.length) {
+        const currentPd = s.pratyantardashas.find(pd => pd.isCurrent);
+        const nextPd = !currentPd ? s.pratyantardashas.find(pd => pd.start > new Date().toISOString().slice(0,10)) : null;
+        const pd = currentPd ?? nextPd;
+        if (pd) {
+          const pdFlag = pd.isCurrent ? " (active now)" : " (coming next)";
+          lines.push(`  ↳ Pratyantardasha: **${s.mahadasha}-${s.antardasha}-${pd.planet}** ${pd.start.slice(0,7)} → ${pd.end.slice(0,7)}${pdFlag}`);
+        }
+      }
+      return lines;
     });
     parts.push(`Dasha periods inside this window:\n${segLines.join("\n")}`);
   } else if (currentDasha) {
