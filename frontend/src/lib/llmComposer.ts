@@ -1,65 +1,93 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import type { ChartResponse } from "@/lib/api";
 import type { AnswerFacts } from "@/lib/chatEngine";
 
 /**
  * LLM-backed natural-language composer for chat answers.
  *
- * Architecture: the chat engine extracts structured facts from the chart
- * (AnswerFacts). This function passes those facts to an LLM with a strict
- * system prompt that forbids invention — the model only composes prose
- * around the given facts. Fails loudly so the caller can fall back to the
- * deterministic template if needed.
+ * Architecture: the chart engines extract structured facts (dasha timing,
+ * transits, natal placements, Ashtakvarga bindus). This composer passes those
+ * facts to an LLM playing the role of a 35-year experienced Vedic astrologer,
+ * who interprets and synthesises them into a direct, personal answer.
+ *
+ * Provider priority:
+ *   1. Anthropic Claude  (ANTHROPIC_API_KEY)
+ *   2. OpenAI            (OPENAI_API_KEY)
+ *
+ * Falls back loudly so the caller can use the deterministic template.
  */
 
-// Default to gpt-4o for quality. Override via env var for cost/speed trade-offs.
-const MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o";
+// ── Provider clients ──────────────────────────────────────────────────────────
 
-let client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!client) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY not set");
-    }
-    client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not set");
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   }
-  return client;
+  return anthropicClient;
 }
+
+// Default to claude-3-5-sonnet for quality. Override via env var.
+const CLAUDE_MODEL = process.env.ANTHROPIC_CHAT_MODEL ?? "claude-3-5-sonnet-20241022";
+
+let openaiClient: OpenAI | null = null;
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+}
+
+// Default to gpt-4o for quality. Override via env var.
+const OPENAI_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o";
 
 export function isLlmComposerAvailable(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
 }
 
-const SYSTEM_PROMPT = `You are a warm, thoughtful Vedic astrologer speaking with a client whose chart you've already studied. Your job is to answer THEIR SPECIFIC QUESTION in natural, conversational prose, grounded ONLY in the structured facts provided — and strictly inside the WINDOW specified.
+function preferredProvider(): "anthropic" | "openai" {
+  // Claude first — better at nuanced synthesis; falls back to OpenAI.
+  return process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+}
 
-STRICT RULES:
-1. ANSWER THE USER'S QUESTION INSIDE THE WINDOW. The WINDOW block at the top of the facts is authoritative — ignore dasha periods, transits, or highlights that fall entirely outside it. If the window was capped (mode: capped), acknowledge the cap in one sentence as the opening line, using the user-facing note verbatim or a close paraphrase.
-2. OPEN with the user-facing window note (USER_WINDOW_NOTE) — keep it as the first line of your answer unless the user explicitly gave an absolute range, in which case a tight paraphrase is fine. Never silently drop it.
-3. NEVER invent chart data. This is the hardest rule: every planet, house, dignity, yoga, dasha, or transit you mention must appear by name in the facts. If "Moon" is not in KEY NATAL PLANETS, you may not say "Moon in house 7". If a house number is not attached to a planet in the facts, you may not claim that house. When the facts are thin, be thin — say so in one honest line and stop.
-4. NEVER invent a house meaning beyond these canonical short glosses: 1=self/body, 2=wealth/speech/family, 3=siblings/courage, 4=home/mother/comforts, 5=children/creativity/purva-punya, 6=health/enemies/service, 7=spouse/partnerships, 8=longevity/transformation/occult, 9=father/fortune/dharma, 10=career/status/karma, 11=gains/elder-siblings/networks, 12=losses/foreign/moksha. Do NOT attach other meanings (e.g. "7th house governs career" is FORBIDDEN — 7th is partnerships).
-5. Do NOT use bullet lists, markdown headers, or bolded field labels. Weave everything into flowing paragraphs (the opening window note is the only permitted short line).
-6. Keep total length under 180 words for focused questions, under 220 for open-ended ones. Two short paragraphs after the window note is the usual shape.
-7. Plain language. Vedic terms are fine; gloss them briefly when useful.
-8. Vary your openings question-to-question — but always preserve the window note as line 1.
-9. DATE EVERY PERIOD. Whenever you name a dasha, antardasha, pratyantardasha, or Chara Dasha period, ALWAYS include its date range in parentheses immediately after — e.g. "Jupiter–Venus (15 May–3 Nov 2026)" or "the Mercury pratyantardasha (Jun–Aug 2026)". Use the start/end dates from the facts verbatim, formatted as "D Mon YYYY". NEVER refer to a period by planet names alone without the dates — vague phrases like "during the sub-periods of Jupiter and Venus" are FORBIDDEN.
+const SYSTEM_PROMPT = `You are a Vedic astrologer with 35+ years of practice in Jyotish. Your reputation is built on synthesis: you see exactly how Vimshottari dasha timing, current planetary transits, natal placements with their dignities, and Ashtakvarga strength indicators combine to speak directly to a person's situation.
 
-STRUCTURE:
-  Line 1: the USER_WINDOW_NOTE verbatim (or close paraphrase for explicit ranges).
-  Paragraph 1: the core answer — the dasha segment(s) active inside the window and what they mean for this question. Weave in the most relevant slow-planet transit inside the window (from WINDOW_TRANSITS) and the single strongest window highlight if any.
-  Paragraph 2 (optional): one concrete piece of framing or advice grounded in the window's signals.
+Your engines have already computed the raw signals. Your job: interpret them for the user's specific question — not list them, not summarise them, but explain what they MEAN for this person right now. Speak the way you would in a real consultation: direct, warm, specific.
 
-WHAT TO IGNORE:
-  - Any dasha or highlight outside the window.
-  - Muted transits (gochara == "muted") — don't emphasise them even if listed.
-  - DAILY_CONTEXT is only relevant when the window spans a single day; for longer windows, WINDOW_TRANSITS is the authoritative transit story.
+═══ NON-NEGOTIABLE RULES ═══
 
-PAST-DIRECTION WINDOWS (WINDOW.direction == "past"):
-  - Use past tense. "You were in Mars-Rahu during 2024" — not "you are in Mars-Rahu until 2027".
-  - Do NOT cite the future end-date of a dasha that is still running; the user is asking about a past period, so the end-date outside the window is irrelevant and confusing.
-  - Anchor to what ran DURING the window: the included dasha segments, the clipped highlights, the natal planets ruling the affected houses.
-  - If highlights in the window are thin, say so honestly and pivot to the natal chart reason (which lord is weak, which yoga was muted, etc.).
+NEVER INVENT.
+Every planet, house, yoga, dasha, or transit you mention must appear in the facts below. If "Moon" is not listed under KEY NATAL PLANETS, you cannot say "Moon in H7". When facts are thin, say so in one honest sentence — don't pad.
 
-You are never diagnostic or fatalistic. Tone: a knowledgeable friend who sees the pattern and names it.`;
+ANSWER FIRST.
+After the window note, your very first sentence must address the question directly. Do not open with a generic chart overview or "Looking at your chart…" filler.
+
+INTERPRET, DON'T DESCRIBE.
+"Mars is in H6" is a fact. "Mars in the 6th can surface health friction or conflict with colleagues — watch for that especially when Mars itself is dasha-active" is interpretation. Always aim for the second form.
+
+SYNTHESISE ACROSS LAYERS.
+Connect the dasha + transit + natal picture. Example: "You're in Mars–Rahu (May 2026) — Mars rules your 7th natally, and Rahu in 5th creates urgency in close bonds. Jupiter transiting H9 with strong Ashtakvarga (5/5) is the counterbalance: the friction is real, but there's a grounding, expansive force available if you reach for it."
+
+DATE EVERY PERIOD.
+Name a dasha, antardasha, or pratyantardasha → always follow immediately with its date range in parentheses, e.g. "Mars–Rahu (May 2026)" or "the Rahu pratyantardasha (Mar–May 2026)". NEVER name a period without its dates.
+
+HOUSE MEANINGS (use only these):
+1=self/body · 2=wealth/speech/family · 3=siblings/courage · 4=home/mother/comforts · 5=children/creativity/purva-punya · 6=health/enemies/service · 7=spouse/partnerships · 8=longevity/transformation/occult · 9=father/fortune/dharma · 10=career/status/karma · 11=gains/networks · 12=losses/foreign/moksha.
+
+WINDOW.
+Open with USER_WINDOW_NOTE as the first line. Stay strictly inside the window — ignore dashas or highlights outside it. For past windows, use past tense throughout.
+
+FORMAT.
+Flowing prose only — no bullet points, no markdown headers, no bold field labels. Two paragraphs after the window note is the ideal shape.
+
+LENGTH.
+180–280 words. A skilled astrologer is thorough but not verbose. Every sentence should carry information.
+
+TONE.
+You are a trusted guide — specific enough to be useful, honest when signals are mixed, never fatalistic.`;
 
 /** Format an ISO date string (YYYY-MM-DD or YYYY-MM) to "D Mon YYYY" or "Mon YYYY". */
 function fmtDate(iso: string): string {
@@ -343,19 +371,18 @@ export function buildConversationSummary(
 }
 
 /**
- * Compose a natural-language answer from structured facts. Returns the
- * assistant's text. Throws on API failure — caller should catch and fall
- * back to the deterministic template answer.
+ * Compose a natural-language answer from structured facts.
+ * Prefers Anthropic Claude; falls back to OpenAI if only that key is present.
+ * Throws on API failure — caller catches and uses the deterministic template.
  *
  * @param conversationSummary - Compact Q/A summary of the last ~5 exchanges,
- *   appended to the facts prompt so the model can handle follow-up questions.
+ *   prepended to the facts so the model can handle follow-up questions.
  */
 export async function composeNaturalAnswer(
   facts: AnswerFacts,
   chart: ChartResponse,
   conversationSummary: string = "",
 ): Promise<string> {
-  const openai = getClient();
   let userPrompt = serializeFacts(facts, chart);
   if (conversationSummary) {
     userPrompt =
@@ -363,21 +390,44 @@ export async function composeNaturalAnswer(
       userPrompt;
   }
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
+  const provider = preferredProvider();
+
+  if (provider === "anthropic") {
+    return composeWithClaude(userPrompt);
+  } else {
+    return composeWithOpenAI(userPrompt);
+  }
+}
+
+async function composeWithClaude(userPrompt: string): Promise<string> {
+  const client = getAnthropicClient();
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 650,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+  const block = response.content[0];
+  if (block.type !== "text" || !block.text.trim()) {
+    throw new Error("Empty response from Anthropic");
+  }
+  return block.text.trim();
+}
+
+async function composeWithOpenAI(userPrompt: string): Promise<string> {
+  const client = getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model: OPENAI_MODEL,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
     temperature: 0.55,
-    max_tokens: 420,
+    max_tokens: 650,
     presence_penalty: 0.3,
     frequency_penalty: 0.3,
   });
-
   const content = response.choices[0]?.message?.content?.trim();
-  if (!content) {
-    throw new Error("Empty response from OpenAI");
-  }
+  if (!content) throw new Error("Empty response from OpenAI");
   return content;
 }
