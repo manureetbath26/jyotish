@@ -160,6 +160,24 @@ function likelihoodWord(likelihood: string): string {
 
 // ─── Conversational Answer Builders ─────────────────────────────────────────
 
+// Pull the first sentence and last sentence from a block of text, skipping
+// the data-dump middle (planet lists, lord lists, etc.).
+function summaryOpener(summary: string): string {
+  // Split on ". " followed by a capital letter — keeps sentence-internal
+  // punctuation intact and handles most abbreviation edge cases.
+  const sentences = summary.match(/[^.!?]+[.!?](?:\s|$)/g)?.map(s => s.trim()) ?? [summary];
+  if (sentences.length <= 2) return summary;
+  // First sentence gives house context; last gives the qualitative verdict.
+  return `${sentences[0]} ${sentences[sentences.length - 1]}`;
+}
+
+// Ensure a string ends with a period.
+function ensurePeriod(s: string): string {
+  return s.trimEnd().endsWith(".") || s.trimEnd().endsWith("!") || s.trimEnd().endsWith("?")
+    ? s.trimEnd()
+    : s.trimEnd() + ".";
+}
+
 function buildCategoryAnswer(
   report: LifeEventsReport,
   categoryIds: string[],
@@ -174,81 +192,118 @@ function buildCategoryAnswer(
   const categories = getRelevantCategories(report, categoryIds);
   const currentDasha = getCurrentDashaPrediction(report);
   const cpa = report.currentPeriodAnalysis;
+  const today = new Date().toISOString().slice(0, 10);
 
   // Window banner — always the first line so user knows the focus
   if (windowContext) {
     parts.push(windowContext.window.userNote);
   }
 
-  // Opening — warm, direct summary
+  // ── Opening ──────────────────────────────────────────────────────────────
+  // Use only first + last sentence of the summary to avoid the raw-planet-data
+  // dump that sits in the middle of every category summary.
   if (categories.length > 0) {
     const cat = categories[0];
     const outlookDesc = outlookWord(cat.overallOutlook);
-    parts.push(`Looking at your chart, ${cat.name.toLowerCase()} is ${outlookDesc} for you overall. ${cat.summary}`);
+    const opener = summaryOpener(cat.summary);
+    parts.push(`Your chart shows **${cat.name.toLowerCase()}** as ${outlookDesc} overall. ${opener}`);
   }
 
-  // Dasha segments inside the window — prefer the window-scoped list over
-  // the single "current" MD-AD when we have a real range to cover.
+  // ── Dasha narrative ───────────────────────────────────────────────────────
+  // Prefer window-scoped segments. Produce flowing prose, not a bullet list.
   if (windowContext && windowContext.dashaSegments.length > 0) {
     const segs = windowContext.dashaSegments.slice(0, 3);
-    const segLines = segs.flatMap((s) => {
-      const flag = s.isCurrent ? " ← you are here" : "";
-      const themes = s.themes?.length ? ` — themes: ${s.themes.join(", ")}` : "";
-      const monthRange = `${s.includedFrom.slice(0, 7)} → ${s.includedTo.slice(0, 7)}`;
-      const lines = [`• **${s.mahadasha}-${s.antardasha}** (${monthRange})${flag}${themes}`];
-      // Surface the current pratyantardasha (sub-sub-period) when present
-      if (s.pratyantardashas?.length) {
-        const currentPd = s.pratyantardashas.find(pd => pd.isCurrent);
-        const nextPd = !currentPd ? s.pratyantardashas.find(pd => pd.start > new Date().toISOString().slice(0,10)) : null;
-        const pd = currentPd ?? nextPd;
-        if (pd) {
-          const pdFlag = pd.isCurrent ? " (active now)" : " (coming next)";
-          lines.push(`  ↳ Pratyantardasha: **${s.mahadasha}-${s.antardasha}-${pd.planet}** ${pd.start.slice(0,7)} → ${pd.end.slice(0,7)}${pdFlag}`);
-        }
+    const cur = segs.find(s => s.isCurrent) ?? segs[0];
+    const themes = cur.themes?.length ? cur.themes.join(" and ") : "";
+    const monthRange = `${cur.includedFrom.slice(0, 7)} → ${cur.includedTo.slice(0, 7)}`;
+
+    let dashaText = `The active Dasha is **${cur.mahadasha}–${cur.antardasha}** (${monthRange})`;
+    if (themes) dashaText += `, carrying themes of **${themes}**`;
+    dashaText = ensurePeriod(dashaText);
+
+    // Pratyantardasha — woven into the same paragraph
+    if (cur.pratyantardashas?.length) {
+      const pdCurrent = cur.pratyantardashas.find(pd => pd.isCurrent);
+      const pdNext = !pdCurrent
+        ? cur.pratyantardashas.find(pd => pd.start > today)
+        : null;
+      const pd = pdCurrent ?? pdNext;
+      if (pd) {
+        const pdRange = `${pd.start.slice(0, 7)} → ${pd.end.slice(0, 7)}`;
+        const pdStatus = pd.isCurrent
+          ? `active through ${pd.end.slice(0, 7)}`
+          : `coming up next (${pdRange})`;
+        dashaText += ` At the sub-sub-period level, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}** Pratyantardasha is ${pdStatus} — this finer timing layer colours day-to-day developments right now.`;
       }
-      return lines;
-    });
-    parts.push(`Dasha periods inside this window:\n${segLines.join("\n")}`);
+    }
+
+    // Mention any other segments in the window without repeating full detail
+    const others = segs.filter(s => s !== cur);
+    if (others.length > 0) {
+      const othersText = others
+        .map(s => `**${s.mahadasha}–${s.antardasha}** from ${s.includedFrom.slice(0, 7)}`)
+        .join(", then ");
+      dashaText += ` Also within this window: ${othersText}.`;
+    }
+
+    parts.push(dashaText);
+
   } else if (currentDasha) {
     const relevantPreds = currentDasha.eventPredictions
       .filter((ep) => categoryIds.includes(ep.category))
       .slice(0, 2);
     if (relevantPreds.length > 0) {
-      parts.push(`Right now, you're running **${cpa.mahadasha}-${cpa.antardasha}** (until ${cpa.endDate.slice(0, 7).replace("-", "/")}). ${relevantPreds.map((p) => p.description).join(" ")}`);
+      parts.push(
+        `Right now you're running **${cpa.mahadasha}–${cpa.antardasha}** (until ${cpa.endDate.slice(0, 7).replace("-", "/")}). ${relevantPreds.map((p) => p.description).join(" ")}`
+      );
     } else {
-      parts.push(`You're currently in **${cpa.mahadasha}-${cpa.antardasha}** period. While this period's main themes don't directly focus on this area, the underlying chart strengths still apply.`);
+      parts.push(
+        `You're currently in **${cpa.mahadasha}–${cpa.antardasha}** period. While this period's main themes don't directly focus on this area, the underlying chart strengths still apply.`
+      );
     }
   }
 
-  // Key natal planetary influences — the chart-level story
+  // ── Key natal planets — prose, not a list ─────────────────────────────────
   const relevantPlanets = getRelevantPlanets(report, planets);
   if (relevantPlanets.length > 0) {
-    const planetNotes = relevantPlanets.slice(0, 2).map((p) => {
-      const dignityNote = p.dignity ? ` (in ${p.dignity})` : "";
-      return `**${p.planet}**${dignityNote} sitting in house ${p.house}`;
-    });
-    parts.push(`The key natal planets here are ${planetNotes.join(" and ")}. ${relevantPlanets[0].interpretation}`);
+    const p0 = relevantPlanets[0];
+    const d0 = p0.dignity ? ` (${p0.dignity})` : "";
+    // Lower-case the first letter so it reads as a continuation clause
+    const interp0 = p0.interpretation.charAt(0).toLowerCase() + p0.interpretation.slice(1);
+    let planetText = `Natally, **${p0.planet}**${d0} in house ${p0.house} is the primary planet to watch here — ${ensurePeriod(interp0)}`;
+
+    if (relevantPlanets.length > 1) {
+      const p1 = relevantPlanets[1];
+      const d1 = p1.dignity ? ` (${p1.dignity})` : "";
+      const interp1 = p1.interpretation.charAt(0).toLowerCase() + p1.interpretation.slice(1);
+      planetText += ` **${p1.planet}**${d1} in house ${p1.house} adds another layer — ${ensurePeriod(interp1)}`;
+    }
+
+    parts.push(planetText);
   }
 
-  // Transits projected across the window — active ones only
+  // ── Transits — a synthesised paragraph, not a bullet list ─────────────────
   if (windowContext && windowContext.transits.length > 0) {
     const active = windowContext.transits.filter(
       (t) => t.gochara === "active" || t.gochara === "nodal",
     );
     if (active.length > 0) {
-      const lines = active.slice(0, 4).map((t) => {
-        const ingressBit = t.ingresses.length
-          ? ` — moves to ${t.ingresses[0].sign} (H${t.ingresses[0].houseFromLagna}) around ${t.ingresses[0].date.slice(0, 7)}`
-          : ` (stays in ${t.endSign}, H${t.endHouseFromLagna})`;
-        const bavBit =
-          t.gochara === "active" ? ` · BAV ${t.midBav}/${t.threshold}` : "";
-        return `• **${t.planet}**${bavBit} ${ingressBit} — ${t.effect}`;
+      const pieces = active.slice(0, 4).map((t) => {
+        const bavBit = t.gochara === "active" ? ` (BAV ${t.midBav}/${t.threshold})` : "";
+        const locationBit = t.ingresses.length
+          ? `moves to H${t.ingresses[0].houseFromLagna} around ${t.ingresses[0].date.slice(0, 7)}`
+          : `in H${t.endHouseFromLagna}`;
+        return `**${t.planet}**${bavBit} ${locationBit} — ${t.effect}`;
       });
-      parts.push(`Transit movements over this window (approximate):\n${lines.join("\n")}`);
+      const transitPara =
+        pieces.length === 1
+          ? `On the transit front: ${pieces[0]}.`
+          : `On the transit front: ${pieces.slice(0, -1).join("; ")}; and ${pieces[pieces.length - 1]}.`;
+      parts.push(transitPara);
     }
   }
 
-  // Highlights (upcoming + past) that fall inside the window
+  // ── Window highlights ──────────────────────────────────────────────────────
   if (windowContext && windowContext.highlights.length > 0) {
     const windowHl = windowContext.highlights.slice(0, 5);
     const lines = windowHl.map((h) => {
@@ -276,27 +331,30 @@ function buildCategoryAnswer(
       const limit = yearRange ? 5 : 2;
       const past = getRelevantHighlights(pastPool, categoryIds, limit);
       if (past.length > 0) {
-        const rangeLabel = yearRange && yearRange.start
-          ? (yearRange.end && yearRange.end !== yearRange.start
-              ? ` between ${yearRange.start}-${yearRange.end}`
-              : ` around ${yearRange.start}`)
-          : "";
-        const pastTexts = past.map((h) =>
-          `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
+        const rangeLabel =
+          yearRange && yearRange.start
+            ? yearRange.end && yearRange.end !== yearRange.start
+              ? ` between ${yearRange.start}–${yearRange.end}`
+              : ` around ${yearRange.start}`
+            : "";
+        const pastTexts = past.map(
+          (h) => `• **${h.window}** (${h.dashaContext}) — ${trimReasoning(h.reasoning)}`
         );
         parts.push(`Looking back at past periods${rangeLabel}:\n${pastTexts.join("\n")}`);
       }
     }
   }
 
-  // Yoga mention if relevant — brief
+  // ── Yoga mention — brief ───────────────────────────────────────────────────
   const yogas = getRelevantYogas(report, houses, planets);
   if (yogas.length > 0) {
     const topYoga = yogas[0];
-    parts.push(`Worth noting — you have **${topYoga.name}** in your chart, which ${topYoga.lifeEventImpact.charAt(0).toLowerCase()}${topYoga.lifeEventImpact.slice(1)}`);
+    parts.push(
+      `Worth noting — you have **${topYoga.name}** in your chart, which ${topYoga.lifeEventImpact.charAt(0).toLowerCase()}${topYoga.lifeEventImpact.slice(1)}`
+    );
   }
 
-  // Enriched insights from Jaimini + Ashtakvarga engines
+  // ── Enriched insights from Jaimini + Ashtakvarga engines ──────────────────
   if (enriched) {
     const enrichedSection = buildEnrichedSection(enriched, categoryIds, houses);
     if (enrichedSection) parts.push(enrichedSection);
