@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { ChartResponse, CurrentTransitResponse, calculateCurrentTransits } from "@/lib/api";
-import { TransitTimeline, type IngressEvent } from "./TransitTimeline";
+import { MergedTransitTimeline, mergeEventsByArea, type IngressEvent } from "./TransitTimeline";
 import { NorthIndianChart } from "./charts/NorthIndianChart";
 import { PremiumLock, usePremium } from "./PremiumLock";
 
@@ -347,21 +347,24 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
             </div>
           </div>
 
-          {/* Per-area ingress timelines */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {selectedAreas.map(areaId => (
-              <div
-                key={areaId}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-6"
-              >
-                <TransitTimeline
-                  lifeArea={areaId}
-                  events={transitData.events_by_area[areaId] ?? []}
-                  narrative={transitData.narrative_by_area?.[areaId]}
-                />
+          {/* Merged ingress + dasha-shift timeline across all selected areas */}
+          {(() => {
+            const areaLabels: Record<string, string> = Object.fromEntries(
+              LIFE_AREAS.map(a => [a.id, a.label])
+            );
+            const allMerged = mergeEventsByArea(
+              transitData.events_by_area,
+              selectedAreas,
+              areaLabels,
+            );
+            const ingresses = allMerged.filter(e => e.event_type !== "pratyantardasha");
+            const pdShifts  = allMerged.filter(e => e.event_type === "pratyantardasha");
+            return (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <MergedTransitTimeline ingresses={ingresses} pdShifts={pdShifts} />
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       )}
       </PremiumLock>
