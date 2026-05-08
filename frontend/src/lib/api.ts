@@ -54,6 +54,18 @@ export interface YogaEntry {
   interpretation: string;
 }
 
+/** A shadow planet or sensitive point (Gulika / Bhrigu Bindu). */
+export interface UpagrahaInfo {
+  name: string;           // "Gulika" | "BhriguBindu"
+  longitude: number;      // sidereal 0–360
+  sign: string;
+  sign_num: number;       // 1–12
+  degree_in_sign: number; // 0–30
+  house: number;          // 1–12 from natal lagna
+  nakshatra: string;
+  nakshatra_pada: number;
+}
+
 export interface NavamsaPosition {
   name: string;
   rashi: string;
@@ -81,6 +93,8 @@ export interface ChartResponse {
   navamsa_lagna: string;
   navamsa_planets: NavamsaPosition[];
   yogas: YogaEntry[];
+  bhrigu_bindu?: UpagrahaInfo;
+  gulika?: UpagrahaInfo;
   julian_day: number;
   calculation_time: string;
 }

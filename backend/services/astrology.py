@@ -105,6 +105,24 @@ AYANAMSHA_MAP = {
 }
 
 # ---------------------------------------------------------------------------
+# Gulika (Mandi) constants
+# ---------------------------------------------------------------------------
+
+# For each weekday (Python weekday(): Mon=0 ... Sun=6),
+# which 1/8th portion of the day or night Saturn (Gulika) occupies.
+# Derived from the Chaldean planetary-hour sequence starting from the day lord.
+# Sources: BPHS Ch. 3; Saravali Ch. 4.
+GULIKA_PORTIONS: Dict[int, tuple] = {
+    6: (5, 7),  # Sunday   — day portion 5, night portion 7
+    0: (2, 4),  # Monday   — day portion 2, night portion 4
+    1: (6, 1),  # Tuesday  — day portion 6, night portion 1
+    2: (3, 5),  # Wednesday — day portion 3, night portion 5
+    3: (7, 2),  # Thursday — day portion 7, night portion 2
+    4: (4, 6),  # Friday   — day portion 4, night portion 6
+    5: (1, 3),  # Saturday — day portion 1, night portion 3
+}
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -349,6 +367,103 @@ def calculate_navamsa(
 
 
 # ---------------------------------------------------------------------------
+# Bhrigu Bindu & Gulika (Mandi)
+# ---------------------------------------------------------------------------
+
+def compute_bhrigu_bindu(moon_lon: float, rahu_lon: float) -> float:
+    """
+    Bhrigu Bindu = midpoint of Moon and Rahu along the shorter arc.
+
+    It is the "sensitive degree" in Bhrigu Nadi astrology.  Any planet
+    transiting over this degree triggers significant life events related
+    to the house it occupies natally.  Planets conjunct BB in the natal
+    chart amplify that house's karma throughout the life.
+
+    Source: Bhrigu Nadi astrology tradition; also discussed in
+    K.N. Rao's writings on sensitive points.
+    """
+    diff = abs(moon_lon - rahu_lon)
+    if diff > 180:
+        bb = ((moon_lon + rahu_lon) / 2 + 180) % 360
+    else:
+        bb = (moon_lon + rahu_lon) / 2
+    return round(bb % 360, 4)
+
+
+def compute_gulika(
+    utc_dt: datetime,
+    jd: float,
+    lat: float,
+    lng: float,
+) -> float:
+    """
+    Compute Gulika (Mandi) — the sub-lord of Saturn.
+
+    Method (BPHS Ch. 3):
+      1. Find sunrise and sunset via Swiss Ephemeris rise_trans().
+      2. Determine if birth is day (sunrise–sunset) or night (sunset–next sunrise).
+      3. Divide the relevant half-day into 8 equal portions.
+      4. Look up which portion belongs to Saturn using GULIKA_PORTIONS.
+      5. The Ascendant at the *start* of that portion = Gulika's longitude.
+
+    Returns sidereal longitude (0–360).
+    """
+    geopos = (lng, lat, 0.0)
+    atpress, attemp = 1013.25, 15.0
+
+    try:
+        # Search from jd - 0.5 (previous noon) so we always catch the correct day's events
+        ret_rise, t_rise = swe.rise_trans(
+            jd - 0.5, swe.SUN, swe.CALC_RISE, geopos, atpress, attemp, swe.FLG_SWIEPH
+        )
+        ret_set, t_set = swe.rise_trans(
+            jd - 0.5, swe.SUN, swe.CALC_SET, geopos, atpress, attemp, swe.FLG_SWIEPH
+        )
+        # Next sunrise (defines end of night)
+        ret_rise2, t_rise2 = swe.rise_trans(
+            jd + 0.25, swe.SUN, swe.CALC_RISE, geopos, atpress, attemp, swe.FLG_SWIEPH
+        )
+
+        if ret_rise != 0 or ret_set != 0:
+            raise ValueError("rise_trans failed")
+
+        jd_sunrise  = t_rise[0]
+        jd_sunset   = t_set[0]
+        jd_sunrise2 = t_rise2[0] if ret_rise2 == 0 else jd_sunrise + 1.0
+
+    except Exception:
+        # Fallback: approximate 6 AM sunrise / 6 PM sunset
+        base = math.floor(jd - 0.5) + 0.5  # previous midnight
+        jd_sunrise  = base + 6 / 24.0
+        jd_sunset   = base + 18 / 24.0
+        jd_sunrise2 = jd_sunrise + 1.0
+
+    # Day or night birth?
+    is_day = jd_sunrise <= jd <= jd_sunset
+
+    weekday = utc_dt.weekday()          # Mon=0 … Sun=6
+    day_portion, night_portion = GULIKA_PORTIONS.get(weekday, (5, 7))
+
+    if is_day:
+        portion   = day_portion
+        duration  = jd_sunset - jd_sunrise
+        start_ref = jd_sunrise
+    else:
+        portion   = night_portion
+        duration  = jd_sunrise2 - jd_sunset
+        start_ref = jd_sunset
+
+    # JD at start of Gulika's portion
+    gulika_jd = start_ref + (portion - 1) * (duration / 8.0)
+
+    # Ascendant at that moment = Gulika's longitude
+    cusps, ascmc = swe.houses(gulika_jd, lat, lng, b'P')
+    tropical_asc = ascmc[0]
+    ayanamsha_at_gulika = swe.get_ayanamsa_ut(gulika_jd)
+    return round((tropical_asc - ayanamsha_at_gulika) % 360, 4)
+
+
+# ---------------------------------------------------------------------------
 # Main chart calculation entry point
 # ---------------------------------------------------------------------------
 
@@ -370,6 +485,23 @@ def calculate_full_chart(
 
     lagna_rashi_num, lagna_deg = longitude_to_rashi(lagna_lon)
 
+    # --- Bhrigu Bindu ---
+    moon_lon = planet_positions["Moon"]["longitude"]
+    rahu_lon = planet_positions["Rahu"]["longitude"]
+    bb_lon   = compute_bhrigu_bindu(moon_lon, rahu_lon)
+    bb_rashi_num, bb_deg = longitude_to_rashi(bb_lon)
+    bb_nakshatra, bb_pada = longitude_to_nakshatra(bb_lon)
+    bb_house = ((bb_rashi_num - lagna_rashi_num) % 12) + 1
+
+    # --- Gulika ---
+    try:
+        gk_lon = compute_gulika(utc_dt, jd, lat, lng)
+    except Exception:
+        gk_lon = 0.0
+    gk_rashi_num, gk_deg = longitude_to_rashi(gk_lon)
+    gk_nakshatra, gk_pada = longitude_to_nakshatra(gk_lon)
+    gk_house = ((gk_rashi_num - lagna_rashi_num) % 12) + 1
+
     return {
         "julian_day": round(jd, 6),
         "ayanamsha_value": round(ayanamsha_val, 6),
@@ -379,5 +511,25 @@ def calculate_full_chart(
         "houses": houses,
         "navamsa_lagna": nav_lagna,
         "navamsa_planets": nav_planets,
-        "moon_longitude": planet_positions["Moon"]["longitude"],
+        "moon_longitude": moon_lon,
+        "bhrigu_bindu": {
+            "name": "BhriguBindu",
+            "longitude": bb_lon,
+            "sign": RASHI_NAMES[bb_rashi_num - 1],
+            "sign_num": bb_rashi_num,
+            "degree_in_sign": round(bb_deg, 4),
+            "house": bb_house,
+            "nakshatra": bb_nakshatra,
+            "nakshatra_pada": bb_pada,
+        },
+        "gulika": {
+            "name": "Gulika",
+            "longitude": gk_lon,
+            "sign": RASHI_NAMES[gk_rashi_num - 1],
+            "sign_num": gk_rashi_num,
+            "degree_in_sign": round(gk_deg, 4),
+            "house": gk_house,
+            "nakshatra": gk_nakshatra,
+            "nakshatra_pada": gk_pada,
+        },
     }

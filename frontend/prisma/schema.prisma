@@ -640,3 +640,18 @@ model MoonTransitRule {
   keywords  String[] // ["heavy", "melancholic"] for LLM
   source    String   // classical text reference
 }
+
+// ---------------------------------------------------------------------------
+// Special sensitive points — Bhrigu Bindu and Gulika (Mandi).
+// 24 rows: 12 Gulika-by-house + 12 BhriguBindu-by-house from natal lagna.
+// ---------------------------------------------------------------------------
+model SpecialPointRule {
+  id       String   @id
+  point    String   // "Gulika" | "BhriguBindu"
+  house    Int      // 1–12 from natal lagna
+  tone     String   // "positive" | "negative" | "mixed" | "neutral"
+  effect   String   // 1-2 sentence classical interpretation
+  detail   String   // fuller description with classical nuance
+  keywords String[] // for LLM context
+  source   String   // classical text reference
+}

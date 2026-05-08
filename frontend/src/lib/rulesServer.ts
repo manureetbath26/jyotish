@@ -191,7 +191,7 @@ export function invalidateChatRules(): void {
 // ── AshtakvargaRule cache (56 static rows, admin-edited only) ───────────────
 
 import type { AshtakvargaRule } from "./ashtakvargaEngine";
-import type { MoonTransitRule } from "@/generated/prisma";
+import type { MoonTransitRule, SpecialPointRule } from "@/generated/prisma";
 
 let ashtakCached: AshtakvargaRule[] | null = null;
 let ashtakLoadedAt = 0;
@@ -261,4 +261,38 @@ export async function getCachedMoonTransitRules(): Promise<MoonTransitRule[]> {
     }
   })();
   return moonTransitInFlight;
+}
+
+// ── SpecialPointRule cache (24 rows: 12 Gulika + 12 BhriguBindu by house) ────
+
+export type { SpecialPointRule };
+
+let specialPointCached: SpecialPointRule[] | null = null;
+let specialPointLoadedAt = 0;
+let specialPointInFlight: Promise<SpecialPointRule[]> | null = null;
+
+/**
+ * Returns all 24 SpecialPointRule rows (Gulika + BhriguBindu by house),
+ * refreshed every 5 minutes. Returns [] on DB error so the chart renders
+ * without crashing.
+ */
+export async function getCachedSpecialPointRules(): Promise<SpecialPointRule[]> {
+  const now = Date.now();
+  if (specialPointCached && now - specialPointLoadedAt < TTL_MS) return specialPointCached;
+  if (specialPointInFlight) return specialPointInFlight;
+  specialPointInFlight = (async () => {
+    try {
+      const rows = await prisma.specialPointRule.findMany();
+      specialPointCached = rows;
+      specialPointLoadedAt = Date.now();
+      return rows;
+    } catch (err) {
+      console.warn("[rulesServer] specialPointRules fetch failed:", err);
+      if (specialPointCached) return specialPointCached;
+      return [];
+    } finally {
+      specialPointInFlight = null;
+    }
+  })();
+  return specialPointInFlight;
 }

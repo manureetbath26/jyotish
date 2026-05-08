@@ -19,14 +19,23 @@
 
 import React from "react";
 import { useTheme } from "next-themes";
-import { PlanetPosition, HouseInfo } from "@/lib/api";
+import { PlanetPosition, HouseInfo, UpagrahaInfo } from "@/lib/api";
 
 interface Props {
   lagna: string;
   lagna_degree: number;
   planets: PlanetPosition[];
   houses: HouseInfo[];
+  /** Sensitive points to overlay in their natal houses */
+  bhrigu_bindu?: UpagrahaInfo;
+  gulika?: UpagrahaInfo;
 }
+
+// Special-point colours — distinct from planet dignity colours
+const SPECIAL_POINT_COLOR: Record<string, string> = {
+  BhriguBindu: "#c084fc", // violet-400 — "karmic sensitive degree"
+  Gulika:      "#fb923c", // orange-400 — "shadow planet"
+};
 
 const PLANET_ABBR: Record<string, string> = {
   Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me",
@@ -149,7 +158,7 @@ function spread([cx, cy]: [number, number]) {
   return { cx, cy };
 }
 
-export function NorthIndianChart({ lagna, planets, houses }: Props) {
+export function NorthIndianChart({ lagna, planets, houses, bhrigu_bindu, gulika }: Props) {
   const { theme } = useTheme();
   const c = theme === "light" ? CHART_COLORS.light : CHART_COLORS.dark;
   const { polygons, lines } = buildHousePolygons(SIZE, PAD);
@@ -160,6 +169,18 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
     if (!houseOccupants[p.house]) houseOccupants[p.house] = [];
     houseOccupants[p.house].push(p);
   });
+
+  // Map house number → special points (BB, Gulika)
+  type SpecialPoint = { abbr: string; deg: number; color: string };
+  const houseSpecialPoints: Record<number, SpecialPoint[]> = {};
+  const addSpecial = (u: UpagrahaInfo) => {
+    const abbr = u.name === "BhriguBindu" ? "BB" : "Gk";
+    const color = SPECIAL_POINT_COLOR[u.name] ?? "#94a3b8";
+    if (!houseSpecialPoints[u.house]) houseSpecialPoints[u.house] = [];
+    houseSpecialPoints[u.house].push({ abbr, deg: u.degree_in_sign, color });
+  };
+  if (bhrigu_bindu) addSpecial(bhrigu_bindu);
+  if (gulika) addSpecial(gulika);
 
   return (
     <div>
@@ -253,7 +274,7 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
               {occupants.map((p, idx) => {
                 const yPos = cy + topOffset + 34 + idx * 12;
                 const color = p.dignity ? DIGNITY_COLOR[p.dignity] : c.defaultPlanet;
-                const deg = `${Math.floor(p.degree_in_rashi)}\u00B0`;
+                const deg = `${Math.floor(p.degree_in_rashi)}°`;
                 return (
                   <g key={p.name}>
                     <text
@@ -270,6 +291,34 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
                       x={cx} y={yPos}
                       textAnchor="start"
                       fontSize={planetSize - 2}
+                      fill={c.degreeText}
+                    >
+                      {deg}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Special points (BB = Bhrigu Bindu, Gk = Gulika) — italicised, below planets */}
+              {(houseSpecialPoints[house] ?? []).map((sp, idx) => {
+                const baseY = cy + topOffset + 34 + occupants.length * 12;
+                const yPos  = baseY + idx * 11;
+                const deg   = `${Math.floor(sp.deg)}°`;
+                return (
+                  <g key={sp.abbr}>
+                    <text
+                      x={cx - 2} y={yPos}
+                      textAnchor="end"
+                      fontSize={planetSize - 1}
+                      fontStyle="italic"
+                      fill={sp.color}
+                    >
+                      {sp.abbr}
+                    </text>
+                    <text
+                      x={cx} y={yPos}
+                      textAnchor="start"
+                      fontSize={planetSize - 3}
                       fill={c.degreeText}
                     >
                       {deg}
@@ -309,6 +358,19 @@ export function NorthIndianChart({ lagna, planets, houses }: Props) {
             <span className="text-xs text-slate-500">{label.charAt(0).toUpperCase() + label.slice(1)}</span>
           </div>
         ))}
+        {/* Special point legend entries */}
+        {bhrigu_bindu && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: SPECIAL_POINT_COLOR.BhriguBindu }} />
+            <span className="text-xs text-slate-500 italic">BB · Bhrigu Bindu</span>
+          </div>
+        )}
+        {gulika && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: SPECIAL_POINT_COLOR.Gulika }} />
+            <span className="text-xs text-slate-500 italic">Gk · Gulika</span>
+          </div>
+        )}
       </div>
     </div>
   );

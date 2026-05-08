@@ -78,6 +78,18 @@ class YogaEntry(BaseModel):
     interpretation: str    # detailed paragraph
 
 
+class UpagrahaInfo(BaseModel):
+    """A shadow planet / sensitive point (Gulika or Bhrigu Bindu)."""
+    name: str                    # "Gulika" | "BhriguBindu"
+    longitude: float             # sidereal 0–360
+    sign: str                    # rashi name
+    sign_num: int                # 1–12
+    degree_in_sign: float        # 0–30
+    house: int                   # 1–12 from natal lagna
+    nakshatra: str
+    nakshatra_pada: int          # 1–4
+
+
 class ChartResponse(BaseModel):
     # Input echo
     date: str
@@ -106,6 +118,10 @@ class ChartResponse(BaseModel):
 
     # Yogas
     yogas: List[YogaEntry]
+
+    # Upagrahas / sensitive points
+    bhrigu_bindu: Optional[UpagrahaInfo] = None
+    gulika: Optional[UpagrahaInfo] = None
 
     # Meta
     julian_day: float

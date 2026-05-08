@@ -3,7 +3,7 @@ from datetime import datetime
 import pytz
 
 from models.schemas import (
-    BirthDataInput, ChartResponse, TransitChartRequest,
+    BirthDataInput, ChartResponse, UpagrahaInfo, TransitChartRequest,
     CurrentTransitRequest, CurrentTransitResponse,
     LifetimeTransitRequest, LifetimeTransitResponse,
     PanchangRequest, PanchangResponse,
@@ -88,6 +88,8 @@ async def calculate_chart(body: BirthDataInput):
         navamsa_lagna=chart["navamsa_lagna"],
         navamsa_planets=chart["navamsa_planets"],
         yogas=yogas,
+        bhrigu_bindu=UpagrahaInfo(**chart["bhrigu_bindu"]) if chart.get("bhrigu_bindu") else None,
+        gulika=UpagrahaInfo(**chart["gulika"]) if chart.get("gulika") else None,
         julian_day=chart["julian_day"],
         calculation_time=datetime.utcnow().isoformat() + "Z",
     )
