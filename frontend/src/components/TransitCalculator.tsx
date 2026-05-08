@@ -347,6 +347,31 @@ export function TransitCalculator({ chart }: TransitCalculatorProps) {
             </div>
           </div>
 
+          {/* Narrative summaries — one per selected life area */}
+          {transitData.narrative_by_area && selectedAreas.some(a => transitData.narrative_by_area![a]) && (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
+              <h3 className="text-lg font-semibold text-amber-400">📖 Reading by Life Area</h3>
+              {selectedAreas.map(areaId => {
+                const narrative = transitData.narrative_by_area![areaId];
+                if (!narrative) return null;
+                const paras = narrative.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+                const areaLabel = LIFE_AREAS.find(a => a.id === areaId)?.label ?? areaId;
+                return (
+                  <div key={areaId} className="border-t border-slate-800 pt-4 first:border-t-0 first:pt-0">
+                    <h4 className="text-sm font-semibold text-slate-300 mb-3">{areaLabel}</h4>
+                    <div className="space-y-2">
+                      {paras.map((para, i) => (
+                        <p key={i} className="text-sm text-slate-300 leading-relaxed">
+                          {para}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Merged ingress + dasha-shift timeline across all selected areas */}
           {(() => {
             const areaLabels: Record<string, string> = Object.fromEntries(
