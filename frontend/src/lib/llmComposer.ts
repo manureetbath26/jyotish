@@ -177,7 +177,7 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
             );
             // Sookshma dashas — only serialized for current PD, capped at 5
             if (pd.sookshmadasha?.length) {
-              for (const sd of pd.sookshmadasha.slice(0, 5)) {
+              for (const sd of pd.sookshmadasha) {
                 const sdFlag = sd.isCurrent ? " [CURRENT SD]" : "";
                 lines.push(
                   `      SD ${s.mahadasha}-${s.antardasha}-${pd.planet}-${sd.planet}: ${fmtDate(sd.start)} – ${fmtDate(sd.end)}${sdFlag}`,

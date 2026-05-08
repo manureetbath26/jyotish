@@ -365,12 +365,11 @@ function sliceDashas(
             (pd) => pd.end >= windowStartIso && pd.start <= windowEndIso,
           );
           if (clipped.length > 0) {
-            // Clip each PD's sookshmadasha to the window and cap at 5 events
+            // Clip each PD's sookshmadasha to the window (all 9 SDs)
             pratyantardashas = clipped.map(pd => {
               if (!pd.sookshmadasha) return pd;
               const clippedSDs = pd.sookshmadasha
-                .filter(sd => sd.end >= windowStartIso && sd.start <= windowEndIso)
-                .slice(0, 5);
+                .filter(sd => sd.end >= windowStartIso && sd.start <= windowEndIso);
               return { ...pd, sookshmadasha: clippedSDs.length > 0 ? clippedSDs : undefined };
             });
           }
