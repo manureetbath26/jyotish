@@ -234,6 +234,14 @@ function buildCategoryAnswer(
           ? `active through ${pd.end.slice(0, 7)}`
           : `coming up next (${pdRange})`;
         dashaText += ` At the sub-sub-period level, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}** Pratyantardasha is ${pdStatus} — this finer timing layer colours day-to-day developments right now.`;
+
+        // Sookshma Dasha (4th level) — only for current PD
+        if (pd.isCurrent && pd.sookshmadasha?.length) {
+          const currentSd = pd.sookshmadasha.find(sd => sd.isCurrent);
+          if (currentSd) {
+            dashaText += ` At the finest timing level, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}–${currentSd.planet}** Sookshma Dasha is active (${currentSd.start.slice(0,10)} → ${currentSd.end.slice(0,10)}) — this governs day-to-day shifts right now.`;
+          }
+        }
       }
     }
 

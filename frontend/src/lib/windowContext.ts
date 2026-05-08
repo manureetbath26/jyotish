@@ -67,12 +67,23 @@ const MEAN_MOTION_DEG_PER_DAY: Record<string, number> = {
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 
+/** One Vimshottari sookshma dasha (sub-sub-sub-period) inside a pratyantardasha. */
+export interface SookshmadashasSeg {
+  planet: string;
+  start: string;   // YYYY-MM-DD
+  end: string;
+  isCurrent: boolean;
+}
+
 /** One Vimshottari pratyantardasha (sub-sub-period) inside an antardasha. */
 export interface PratyantardashaSeg {
   planet: string;
   start: string;   // YYYY-MM-DD
   end: string;
   isCurrent: boolean;
+  /** Sookshma dashas (sub-sub-sub-periods) — only populated for the current PD.
+   *  Capped at 5 events that overlap the question window. */
+  sookshmadasha?: SookshmadashasSeg[];
 }
 
 /** One Chara Dasha segment at major / sub / sub-sub level. */
@@ -353,7 +364,16 @@ function sliceDashas(
           const clipped = allPDs.filter(
             (pd) => pd.end >= windowStartIso && pd.start <= windowEndIso,
           );
-          if (clipped.length > 0) pratyantardashas = clipped;
+          if (clipped.length > 0) {
+            // Clip each PD's sookshmadasha to the window and cap at 5 events
+            pratyantardashas = clipped.map(pd => {
+              if (!pd.sookshmadasha) return pd;
+              const clippedSDs = pd.sookshmadasha
+                .filter(sd => sd.end >= windowStartIso && sd.start <= windowEndIso)
+                .slice(0, 5);
+              return { ...pd, sookshmadasha: clippedSDs.length > 0 ? clippedSDs : undefined };
+            });
+          }
         }
       } catch {
         // fail open — PDs are additive context, not critical
@@ -398,14 +418,45 @@ function computePratyantardashas(
     const pdStart = toIsoDate(new Date(cursorMs));
     cursorMs += pdDays * 86_400_000;
     const pdEnd = toIsoDate(new Date(cursorMs));
-    pds.push({
-      planet: pdPlanet,
-      start: pdStart,
-      end: pdEnd,
-      isCurrent: pdStart <= todayIso && todayIso < pdEnd,
-    });
+    const isCurrent = pdStart <= todayIso && todayIso < pdEnd;
+    const sookshmadasha = isCurrent
+      ? computeSookshmadasha(pdPlanet, pdStart, pdEnd, todayIso)
+      : undefined;
+    pds.push({ planet: pdPlanet, start: pdStart, end: pdEnd, isCurrent, sookshmadasha });
   }
   return pds;
+}
+
+// ─── Vimshottari Sookshma Dasha computation ──────────────────────────────────
+
+function computeSookshmadasha(
+  pdPlanet: string,
+  pdStartIso: string,
+  pdEndIso: string,
+  todayIso: string,
+): SookshmadashasSeg[] {
+  const pdStartMs = new Date(pdStartIso).getTime();
+  const pdEndMs = new Date(pdEndIso).getTime();
+  const pdDays = (pdEndMs - pdStartMs) / 86_400_000;
+  const startIdx = VIMSHOTTARI_ORDER.indexOf(pdPlanet);
+  if (startIdx < 0) return [];
+
+  const sds: SookshmadashasSeg[] = [];
+  let cursorMs = pdStartMs;
+  for (let i = 0; i < 9; i++) {
+    const sdPlanet = VIMSHOTTARI_ORDER[(startIdx + i) % 9];
+    const sdDays = pdDays * (VIMSHOTTARI_YEARS[sdPlanet] / VIMSHOTTARI_TOTAL);
+    const sdStart = toIsoDate(new Date(cursorMs));
+    cursorMs += sdDays * 86_400_000;
+    const sdEnd = toIsoDate(new Date(cursorMs));
+    sds.push({
+      planet: sdPlanet,
+      start: sdStart,
+      end: sdEnd,
+      isCurrent: sdStart <= todayIso && todayIso < sdEnd,
+    });
+  }
+  return sds;
 }
 
 // ─── Chara Dasha clipping ─────────────────────────────────────────────────────

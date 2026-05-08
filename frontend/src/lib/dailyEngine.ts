@@ -43,6 +43,12 @@ export interface DailyFacts {
   standingContext: {
     mahadasha: string;
     antardasha: string;
+    /** Current pratyantardasha planet (sub-sub-period) — may be absent if not computed */
+    pratyantardasha?: string;
+    pratyantardasha_ends?: string; // YYYY-MM
+    /** Current sookshma dasha planet (sub-sub-sub-period) */
+    sookshma?: string;
+    sookshma_ends?: string; // YYYY-MM-DD
     endsOn: string; // YYYY-MM
     themeHint: string;
   };
@@ -125,6 +131,70 @@ function bavForPlanetInSign(
   return chart.signTotals[transitSignIdx] ?? 0;
 }
 
+// ─── Pratyantardasha + Sookshma Dasha computation ────────────────────────────
+
+const VIMSHOTTARI_YEARS_DAILY: Record<string, number> = {
+  Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16,
+  Saturn: 19, Mercury: 17, Ketu: 7, Venus: 20,
+};
+const VIMSHOTTARI_ORDER_DAILY = [
+  "Sun", "Moon", "Mars", "Rahu", "Jupiter",
+  "Saturn", "Mercury", "Ketu", "Venus",
+];
+const VIMSHOTTARI_TOTAL_DAILY = 120;
+
+function computeCurrentPdAndSd(natal: ChartResponse, today: string): {
+  pdPlanet?: string;
+  pdEnds?: string;
+  sdPlanet?: string;
+  sdEnds?: string;
+} {
+  const adPlanet = natal.current_antardasha?.planet;
+  const adStartIso = natal.current_antardasha?.start_date;
+  const adEndIso = natal.current_antardasha?.end_date;
+  if (!adPlanet || !adStartIso || !adEndIso) return {};
+
+  const adStartMs = new Date(adStartIso).getTime();
+  const adEndMs = new Date(adEndIso).getTime();
+  const adDays = (adEndMs - adStartMs) / 86_400_000;
+  const startIdx = VIMSHOTTARI_ORDER_DAILY.indexOf(adPlanet);
+  if (startIdx < 0) return {};
+
+  // Find current PD
+  let cursorMs = adStartMs;
+  for (let i = 0; i < 9; i++) {
+    const pdPlanet = VIMSHOTTARI_ORDER_DAILY[(startIdx + i) % 9];
+    const pdDays = adDays * (VIMSHOTTARI_YEARS_DAILY[pdPlanet] / VIMSHOTTARI_TOTAL_DAILY);
+    const pdStart = new Date(cursorMs).toISOString().slice(0, 10);
+    cursorMs += pdDays * 86_400_000;
+    const pdEnd = new Date(cursorMs).toISOString().slice(0, 10);
+    if (pdStart <= today && today < pdEnd) {
+      // Found current PD — now find current SD within it
+      const pdStartMs2 = new Date(pdStart).getTime();
+      const pdDays2 = (new Date(pdEnd).getTime() - pdStartMs2) / 86_400_000;
+      const sdStartIdx = VIMSHOTTARI_ORDER_DAILY.indexOf(pdPlanet);
+      let sdCursorMs = pdStartMs2;
+      for (let j = 0; j < 9; j++) {
+        const sdPlanet = VIMSHOTTARI_ORDER_DAILY[(sdStartIdx + j) % 9];
+        const sdDays = pdDays2 * (VIMSHOTTARI_YEARS_DAILY[sdPlanet] / VIMSHOTTARI_TOTAL_DAILY);
+        const sdStart = new Date(sdCursorMs).toISOString().slice(0, 10);
+        sdCursorMs += sdDays * 86_400_000;
+        const sdEnd = new Date(sdCursorMs).toISOString().slice(0, 10);
+        if (sdStart <= today && today < sdEnd) {
+          return {
+            pdPlanet,
+            pdEnds: pdEnd.slice(0, 7),
+            sdPlanet,
+            sdEnds: sdEnd,
+          };
+        }
+      }
+      return { pdPlanet, pdEnds: pdEnd.slice(0, 7) };
+    }
+  }
+  return {};
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Main entry
 // ────────────────────────────────────────────────────────────────────────────
@@ -159,9 +229,14 @@ export function extractDailyFacts(
 
   // ── Standing context (Vimshottari) ────────────────────────────────────────
   const { mahadasha, antardasha, endsOn } = getCurrentDashaPair(natal);
+  const { pdPlanet, pdEnds, sdPlanet, sdEnds } = computeCurrentPdAndSd(natal, today);
   const standingContext = {
     mahadasha,
     antardasha,
+    pratyantardasha: pdPlanet,
+    pratyantardasha_ends: pdEnds,
+    sookshma: sdPlanet,
+    sookshma_ends: sdEnds,
     endsOn,
     themeHint: classifyDasha(rules, mahadasha, antardasha),
   };

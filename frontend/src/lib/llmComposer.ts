@@ -72,7 +72,7 @@ SYNTHESISE ACROSS LAYERS.
 Connect the dasha + transit + natal picture. Example: "You're in Mars–Rahu (May 2026) — Mars rules your 7th natally, and Rahu in 5th creates urgency in close bonds. Jupiter transiting H9 with strong Ashtakvarga (5/5) is the counterbalance: the friction is real, but there's a grounding, expansive force available if you reach for it."
 
 DATE EVERY PERIOD.
-Name a dasha, antardasha, or pratyantardasha → always follow immediately with its date range in parentheses, e.g. "Mars–Rahu (May 2026)" or "the Rahu pratyantardasha (Mar–May 2026)". NEVER name a period without its dates.
+Whenever you name a dasha, antardasha, pratyantardasha, or sookshma dasha period, ALWAYS include its date range in parentheses immediately after — e.g. "Mars–Rahu (May 2026)" or "the Rahu pratyantardasha (Mar–May 2026)" or "the Venus sookshma (7–14 May 2026)". NEVER name a period without its dates.
 
 HOUSE MEANINGS (use only these):
 1=self/body · 2=wealth/speech/family · 3=siblings/courage · 4=home/mother/comforts · 5=children/creativity/purva-punya · 6=health/enemies/service · 7=spouse/partnerships · 8=longevity/transformation/occult · 9=father/fortune/dharma · 10=career/status/karma · 11=gains/networks · 12=losses/foreign/moksha.
@@ -175,6 +175,15 @@ function serializeFacts(facts: AnswerFacts, chart: ChartResponse): string {
             lines.push(
               `    PD ${s.mahadasha}-${s.antardasha}-${pd.planet}: ${fmtDate(pd.start)} – ${fmtDate(pd.end)}${pdFlag}`,
             );
+            // Sookshma dashas — only serialized for current PD, capped at 5
+            if (pd.sookshmadasha?.length) {
+              for (const sd of pd.sookshmadasha.slice(0, 5)) {
+                const sdFlag = sd.isCurrent ? " [CURRENT SD]" : "";
+                lines.push(
+                  `      SD ${s.mahadasha}-${s.antardasha}-${pd.planet}-${sd.planet}: ${fmtDate(sd.start)} – ${fmtDate(sd.end)}${sdFlag}`,
+                );
+              }
+            }
           }
         }
       }
