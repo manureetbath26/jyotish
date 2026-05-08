@@ -110,16 +110,21 @@ AYANAMSHA_MAP = {
 
 # For each weekday (Python weekday(): Mon=0 ... Sun=6),
 # which 1/8th portion of the day or night Saturn (Gulika) occupies.
-# Derived from the Chaldean planetary-hour sequence starting from the day lord.
-# Sources: BPHS Ch. 3; Saravali Ch. 4.
+#
+# Derived from the weekday-order sequence (Sun, Moon, Mars, Mercury, Jupiter,
+# Venus, Saturn) starting from the weekday lord — NOT the Chaldean planetary-
+# hour order. Day portions count down from Saturday=1 to Sunday=7. Night
+# portions follow a separate classical assignment (Phaladeepika, BPHS Ch. 3).
+#
+# Sources: Phaladeepika Ch. 3; BPHS Ch. 3; Saravali Ch. 4.
 GULIKA_PORTIONS: Dict[int, tuple] = {
-    6: (5, 7),  # Sunday   — day portion 5, night portion 7
-    0: (2, 4),  # Monday   — day portion 2, night portion 4
-    1: (6, 1),  # Tuesday  — day portion 6, night portion 1
-    2: (3, 5),  # Wednesday — day portion 3, night portion 5
-    3: (7, 2),  # Thursday — day portion 7, night portion 2
-    4: (4, 6),  # Friday   — day portion 4, night portion 6
-    5: (1, 3),  # Saturday — day portion 1, night portion 3
+    6: (7, 1),  # Sunday    — day portion 7, night portion 1
+    0: (6, 3),  # Monday    — day portion 6, night portion 3
+    1: (5, 5),  # Tuesday   — day portion 5, night portion 5
+    2: (4, 7),  # Wednesday — day portion 4, night portion 7
+    3: (3, 2),  # Thursday  — day portion 3, night portion 2
+    4: (2, 4),  # Friday    — day portion 2, night portion 4
+    5: (1, 6),  # Saturday  — day portion 1, night portion 6
 }
 
 # ---------------------------------------------------------------------------
