@@ -17,7 +17,7 @@
 import type { ChartResponse, CurrentTransitResponse } from "./api";
 import type { AshtakvargaAnalysis } from "./ashtakvargaEngine";
 import { SIGN_INDEX } from "./charaDashaEngine";
-import type { ChatRules } from "./rulesServer";
+import type { ChatRules, MoonTransitRule } from "./rulesServer";
 
 // ────────────────────────────────────────────────────────────────────────────
 // All interpretive constants (PLANET_VIBE, GOCHARA_THRESHOLD, BENEFIC /
@@ -196,6 +196,74 @@ function computeCurrentPdAndSd(natal: ChartResponse, today: string): {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Moon transit rule helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the house number (1–12) that transitSign falls in counting from
+ * natalMoonSign. Used for classical Gochara (Chandra Gochara) assessment.
+ */
+function houseFromNatalMoon(transitSign: string, natalMoonSign: string): number {
+  const signs = [
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces",
+  ];
+  const t = signs.indexOf(transitSign);
+  const n = signs.indexOf(natalMoonSign);
+  if (t < 0 || n < 0) return 0;
+  return ((t - n + 12) % 12) + 1;
+}
+
+/**
+ * Combines sign, lagna-house, and natal-Moon-house rules to produce a
+ * rule-based Moon narrative and overall tone for the day.
+ *
+ * Tone precedence: negative > mixed > neutral > positive.
+ * This ensures a hard Ashtama Chandra (H8 from natal Moon) is not masked by
+ * a positive sign placement.
+ */
+function buildMoonPulseFromRules(
+  moonSign: string,
+  houseFromLagna: number,
+  fromNatalMoon: number,
+  rules: MoonTransitRule[],
+): { narrative: string; tone: string } {
+  const signRule = rules.find(
+    (r) => r.ruleType === "sign" && r.position === moonSign,
+  );
+  const lagnaRule = rules.find(
+    (r) => r.ruleType === "from_lagna" && r.position === String(houseFromLagna),
+  );
+  const moonRule = rules.find(
+    (r) => r.ruleType === "from_natal_moon" && r.position === String(fromNatalMoon),
+  );
+
+  // Determine overall tone: negative beats mixed beats neutral beats positive
+  const toneRank: Record<string, number> = {
+    negative: 3,
+    mixed: 2,
+    neutral: 1,
+    positive: 0,
+  };
+  const tones = [signRule?.tone, lagnaRule?.tone, moonRule?.tone].filter(
+    Boolean,
+  ) as string[];
+  const worstTone = tones.reduce(
+    (worst, t) => ((toneRank[t] ?? 0) > (toneRank[worst] ?? 0) ? t : worst),
+    "neutral",
+  );
+
+  // Build the narrative combining sign + natal-Moon signals (lagna is implicit
+  // in the house context already shown by the caller)
+  const parts: string[] = [];
+  if (signRule) parts.push(signRule.effect);
+  if (moonRule) parts.push(`From your natal Moon: ${moonRule.effect}`);
+
+  const narrative = parts.join(" ");
+  return { narrative, tone: worstTone };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main entry
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -206,6 +274,7 @@ export function extractDailyFacts(
   profileName: string,
   rules: ChatRules,
   panchang?: PanchangSnapshot,
+  moonTransitRules?: MoonTransitRule[],
 ): DailyFacts {
   const natalLagna = natal.lagna;
   const today = transits.transit_date.slice(0, 10);
@@ -217,14 +286,46 @@ export function extractDailyFacts(
   const moonSign = transitMoon?.rashi ?? "";
   const moonNakshatra = transitMoon?.nakshatra ?? "";
   const moonHouse = transitMoon ? houseFromLagna(moonSign, natalLagna) : 0;
+
+  // Build the base narrative (used when rules are unavailable)
+  let moonNarrative = moonHouse
+    ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${houseTheme(moonHouse)}.`
+    : "";
+
+  // Rule-based enrichment: sign tone + Gochara from natal Moon
+  if (moonTransitRules && moonTransitRules.length > 0 && moonHouse) {
+    const natalMoonPlanet = natal.planets?.find(
+      (p: { name: string }) => p.name === "Moon",
+    );
+    const natalMoonSign = natalMoonPlanet?.rashi ?? "";
+    const fromNatal = natalMoonSign
+      ? houseFromNatalMoon(moonSign, natalMoonSign)
+      : 0;
+
+    if (fromNatal > 0) {
+      const { narrative, tone } = buildMoonPulseFromRules(
+        moonSign,
+        moonHouse,
+        fromNatal,
+        moonTransitRules,
+      );
+      const toneLabel =
+        tone === "negative"
+          ? "emotionally heavy day"
+          : tone === "positive"
+            ? "emotionally supportive day"
+            : "emotionally active day";
+      const houseContext = `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house (${houseTheme(moonHouse)}) — ${toneLabel}.`;
+      moonNarrative = narrative ? `${houseContext} ${narrative}` : moonNarrative;
+    }
+  }
+
   const moonPulse = {
     sign: moonSign,
     nakshatra: moonNakshatra,
     houseFromLagna: moonHouse,
     houseTheme: houseTheme(moonHouse),
-    narrative: moonHouse
-      ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${houseTheme(moonHouse)}.`
-      : "",
+    narrative: moonNarrative,
   };
 
   // ── Standing context (Vimshottari) ────────────────────────────────────────

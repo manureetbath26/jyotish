@@ -623,3 +623,20 @@ model GocharaThreshold {
   threshold Int     // 0-8 bindus
   updatedAt DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// Moon transit rules — classical Jyotish Gochara for Moon (Chandra Gochara).
+// 36 rows total: 12 by sign + 12 from natal Moon + 12 from lagna.
+// Drives the moonPulse section of the daily engine with sign-aware,
+// Gochara-aware emotional tone (replacing the universal-benefic shortcut).
+// ---------------------------------------------------------------------------
+model MoonTransitRule {
+  id        String   @id
+  ruleType  String   // "sign" | "from_natal_moon" | "from_lagna"
+  position  String   // sign name (e.g. "Capricorn") or house number as string (e.g. "8")
+  tone      String   // "positive" | "negative" | "mixed" | "neutral"
+  effect    String   // concise effect for daily reading (1-2 sentences)
+  detail    String   // fuller classical description
+  keywords  String[] // ["heavy", "melancholic"] for LLM
+  source    String   // classical text reference
+}

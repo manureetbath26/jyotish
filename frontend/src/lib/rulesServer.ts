@@ -191,6 +191,7 @@ export function invalidateChatRules(): void {
 // ── AshtakvargaRule cache (56 static rows, admin-edited only) ───────────────
 
 import type { AshtakvargaRule } from "./ashtakvargaEngine";
+import type { MoonTransitRule } from "@/generated/prisma";
 
 let ashtakCached: AshtakvargaRule[] | null = null;
 let ashtakLoadedAt = 0;
@@ -225,4 +226,39 @@ export async function getCachedAshtakvargaRules(): Promise<AshtakvargaRule[]> {
     }
   })();
   return ashtakInFlight;
+}
+
+// ── MoonTransitRule cache (36 rows: 12 sign + 12 from_natal_moon + 12 from_lagna) ──
+
+// Re-export for consumers that need the type without importing from generated prisma
+export type { MoonTransitRule };
+
+let moonTransitCached: MoonTransitRule[] | null = null;
+let moonTransitLoadedAt = 0;
+let moonTransitInFlight: Promise<MoonTransitRule[]> | null = null;
+
+/**
+ * Returns the cached MoonTransitRule rows, refreshing every 5 minutes.
+ * Concurrent callers share the in-flight promise. Returns [] on DB error
+ * so the daily engine gracefully falls back to the legacy narrative.
+ */
+export async function getCachedMoonTransitRules(): Promise<MoonTransitRule[]> {
+  const now = Date.now();
+  if (moonTransitCached && now - moonTransitLoadedAt < TTL_MS) return moonTransitCached;
+  if (moonTransitInFlight) return moonTransitInFlight;
+  moonTransitInFlight = (async () => {
+    try {
+      const rows = await prisma.moonTransitRule.findMany();
+      moonTransitCached = rows;
+      moonTransitLoadedAt = Date.now();
+      return rows;
+    } catch (err) {
+      console.warn("[rulesServer] moonTransitRules fetch failed:", err);
+      if (moonTransitCached) return moonTransitCached;
+      return [];
+    } finally {
+      moonTransitInFlight = null;
+    }
+  })();
+  return moonTransitInFlight;
 }

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { ChartResponse, CurrentTransitResponse } from "@/lib/api";
 import { computeAshtakvarga } from "@/lib/ashtakvargaEngine";
-import { getChatRules, getCachedAshtakvargaRules } from "@/lib/rulesServer";
+import { getChatRules, getCachedAshtakvargaRules, getCachedMoonTransitRules } from "@/lib/rulesServer";
 import { extractDailyFacts, type DailyFacts } from "@/lib/dailyEngine";
 import {
   composeDailyReading,
@@ -98,11 +98,12 @@ export async function GET(req: NextRequest) {
   const natal = profile.chart.chartData as unknown as ChartResponse;
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  // Steps 1–3 are independent — run them in parallel.
+  // Steps 1–4 are independent — run them in parallel.
   //   1. Today's transits from the Python backend
   //   2. Ashtakvarga rules (cached in-process, ~56 static rows)
   //   3. Chat / interpretive rules (cached in-process)
-  const [transitRes, ashtakRules, chatRules] = await Promise.all([
+  //   4. Moon transit rules (cached in-process, 36 rows)
+  const [transitRes, ashtakRules, chatRules, moonTransitRules] = await Promise.all([
     fetch(`${backendUrl}/api/chart/current-transits`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -114,6 +115,7 @@ export async function GET(req: NextRequest) {
     }),
     getCachedAshtakvargaRules(),
     getChatRules(),
+    getCachedMoonTransitRules(),
   ]);
 
   if (!transitRes.ok) {
@@ -130,6 +132,8 @@ export async function GET(req: NextRequest) {
     ashtakvarga,
     profile.name,
     chatRules,
+    undefined,
+    moonTransitRules,
   );
 
   // 4. Compose — LLM if configured, template fallback otherwise
