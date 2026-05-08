@@ -191,12 +191,57 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "transits",  label: "Transits 🌙" },
 ];
 
+/** Client-side Bhrigu Bindu fallback — midpoint of Moon and Rahu along the shorter arc. */
+function deriveBBFromPlanets(chart: ChartResponse): UpagrahaInfo | undefined {
+  const moon = chart.planets.find(p => p.name === "Moon");
+  const rahu = chart.planets.find(p => p.name === "Rahu");
+  if (!moon || !rahu) return undefined;
+
+  const moonLon = moon.longitude;
+  const rahuLon = rahu.longitude;
+  const diff = Math.abs(moonLon - rahuLon);
+  const bbLon = diff > 180
+    ? ((moonLon + rahuLon) / 2 + 180) % 360
+    : (moonLon + rahuLon) / 2;
+
+  const RASHIS = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo",
+                  "Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
+  const NAKSHATRA_NAMES = [
+    "Ashwini","Bharani","Krittika","Rohini","Mrigashira","Ardra","Punarvasu","Pushya",
+    "Ashlesha","Magha","Purva Phalguni","Uttara Phalguni","Hasta","Chitra","Swati",
+    "Vishakha","Anuradha","Jyeshtha","Mula","Purva Ashadha","Uttara Ashadha","Shravana",
+    "Dhanishtha","Shatabhisha","Purva Bhadrapada","Uttara Bhadrapada","Revati",
+  ];
+  const signNum      = Math.floor(bbLon / 30) + 1;
+  const degInSign    = bbLon % 30;
+  const lagnaSignNum = chart.houses[0]?.rashi_num ?? 1;
+  const house        = ((signNum - lagnaSignNum + 12) % 12) + 1;
+  const nakIdx       = Math.min(Math.floor(bbLon / (360 / 27)), 26);
+  const pada         = Math.min(Math.floor((bbLon % (360 / 27)) / ((360 / 27) / 4)) + 1, 4);
+
+  return {
+    name: "BhriguBindu",
+    longitude: Math.round(bbLon * 10000) / 10000,
+    sign: RASHIS[signNum - 1],
+    sign_num: signNum,
+    degree_in_sign: Math.round(degInSign * 10000) / 10000,
+    house,
+    nakshatra: NAKSHATRA_NAMES[nakIdx],
+    nakshatra_pada: pada,
+  };
+}
+
 export function ChartDisplay({ chart, onSave }: Props) {
   const [tab, setTab] = useState<TabId>("panchang");
   const [style, setStyle] = useState<ChartStyle>("north");
   const [panchang, setPanchang] = useState<PanchangResponse | null>(null);
   const [panchangLoading, setPanchangLoading] = useState(false);
   const [panchangError, setPanchangError] = useState<string | null>(null);
+
+  // Use backend-provided values when available; fall back to client-side derivation
+  // so the chart renders correctly even from stale cached ProfileChart data.
+  const bhriguBindu = chart.bhrigu_bindu ?? deriveBBFromPlanets(chart);
+  const gulika      = chart.gulika; // Gulika needs backend (sunrise/sunset); shows after cache bust
 
   useEffect(() => {
     if (tab === "panchang" && !panchang && !panchangLoading) {
@@ -318,16 +363,16 @@ export function ChartDisplay({ chart, onSave }: Props) {
                 lagna_degree={chart.lagna_degree}
                 planets={chart.planets}
                 houses={chart.houses}
-                bhrigu_bindu={chart.bhrigu_bindu}
-                gulika={chart.gulika}
+                bhrigu_bindu={bhriguBindu}
+                gulika={gulika}
               />
             )}
             <ChartInterpretation chart={chart} />
             {/* Special Points panel — Gulika and Bhrigu Bindu */}
-            {(chart.gulika || chart.bhrigu_bindu) && (
+            {(gulika || bhriguBindu) && (
               <SpecialPointsPanel
-                gulika={chart.gulika}
-                bhrigu_bindu={chart.bhrigu_bindu}
+                gulika={gulika}
+                bhrigu_bindu={bhriguBindu}
               />
             )}
           </div>

@@ -39,16 +39,23 @@ export async function GET(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Cache hit
+  // Cache hit — but bust if the cached data pre-dates Bhrigu Bindu / Gulika fields
+  // (added May 2026). Any cached chart missing `gulika` is stale.
   if (profile.chart) {
-    return Response.json({
-      chartData: profile.chart.chartData,
-      cached: true,
-      generatedAt: profile.chart.createdAt,
-    });
+    const cd = profile.chart.chartData as Record<string, unknown>;
+    const isStale = !cd.gulika;                 // new field added May 2026
+    if (!isStale) {
+      return Response.json({
+        chartData: cd,
+        cached: true,
+        generatedAt: profile.chart.createdAt,
+      });
+    }
+    // Stale cache — delete it and fall through to recompute
+    await prisma.profileChart.deleteMany({ where: { profileId: profile.id } });
   }
 
-  // Cache miss — compute via backend
+  // Cache miss (or busted stale cache) — compute via backend
   try {
     const res = await fetch(`${BACKEND_URL}/api/chart/calculate`, {
       method: "POST",
@@ -70,12 +77,11 @@ export async function GET(
 
     const chartData = await res.json();
 
-    // Store in cache
-    await prisma.profileChart.create({
-      data: {
-        profileId: profile.id,
-        chartData,
-      },
+    // Store in cache (upsert so re-entrant calls from concurrent requests don't conflict)
+    await prisma.profileChart.upsert({
+      where:  { profileId: profile.id },
+      create: { profileId: profile.id, chartData },
+      update: { chartData },
     });
 
     return Response.json({
