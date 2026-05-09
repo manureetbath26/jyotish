@@ -31,6 +31,11 @@ interface Props {
   chart: ChartResponse;
   userName?: string;
   onBack?: () => void;
+  /** Pre-computed frozen report loaded from the database. When present the
+   *  component skips all async computation and renders immediately. */
+  frozenReport?: CareerReport;
+  /** Called once when a fresh report is generated (not called for frozen reports). */
+  onReportReady?: (report: CareerReport) => void;
 }
 
 function formatDate(dateStr: string) {
@@ -71,14 +76,17 @@ function Section({
   );
 }
 
-export function CareerReportView({ chart, userName, onBack }: Props) {
-  const [report, setReport] = useState<CareerReport | null>(null);
+export function CareerReportView({ chart, userName, onBack, frozenReport, onReportReady }: Props) {
+  const [report, setReport] = useState<CareerReport | null>(frozenReport ?? null);
   const [ashtakvargaInsights, setAshtakvargaInsights] =
     useState<CareerAshtakvargaInsights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // If a frozen report was supplied, skip computation entirely.
+    if (frozenReport) return;
+
     let cancelled = false;
     async function run() {
       setLoading(true);
@@ -135,7 +143,10 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
           birthYear,
         });
 
-        if (!cancelled) setReport(careerRpt);
+        if (!cancelled) {
+          setReport(careerRpt);
+          onReportReady?.(careerRpt);
+        }
 
         // ── Compute Ashtakvarga career insights ──
         try {
@@ -166,7 +177,7 @@ export function CareerReportView({ chart, userName, onBack }: Props) {
     }
     run();
     return () => { cancelled = true; };
-  }, [chart]);
+  }, [chart, frozenReport, onReportReady]);
 
   return (
     <ReportShell

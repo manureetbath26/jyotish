@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartResponse } from "@/lib/api";
 import {
   generateFinanceReport,
@@ -15,6 +15,10 @@ interface Props {
   chart: ChartResponse;
   userName?: string;
   onBack?: () => void;
+  /** Pre-computed frozen report loaded from the database. Skips computation when provided. */
+  frozenReport?: FinanceReport;
+  /** Called once when a fresh report is generated. */
+  onReportReady?: (report: FinanceReport) => void;
 }
 
 const TONE_STYLE: Record<PeriodWealth["tone"], { label: string; bg: string; text: string; border: string }> = {
@@ -33,12 +37,16 @@ const RATING_STYLE: Record<string, { bg: string; text: string; border: string }>
   "Challenging": { bg: "bg-rose-500/15",    text: "text-rose-300",    border: "border-rose-500/40" },
 };
 
-export function FinanceReportView({ chart, userName, onBack }: Props) {
+export function FinanceReportView({ chart, userName, onBack, frozenReport, onReportReady }: Props) {
   const [yogaRules, setYogaRules] = useState<YogaRule[] | null>(null);
   const [ashtakvargaRules, setAshtakvargaRules] = useState<AshtakvargaRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Track whether we've already fired the onReportReady callback to avoid duplicates
+  const reportReadyFiredRef = useRef(false);
 
   useEffect(() => {
+    // Skip rule fetching if we already have a frozen report
+    if (frozenReport) return;
     let cancelled = false;
     Promise.all([
       fetch("/api/yoga/rules").then((r) => (r.ok ? r.json() : [])),
@@ -53,9 +61,11 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load rules");
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [frozenReport]);
 
   const report = useMemo<FinanceReport | null>(() => {
+    // If a frozen report was supplied, use it directly without computation
+    if (frozenReport) return frozenReport;
     if (!yogaRules || !ashtakvargaRules) return null;
     try {
       const av = computeAshtakvarga(chart, ashtakvargaRules);
@@ -64,7 +74,14 @@ export function FinanceReportView({ chart, userName, onBack }: Props) {
       setError(err instanceof Error ? err.message : "Failed to generate report");
       return null;
     }
-  }, [chart, yogaRules, ashtakvargaRules]);
+  }, [chart, yogaRules, ashtakvargaRules, frozenReport]);
+
+  // Notify parent once when a fresh report is ready (not for frozen reports)
+  useEffect(() => {
+    if (!report || frozenReport || reportReadyFiredRef.current) return;
+    reportReadyFiredRef.current = true;
+    onReportReady?.(report);
+  }, [report, frozenReport, onReportReady]);
 
   if (error) {
     return (

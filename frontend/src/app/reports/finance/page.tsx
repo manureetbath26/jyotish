@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -8,6 +8,7 @@ import { calculateChart, ChartResponse } from "@/lib/api";
 import { FinanceReportView } from "@/components/reports/FinanceReportView";
 import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
 import { useActiveProfile } from "@/contexts/ActiveProfileContext";
+import type { FinanceReport } from "@/lib/financeEngine";
 
 const UPI_ID = "9872653657@ybl";
 const DEFAULT_REPORT_PRICE = 500;
@@ -48,6 +49,10 @@ function FinanceReportContent() {
   const { refetch: refetchProfiles, setActiveProfileId } = useActiveProfile();
 
   const [step, setStep] = useState<Step>("birth");
+
+  // Frozen report loaded from DB
+  const [frozenReport, setFrozenReport] = useState<FinanceReport | null>(null);
+  const [purchaseId, setPurchaseId] = useState<string | null>(reportId);
 
   // Profile selection
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -99,6 +104,7 @@ function FinanceReportContent() {
         if (data?.chartData && data.status === "verified") {
           setChart(data.chartData as ChartResponse);
           setName(data.birthName || "");
+          if (data.reportData) setFrozenReport(data.reportData as FinanceReport);
           setStep("report");
         }
       })
@@ -125,6 +131,18 @@ function FinanceReportContent() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [place]);
+
+  const handleReportReady = useCallback(
+    (report: FinanceReport) => {
+      if (!purchaseId) return;
+      fetch(`/api/reports/purchase/${purchaseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportData: report }),
+      }).catch(() => {});
+    },
+    [purchaseId],
+  );
 
   const handleProfileSelect = (sel: SelectedSource) => {
     if (sel.kind === "profile") {
@@ -235,6 +253,8 @@ function FinanceReportContent() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data?.id) setPurchaseId(data.id);
         setStep("report");
       } else {
         const data = await res.json();
@@ -267,6 +287,8 @@ function FinanceReportContent() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data?.id) setPurchaseId(data.id);
         setPayMsg({ type: "success", text: "Payment recorded! Loading your report..." });
         setTimeout(() => setStep("report"), 1000);
       } else {
@@ -637,6 +659,8 @@ function FinanceReportContent() {
           chart={chart}
           userName={name}
           onBack={() => (window.history.length > 1 ? window.history.back() : setStep("preview"))}
+          frozenReport={frozenReport ?? undefined}
+          onReportReady={handleReportReady}
         />
       )}
     </div>

@@ -508,6 +508,7 @@ def calculate_full_chart(
     gk_house = ((gk_rashi_num - lagna_rashi_num) % 12) + 1
 
     return {
+        "_chart_version": 2,           # bump when computation logic changes
         "julian_day": round(jd, 6),
         "ayanamsha_value": round(ayanamsha_val, 6),
         "lagna": RASHI_NAMES[lagna_rashi_num - 1],

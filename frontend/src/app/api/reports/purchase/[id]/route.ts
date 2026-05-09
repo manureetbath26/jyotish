@@ -25,6 +25,47 @@ export async function GET(
   return Response.json(purchase);
 }
 
+/**
+ * PATCH /api/reports/purchase/[id]
+ * Saves generated reportData to an existing purchase so it can be frozen.
+ * Only the owning user may update their own purchase.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const purchase = await prisma.reportPurchase.findUnique({ where: { id } });
+
+  if (!purchase) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (purchase.userId !== session.user.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { reportData } = body as { reportData?: unknown };
+
+  if (reportData === undefined) {
+    return Response.json({ error: "reportData is required" }, { status: 400 });
+  }
+
+  await prisma.reportPurchase.update({
+    where: { id },
+    data: { reportData: reportData as object },
+  });
+
+  return Response.json({ success: true });
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

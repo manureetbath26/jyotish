@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartResponse } from "@/lib/api";
 import { fetchLifetimeTransits } from "@/lib/api";
 import { detectYogas, type DetectedYoga, type YogaRule, type YogaCategory } from "@/lib/yogaEngine";
@@ -39,16 +39,23 @@ interface Props {
   chart: ChartResponse;
   userName?: string;
   onBack?: () => void;
+  /** Pre-computed frozen yoga list loaded from the database. Skips computation when provided. */
+  frozenReport?: DetectedYoga[];
+  /** Called once when a fresh report is generated. */
+  onReportReady?: (detected: DetectedYoga[]) => void;
 }
 
-export function YogaReportView({ chart, userName, onBack }: Props) {
+export function YogaReportView({ chart, userName, onBack, frozenReport, onReportReady }: Props) {
   const [rules, setRules] = useState<YogaRule[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!frozenReport);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const HOUSE_SIGNIFICATIONS = useHouseSignifications();
+  const reportReadyFiredRef = useRef(false);
 
   useEffect(() => {
+    // Skip rule fetching if we have a frozen report
+    if (frozenReport) return;
     let cancelled = false;
     fetch("/api/yoga/rules")
       .then(async (r) => {
@@ -68,12 +75,22 @@ export function YogaReportView({ chart, userName, onBack }: Props) {
         }
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [frozenReport]);
 
   const detected = useMemo<DetectedYoga[]>(() => {
+    // Use frozen report if available
+    if (frozenReport) return frozenReport;
     if (!rules) return [];
     return detectYogas(chart, rules);
-  }, [chart, rules]);
+  }, [chart, rules, frozenReport]);
+
+  // Notify parent once when a fresh report is ready
+  useEffect(() => {
+    if (detected.length === 0 || frozenReport || reportReadyFiredRef.current) return;
+    if (!rules) return; // still loading — wait
+    reportReadyFiredRef.current = true;
+    onReportReady?.(detected);
+  }, [detected, frozenReport, rules, onReportReady]);
 
   // Display order: positive yogas first, doshas/warnings always last.
   const CATEGORY_DISPLAY_ORDER: YogaCategory[] = [

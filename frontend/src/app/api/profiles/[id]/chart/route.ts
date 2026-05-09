@@ -39,11 +39,14 @@ export async function GET(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Cache hit — but bust if the cached data pre-dates Bhrigu Bindu / Gulika fields
-  // (added May 2026). Any cached chart missing `gulika` is stale.
+  // Cache hit — bust if stale.
+  //   v1 (initial): gulika field missing entirely
+  //   v2 (May 2026): corrected BPHS Gulika portion table + _chart_version stamp
+  // Any chart without _chart_version >= 2 must be recomputed.
   if (profile.chart) {
     const cd = profile.chart.chartData as Record<string, unknown>;
-    const isStale = !cd.gulika;                 // new field added May 2026
+    const version = typeof cd._chart_version === "number" ? cd._chart_version : 0;
+    const isStale = version < 2;
     if (!isStale) {
       return Response.json({
         chartData: cd,

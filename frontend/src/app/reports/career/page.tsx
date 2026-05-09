@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -8,6 +8,7 @@ import { calculateChart, ChartResponse } from "@/lib/api";
 import { CareerReportView } from "@/components/reports/CareerReportView";
 import { ProfileSelector, type SelectedSource } from "@/components/ProfileSelector";
 import { useActiveProfile } from "@/contexts/ActiveProfileContext";
+import type { CareerReport } from "@/lib/jaiminiCareerReport";
 
 const UPI_ID = "9872653657@ybl";
 const DEFAULT_REPORT_PRICE = 500;
@@ -48,6 +49,11 @@ function CareerReportContent() {
   const { refetch: refetchProfiles, setActiveProfileId } = useActiveProfile();
 
   const [step, setStep] = useState<Step>("birth");
+
+  // Frozen report loaded from DB — skips re-computation on reopen
+  const [frozenReport, setFrozenReport] = useState<CareerReport | null>(null);
+  // The purchase ID used to PATCH reportData after first generation
+  const [purchaseId, setPurchaseId] = useState<string | null>(reportId);
 
   // Profile selection
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -125,6 +131,10 @@ function CareerReportContent() {
           const chartData = data.chartData as ChartResponse;
           setChart(chartData);
           setName(data.birthName || "");
+          // Restore frozen report so we don't recompute on every open
+          if (data.reportData) {
+            setFrozenReport(data.reportData as CareerReport);
+          }
           setStep("report");
         }
       })
@@ -257,6 +267,8 @@ function CareerReportContent() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data?.id) setPurchaseId(data.id);
         setStep("report");
       } else {
         const data = await res.json();
@@ -289,6 +301,8 @@ function CareerReportContent() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data?.id) setPurchaseId(data.id);
         setPayMsg({ type: "success", text: "Payment recorded! Loading your report..." });
         setTimeout(() => setStep("report"), 1000);
       } else {
@@ -301,6 +315,22 @@ function CareerReportContent() {
       setPayLoading(false);
     }
   };
+
+  // Called by CareerReportView once when it finishes generating a fresh report.
+  // We persist the result so subsequent opens skip recomputation.
+  const handleReportReady = useCallback(
+    (report: CareerReport) => {
+      if (!purchaseId) return;
+      fetch(`/api/reports/purchase/${purchaseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportData: report }),
+      }).catch(() => {
+        // best-effort — don't block the UI if saving fails
+      });
+    },
+    [purchaseId],
+  );
 
   const upiLink = buildUpiLink(reportPrice, "Jyotish Career Report");
 
@@ -706,6 +736,8 @@ function CareerReportContent() {
           chart={chart}
           userName={name}
           onBack={() => (window.history.length > 1 ? window.history.back() : setStep("preview"))}
+          frozenReport={frozenReport ?? undefined}
+          onReportReady={handleReportReady}
         />
       )}
     </div>
