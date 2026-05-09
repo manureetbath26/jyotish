@@ -20,6 +20,17 @@ const MAX_DAYS_AHEAD = 5;
 /** Bump this whenever backend chart computation logic changes. */
 const CURRENT_CHART_VERSION = 2;
 
+/**
+ * Bump this whenever dailyEngine / dailyComposer logic changes in a way that
+ * would produce materially different output for the same chart + transit data.
+ * Cached DailyReading rows whose engine_version is below this are deleted and
+ * regenerated on the next request.
+ *
+ * v2 — fixed Moon Gochara bullet: unfavorable transits now go to "Be mindful"
+ *      instead of always appearing as "easier flow" in Expect.
+ */
+const CURRENT_ENGINE_VERSION = 2;
+
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -129,12 +140,25 @@ export async function GET(req: NextRequest) {
     },
   });
   if (cached) {
-    return Response.json({
-      cached: true,
-      readingDate,
-      tone,
-      reading: cached.reading,
-      facts: cached.facts,
+    // Engine version check — if the stored reading was produced by an older
+    // version of dailyEngine, delete it and fall through to regenerate.
+    const cachedFacts = cached.facts as Record<string, unknown>;
+    const cachedEngineVersion =
+      typeof cachedFacts._engine_version === "number" ? cachedFacts._engine_version : 1;
+
+    if (cachedEngineVersion >= CURRENT_ENGINE_VERSION) {
+      return Response.json({
+        cached: true,
+        readingDate,
+        tone,
+        reading: cached.reading,
+        facts: cached.facts,
+      });
+    }
+
+    // Stale engine version — delete and regenerate below
+    await prisma.dailyReading.deleteMany({
+      where: { profileId, readingDate, tone },
     });
   }
 
@@ -192,13 +216,17 @@ export async function GET(req: NextRequest) {
     reading = composeDailyTemplate(facts);
   }
 
-  // 5. Cache
+  // 5. Cache — embed engine version so future deploys can detect stale rows
+  const factsWithVersion = {
+    ...facts,
+    _engine_version: CURRENT_ENGINE_VERSION,
+  };
   await prisma.dailyReading.create({
     data: {
       profileId,
       readingDate,
       tone,
-      facts: facts as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
+      facts: factsWithVersion as unknown as import("@/generated/prisma").Prisma.InputJsonValue,
       reading,
     },
   });
@@ -208,6 +236,6 @@ export async function GET(req: NextRequest) {
     readingDate,
     tone,
     reading,
-    facts,
+    facts: factsWithVersion,
   });
 }

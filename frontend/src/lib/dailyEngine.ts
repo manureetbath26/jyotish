@@ -292,7 +292,13 @@ export function extractDailyFacts(
     ? `Moon is in ${moonSign}${moonNakshatra ? ` / ${moonNakshatra}` : ""}, your ${moonHouse}${ordinal(moonHouse)} house — the day's pulse tilts toward ${houseTheme(moonHouse)}.`
     : "";
 
-  // Rule-based enrichment: sign tone + Gochara from natal Moon
+  // Rule-based enrichment: sign tone + Gochara from natal Moon.
+  // Also captures the overall tone so the Expect/Be-mindful bullets below
+  // can correctly reflect whether the Moon transit is favorable or not.
+  // "positive" | "negative" | "mixed" | "neutral" — kept as string to avoid
+  // TypeScript control-flow narrowing collapsing the union after the conditional assignment.
+  let moonGochara = "neutral";
+
   if (moonTransitRules && moonTransitRules.length > 0 && moonHouse) {
     const natalMoonPlanet = natal.planets?.find(
       (p: { name: string }) => p.name === "Moon",
@@ -309,6 +315,7 @@ export function extractDailyFacts(
         fromNatal,
         moonTransitRules,
       );
+      moonGochara = tone;
       const toneLabel =
         tone === "negative"
           ? "emotionally heavy day"
@@ -394,11 +401,25 @@ export function extractDailyFacts(
   const supportiveFlavours: string[] = [];
   const cautiousFlavours: string[] = [];
 
-  // Moon colouring first (everyone has a Moon transit)
+  // Moon colouring first (everyone has a Moon transit).
+  // Use the Gochara tone so the bullet matches the narrative — an unfavorable
+  // Moon transit should NOT appear in "Expect: easier flow".
   if (moonPulse.houseTheme) {
-    supportiveFlavours.push(
-      `easier flow around ${moonPulse.houseTheme}`,
-    );
+    if (moonGochara === "negative") {
+      cautiousFlavours.push(
+        `emotional pressure around ${moonPulse.houseTheme}`,
+      );
+    } else if (moonGochara === "mixed") {
+      // Mixed: acknowledge the area but temper the language
+      supportiveFlavours.push(
+        `activity around ${moonPulse.houseTheme} — results vary`,
+      );
+    } else {
+      // positive or neutral (no rules available)
+      supportiveFlavours.push(
+        `easier flow around ${moonPulse.houseTheme}`,
+      );
+    }
   }
 
   // Top 2 active benefics → expect
