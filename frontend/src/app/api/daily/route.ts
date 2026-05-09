@@ -15,7 +15,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const VALID_TONES = new Set<DailyTone>(["thoughtful", "coffee", "classical"]);
-const MAX_DAYS_AHEAD = 5;
+const MAX_DAYS_AHEAD = 7;
 
 /** Bump this whenever backend chart computation logic changes. */
 const CURRENT_CHART_VERSION = 2;
