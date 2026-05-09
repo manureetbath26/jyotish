@@ -54,8 +54,13 @@ export async function GET(
         generatedAt: profile.chart.createdAt,
       });
     }
-    // Stale cache — delete it and fall through to recompute
-    await prisma.profileChart.deleteMany({ where: { profileId: profile.id } });
+    // Stale cache — delete it and fall through to recompute.
+    // Also delete today's DailyReading so it is regenerated from fresh data.
+    const todayISO = new Date().toISOString().slice(0, 10);
+    await Promise.all([
+      prisma.profileChart.deleteMany({ where: { profileId: profile.id } }),
+      prisma.dailyReading.deleteMany({ where: { profileId: profile.id, readingDate: todayISO } }),
+    ]);
   }
 
   // Cache miss (or busted stale cache) — compute via backend

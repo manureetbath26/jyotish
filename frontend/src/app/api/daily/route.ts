@@ -17,6 +17,9 @@ export const dynamic = "force-dynamic";
 const VALID_TONES = new Set<DailyTone>(["thoughtful", "coffee", "classical"]);
 const MAX_DAYS_AHEAD = 5;
 
+/** Bump this whenever backend chart computation logic changes. */
+const CURRENT_CHART_VERSION = 2;
+
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -78,7 +81,48 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Profile has no cached chart" }, { status: 409 });
   }
 
-  // Cache hit?
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // ── Chart freshness check (must run before DailyReading cache hit) ─────────
+  // If the stored natal chart is below CURRENT_CHART_VERSION it was produced by
+  // an older computation (e.g. wrong Gulika table).  Recompute it here so the
+  // daily reading uses accurate house data, then delete today's DailyReading so
+  // it gets regenerated from the fresh chart.
+  let natalChartData = profile.chart.chartData as Record<string, unknown>;
+  const chartVersion =
+    typeof natalChartData._chart_version === "number" ? natalChartData._chart_version : 0;
+
+  if (chartVersion < CURRENT_CHART_VERSION) {
+    try {
+      const freshRes = await fetch(`${backendUrl}/api/chart/calculate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: profile.dateOfBirth,
+          time: profile.timeOfBirth,
+          place: profile.placeOfBirth,
+        }),
+      });
+      if (freshRes.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const freshData = (await freshRes.json()) as any;
+        // Persist refreshed chart
+        await prisma.profileChart.upsert({
+          where: { profileId: profile.id },
+          create: { profileId: profile.id, chartData: freshData },
+          update: { chartData: freshData },
+        });
+        // Bust today's reading — it was built from stale data
+        await prisma.dailyReading.deleteMany({ where: { profileId, readingDate } });
+        natalChartData = freshData;
+      }
+    } catch {
+      // Best-effort: if backend is unreachable proceed with stale data rather
+      // than returning an error for the daily reading.
+    }
+  }
+
+  // ── Cache hit? (after freshness check so stale reads are already deleted) ──
   const cached = await prisma.dailyReading.findUnique({
     where: {
       profileId_readingDate_tone: { profileId, readingDate, tone },
@@ -95,8 +139,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Compute today's facts ─────────────────────────────────────────────────
-  const natal = profile.chart.chartData as unknown as ChartResponse;
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const natal = natalChartData as unknown as ChartResponse;
 
   // Steps 1–4 are independent — run them in parallel.
   //   1. Today's transits from the Python backend
