@@ -46,8 +46,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude Code local config
+# Claude Code local config (keep private settings out, but share slash commands)
 .claude/
+!.claude/commands/
 frontend/.claude/
 
 # Logs
