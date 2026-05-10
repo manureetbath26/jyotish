@@ -194,9 +194,62 @@ function buildCategoryAnswer(
   const cpa = report.currentPeriodAnalysis;
   const today = new Date().toISOString().slice(0, 10);
 
+  // Compute window length once — used to control sub-period verbosity
+  const windowDays = windowContext
+    ? (windowContext.window.end.getTime() - windowContext.window.start.getTime()) / 86400000
+    : Infinity;
+  // "Short" = ≤14 days (today / this week) → show Sookshma and full PD detail
+  // "Medium" = ≤60 days → show PD, no Sookshma
+  // "Long"  = >60 days → skip PD entirely (antardasha level is granular enough)
+  const isShortWindow = windowContext?.window.isDaily || windowDays <= 14;
+  const isMediumWindow = windowDays <= 60;
+
+  // Detect whether this is a future-oriented timing question for a life event
+  const isTimingCategory =
+    categoryIds.some(c => ["marriage", "romance", "career", "business", "children", "finance"].includes(c));
+  const isFutureWindow = windowContext
+    ? windowContext.window.direction !== "past"
+    : !askingAboutPast;
+
   // Window banner — always the first line so user knows the focus
   if (windowContext) {
     parts.push(windowContext.window.userNote);
+  }
+
+  // ── DIRECT TIMING ANSWER (lead for "when will X happen" questions) ─────────
+  // For future-oriented timing questions, the Jaimini peak window IS the answer.
+  // Put it first — before the general chart overview and dasha narrative.
+  if (isFutureWindow && isTimingCategory && enriched) {
+    const marriageCateg = categoryIds.some(c => ["marriage", "romance"].includes(c));
+    const careerCateg = categoryIds.some(c => ["career", "business"].includes(c));
+
+    if (marriageCateg && enriched.marriage?.peakWindow) {
+      const pw = enriched.marriage.peakWindow;
+      const score = pw.peakScore;
+      const strength = score >= 5 ? "strongest" : score >= 4 ? "clearest" : "most promising";
+      const ratingStr = score >= 5 ? "strong classical support" : `${score}/6 classical indicators`;
+      let directAnswer = `The ${strength} marriage window in your chart is **${pw.startMonth} – ${pw.endMonth}** (${ratingStr} from Jaimini).`;
+      // If the peak window is beyond the current question window, say so explicitly
+      if (windowContext && enriched.marriage.upcomingWindows.length > 0) {
+        const firstWindow = enriched.marriage.upcomingWindows[0];
+        const firstStart = firstWindow.startMonth ?? pw.startMonth;
+        const windowEndLabel = windowContext.window.label.split("–").pop()?.trim() ?? "";
+        // Only add contrast note if the peak appears to be outside the question window
+        const peakStartYear = parseInt((pw.startMonth ?? "").slice(-4), 10);
+        const windowEndYear = parseInt(windowContext.window.end.getFullYear().toString(), 10);
+        if (peakStartYear > windowEndYear) {
+          directAnswer += ` That peak falls outside your current ${windowContext.window.label} window — within this range, the dasha is active but the Jaimini picture reaches full strength later.`;
+        } else if (enriched.marriage.upcomingWindows.length > 1) {
+          directAnswer += ` ${enriched.marriage.upcomingWindows.length} supportive windows are present over the next 5 years.`;
+        }
+      }
+      parts.push(directAnswer);
+    } else if (careerCateg && enriched.career?.peakWindow) {
+      const pw = enriched.career.peakWindow;
+      const score = pw.peakScore;
+      const strength = score >= 5 ? "strongest" : score >= 4 ? "clearest" : "most promising";
+      parts.push(`The ${strength} career window your chart shows is **${pw.startMonth} – ${pw.endMonth}** (${score}/6 Jaimini indicators).`);
+    }
   }
 
   // ── Opening ──────────────────────────────────────────────────────────────
@@ -221,25 +274,24 @@ function buildCategoryAnswer(
     if (themes) dashaText += `, carrying themes of **${themes}**`;
     dashaText = ensurePeriod(dashaText);
 
-    // Pratyantardasha — woven into the same paragraph
-    if (cur.pratyantardashas?.length) {
+    // Pratyantardasha — only show for short/medium windows (≤60 days)
+    // For year+ questions the antardasha is already granular enough
+    if (cur.pratyantardashas?.length && isMediumWindow) {
       const pdCurrent = cur.pratyantardashas.find(pd => pd.isCurrent);
       const pdNext = !pdCurrent
         ? cur.pratyantardashas.find(pd => pd.start > today)
         : null;
       const pd = pdCurrent ?? pdNext;
       if (pd) {
-        const pdRange = `${pd.start.slice(0, 7)} → ${pd.end.slice(0, 7)}`;
-        const pdStatus = pd.isCurrent
-          ? `active through ${pd.end.slice(0, 7)}`
-          : `coming up next (${pdRange})`;
-        dashaText += ` At the sub-sub-period level, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}** Pratyantardasha is ${pdStatus} — this finer timing layer colours day-to-day developments right now.`;
+        const pdVerb = pd.isCurrent ? "runs" : "starts";
+        const pdDate = pd.isCurrent ? `until ${pd.end.slice(0, 7)}` : `from ${pd.start.slice(0, 7)}`;
+        dashaText += ` Within this, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}** sub-period ${pdVerb} ${pdDate}.`;
 
-        // Sookshma Dasha (4th level) — only for current PD
-        if (pd.isCurrent && pd.sookshmadasha?.length) {
+        // Sookshma Dasha (4-day 4th level) — ONLY for today/this-week questions
+        if (isShortWindow && pd.isCurrent && pd.sookshmadasha?.length) {
           const currentSd = pd.sookshmadasha.find(sd => sd.isCurrent);
           if (currentSd) {
-            dashaText += ` At the finest timing level, the **${cur.mahadasha}–${cur.antardasha}–${pd.planet}–${currentSd.planet}** Sookshma Dasha is active (${currentSd.start.slice(0,10)} → ${currentSd.end.slice(0,10)}) — this governs day-to-day shifts right now.`;
+            dashaText += ` Day-level: **${cur.mahadasha}–${cur.antardasha}–${pd.planet}–${currentSd.planet}** Sookshma (${currentSd.start.slice(0, 10)} → ${currentSd.end.slice(0, 10)}).`;
           }
         }
       }
@@ -363,8 +415,12 @@ function buildCategoryAnswer(
   }
 
   // ── Enriched insights from Jaimini + Ashtakvarga engines ──────────────────
+  // Pass alreadyShowedPeak=true when we already surfaced the Jaimini window at
+  // the top (direct timing answer), so the bottom section skips the peak window
+  // and only shows the Ashtakvarga data (no duplication).
+  const alreadyShowedPeak = isFutureWindow && isTimingCategory;
   if (enriched) {
-    const enrichedSection = buildEnrichedSection(enriched, categoryIds, houses);
+    const enrichedSection = buildEnrichedSection(enriched, categoryIds, houses, alreadyShowedPeak);
     if (enrichedSection) parts.push(enrichedSection);
   }
 
@@ -382,6 +438,7 @@ function buildEnrichedSection(
   enriched: EnrichedChatContext,
   categoryIds: string[],
   houses: number[],
+  alreadyShowedPeak = false,
 ): string {
   const lines: string[] = [];
 
@@ -393,18 +450,21 @@ function buildEnrichedSection(
     const m = enriched.marriage;
     const parts: string[] = [];
 
-    if (m.peakWindow) {
-      const pw = m.peakWindow;
-      parts.push(
-        `Jaimini engine: peak marriage window is **${pw.startMonth} – ${pw.endMonth}** (${pw.peakScore}/6 rules met — ${pw.peakScore >= 5 ? "strong" : "moderate"}).`,
-      );
-      if (m.upcomingWindows.length > 1) {
+    // Skip the Jaimini peak line if we already surfaced it at the top of the answer
+    if (!alreadyShowedPeak) {
+      if (m.peakWindow) {
+        const pw = m.peakWindow;
         parts.push(
-          `${m.upcomingWindows.length} supportive windows sighted in the next 5 years.`,
+          `Jaimini engine: peak marriage window is **${pw.startMonth} – ${pw.endMonth}** (${pw.peakScore}/6 rules met — ${pw.peakScore >= 5 ? "strong" : "moderate"}).`,
         );
+        if (m.upcomingWindows.length > 1) {
+          parts.push(
+            `${m.upcomingWindows.length} supportive windows sighted in the next 5 years.`,
+          );
+        }
+      } else {
+        parts.push("Jaimini engine: no strong marriage window in the next 5 years; natal factors matter more than transits here.");
       }
-    } else {
-      parts.push("Jaimini engine: no strong marriage window in the next 5 years; natal factors matter more than transits here.");
     }
 
     const sevenLabel =
@@ -419,7 +479,7 @@ function buildEnrichedSection(
       parts.push("Saturn is strong in the 7th sign — expect timing to unfold later rather than earlier, with enduring bonds once formed.");
     }
 
-    lines.push(`**Jaimini + Ashtakvarga check:**\n${parts.join(" ")}`);
+    lines.push(`**Natal strength breakdown:**\n${parts.join(" ")}`);
   }
 
   // Career / new_business / wealth — Jaimini career + 10th/11th/A10 SAV + AmK
@@ -432,7 +492,7 @@ function buildEnrichedSection(
     const c = enriched.career;
     const parts: string[] = [];
 
-    if (c.peakWindow) {
+    if (c.peakWindow && !alreadyShowedPeak) {
       parts.push(
         `Jaimini engine: peak career window is **${c.peakWindow.startMonth} – ${c.peakWindow.endMonth}** (${c.peakWindow.peakScore}/6 rules — ${c.peakWindow.peakScore >= 5 ? "strong" : "moderate"}).`,
       );
