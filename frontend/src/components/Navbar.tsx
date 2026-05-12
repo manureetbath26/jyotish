@@ -44,6 +44,9 @@ export function Navbar() {
                 <Link href="/daily" className="text-slate-300 hover:text-white transition-colors">
                   Daily
                 </Link>
+                <Link href="/astro-chat" className="text-slate-300 hover:text-white transition-colors">
+                  Ask Guru
+                </Link>
                 <Link href="/kundli" className="text-slate-300 hover:text-white transition-colors">
                   My Kundli
                 </Link>

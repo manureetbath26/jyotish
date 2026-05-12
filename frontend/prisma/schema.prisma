@@ -23,9 +23,11 @@ model User {
   charts          Chart[]
   subscriptions   Subscription[]
   payments        Payment[]
-  reportPurchases ReportPurchase[]
-  profiles        Profile[]
+  reportPurchases  ReportPurchase[]
+  profiles         Profile[]
+  astroChatSessions AstroChatSession[]
 }
+
 
 // ---------------------------------------------------------------------------
 // Kundli profiles — users' own + added profiles (family/friends)
@@ -555,4 +557,39 @@ model SpecialPointRule {
   detail   String   // fuller description with classical nuance
   keywords String[] // for LLM context
   source   String   // classical text reference
+}
+
+// ---------------------------------------------------------------------------
+// Astrology Chatbot — multi-agent LangGraph sessions
+// ---------------------------------------------------------------------------
+
+/// One conversation thread per user+chart combination.
+model AstroChatSession {
+  id        String   @id @default(cuid())
+  userId    String?
+  chartData Json     // ChartResponse snapshot — avoids FK, self-contained
+  birthData Json?    // { date, time, place, name }
+  title     String?  // auto-generated from first question
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AstroChatMessage[]
+
+  @@index([userId])
+}
+
+/// One Q+A pair per turn. Stores raw agent outputs for debugging.
+model AstroChatMessage {
+  id            String   @id @default(cuid())
+  sessionId     String
+  role          String   // "user" | "assistant"
+  content       String   // final rendered text
+  intent        Json?    // InterpreterOutput — what the interpreter extracted
+  astrologyData Json?    // AstrologyData — what the collector fetched
+  createdAt     DateTime @default(now())
+
+  session AstroChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }
