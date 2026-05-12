@@ -431,7 +431,7 @@ model Coupon {
 // Conventions:
 //   - planet ∈ {Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, Ketu}
 //   - house  ∈ 1..12
-//   - life_area ∈ {career, love_life, health, finances, family, self_confidence}
+//   - life_area ∈ {career, love_life, health, finances, family, self_confidence, travel}
 //   - polarity ∈ {favorable, unfavorable}
 //   - classification tag ∈ {kendra, trikona, dusthana, upachaya, maraka,
 //                           bhadhaka, panapara, apoklima, ari, mritu, vyaya, ...}

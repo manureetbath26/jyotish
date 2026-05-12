@@ -29,12 +29,13 @@ interface TransitCalculatorProps {
 }
 
 const LIFE_AREAS = [
-  { id: "love_life", label: "💕 Love Life", description: "Romance, partnerships, relationships" },
-  { id: "health", label: "🏥 Health", description: "Physical health and vitality" },
-  { id: "career", label: "💼 Career", description: "Work, recognition, advancement" },
-  { id: "finances", label: "💰 Finances", description: "Money, wealth, prosperity" },
-  { id: "family", label: "👨‍👩‍👧‍👦 Family", description: "Family relationships and harmony" },
+  { id: "love_life",       label: "💕 Love Life",        description: "Romance, partnerships, relationships" },
+  { id: "health",          label: "🏥 Health",            description: "Physical health and vitality" },
+  { id: "career",          label: "💼 Career",            description: "Work, recognition, advancement" },
+  { id: "finances",        label: "💰 Finances",          description: "Money, wealth, prosperity" },
+  { id: "family",          label: "👨‍👩‍👧‍👦 Family",          description: "Family relationships and harmony" },
   { id: "self_confidence", label: "🦁 Self / Confidence", description: "Self-esteem, courage, personal power" },
+  { id: "travel",          label: "✈️ Travel",            description: "Journeys, relocation, foreign opportunities" },
 ];
 
 // Hard ceiling on the analysis window. With ingress-event cards, 1y is the

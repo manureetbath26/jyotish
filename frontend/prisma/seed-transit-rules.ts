@@ -213,6 +213,16 @@ const LIFE_AREA_HOUSE_RELEVANCE: {
   { lifeArea: "self_confidence", house: 5, weight: 0.7, rationale: "purva-punya — intelligence and creative confidence" },
   { lifeArea: "self_confidence", house: 9, weight: 0.7, rationale: "dharma — conviction, faith" },
   { lifeArea: "self_confidence", house: 11, weight: 0.4, rationale: "fulfillment of ambition" },
+
+  // Travel
+  // H9 and H12 are the two primary travel houses. H3 = short-distance. H4 = homeland
+  // anchor (its affliction signals displacement). H7 = business/partner travel.
+  // Weights are internal ranking signals only — the rationale string is the semantic label.
+  { lifeArea: "travel", house: 9,  weight: 1.0, rationale: "long-distance and purposeful journey — the primary travel house (desha-antara-gamana, BPHS)" },
+  { lifeArea: "travel", house: 12, weight: 1.0, rationale: "foreign land and extended stay abroad — primary foreign-country indicator (Phaladeepika)" },
+  { lifeArea: "travel", house: 3,  weight: 0.5, rationale: "short-distance domestic travel possibility — regional trips, commutes, skill journeys (BPHS)" },
+  { lifeArea: "travel", house: 7,  weight: 0.5, rationale: "travel for partnership or business dealings abroad — secondary indicator (B.V. Raman)" },
+  { lifeArea: "travel", house: 4,  weight: 0.5, rationale: "homeland anchor — malefic transit here displaces the native or blocks departure (Jataka Parijata)" },
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -252,9 +262,17 @@ const LIFE_AREA_KARAKAS: {
   { lifeArea: "family", planet: "Mercury", weight: 0.4, rationale: "siblings karaka" },
 
   // Self-confidence
-  { lifeArea: "self_confidence", planet: "Sun", weight: 1.0, rationale: "ahamkara — sense of self" },
-  { lifeArea: "self_confidence", planet: "Mars", weight: 1.0, rationale: "courage karaka — direct assertiveness" },
+  { lifeArea: "self_confidence", planet: "Sun",     weight: 1.0, rationale: "ahamkara — sense of self" },
+  { lifeArea: "self_confidence", planet: "Mars",    weight: 1.0, rationale: "courage karaka — direct assertiveness" },
   { lifeArea: "self_confidence", planet: "Jupiter", weight: 0.7, rationale: "wisdom and inner authority" },
+
+  // Travel — qualitative roles; weights are internal ranking signals only
+  { lifeArea: "travel", planet: "Rahu",    weight: 1.0, rationale: "primary significator of foreign lands and crossing cultural boundaries (Phaladeepika)" },
+  { lifeArea: "travel", planet: "Jupiter", weight: 1.0, rationale: "karaka of long journeys, expansion, and opportunity abroad (BPHS Gochar)" },
+  { lifeArea: "travel", planet: "Moon",    weight: 1.0, rationale: "mind in motion — muhurta travel trigger and emotional pull toward distance" },
+  { lifeArea: "travel", planet: "Mercury", weight: 1.0, rationale: "natural ruler of short trips and communication-driven movement (BPHS, H3 rulership)" },
+  { lifeArea: "travel", planet: "Saturn",  weight: 1.0, rationale: "planet of compelled displacement and prolonged time away from home" },
+  { lifeArea: "travel", planet: "Ketu",    weight: 1.0, rationale: "significator of spiritual retreat and isolated foreign travel (K.N. Rao)" },
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -341,6 +359,28 @@ const PLANET_AREA_INTERPRETATIONS: {
   { planet: "Rahu", lifeArea: "finances", polarity: "favorable", text: "Rahu can bring sudden, unexpected financial gains through unconventional means." },
   { planet: "Rahu", lifeArea: "family", polarity: "favorable", text: "Rahu may bring in foreign or unconventional family influences. New family connections are possible." },
   { planet: "Rahu", lifeArea: "self_confidence", polarity: "favorable", text: "Rahu amplifies ambition and desire for recognition. You feel driven to break boundaries and reinvent yourself boldly." },
+
+  // ── Travel — favorable ──
+  { planet: "Sun",     lifeArea: "travel", polarity: "favorable", text: "Sun in a travel house supports purposeful journeys tied to authority, recognition, or pilgrimage. Official travel, government-related movement, and father-linked trips flow well." },
+  { planet: "Moon",    lifeArea: "travel", polarity: "favorable", text: "Moon activates the emotional pull to travel. Journeys for family reunion, homeland visits, or comfort-seeking relocation are naturally timed and emotionally rewarding." },
+  { planet: "Mars",    lifeArea: "travel", polarity: "favorable", text: "Mars drives decisive, courageous movement. Short adventurous expeditions, treks, and journeys requiring boldness are well-supported and energising." },
+  { planet: "Mercury", lifeArea: "travel", polarity: "favorable", text: "Mercury favours short-distance travel for business, learning, or communication. Documents, bookings, and travel logistics move smoothly and quickly." },
+  { planet: "Jupiter", lifeArea: "travel", polarity: "favorable", text: "Jupiter is the strongest planet for long, purposeful journeys. Foreign education, pilgrimage, visa success, and fruitful international opportunities are strongly indicated." },
+  { planet: "Venus",   lifeArea: "travel", polarity: "favorable", text: "Venus favours travel for pleasure, diplomacy, or creative collaboration. Honeymoons, cultural trips, and luxury journeys abroad are well-supported." },
+  { planet: "Saturn",  lifeArea: "travel", polarity: "favorable", text: "Saturn in a favorable travel house produces purposeful, prolonged displacement — extended postings abroad, structured relocations, and long-haul moves that yield lasting results." },
+  { planet: "Rahu",    lifeArea: "travel", polarity: "favorable", text: "Rahu is the primary karaka of foreign lands. This is one of the strongest indicators of overseas movement, unconventional journeys, and crossing cultural or national boundaries." },
+  { planet: "Ketu",    lifeArea: "travel", polarity: "favorable", text: "Ketu favours spiritual travel — ashram stays, pilgrimage, meditation retreats, and journeys to isolated or sacred places. Meaningful inner transformation often accompanies the outer movement." },
+
+  // ── Travel — unfavorable ──
+  { planet: "Sun",     lifeArea: "travel", polarity: "unfavorable", text: "Sun in a difficult travel house brings documentation delays, authority friction, or ego-driven decisions that complicate journeys. Government or visa-related obstacles are possible." },
+  { planet: "Moon",    lifeArea: "travel", polarity: "unfavorable", text: "Moon unfavorable creates emotional restlessness without productive travel. Plans shift, itineraries are disrupted, or homesickness intensifies mid-journey." },
+  { planet: "Mars",    lifeArea: "travel", polarity: "unfavorable", text: "Mars in a challenging travel position raises risk of accidents during transit, rushed planning that backfires, or disputes and confrontations while abroad." },
+  { planet: "Mercury", lifeArea: "travel", polarity: "unfavorable", text: "Mercury unfavorable means missed bookings, lost or delayed documents, itinerary reversals, and communication breakdowns mid-journey. Mercury retrograde especially." },
+  { planet: "Jupiter", lifeArea: "travel", polarity: "unfavorable", text: "Jupiter in an unfavorable travel house delays or nullifies long journeys. Foreign opportunities promised do not materialise, or the move is made at the wrong time with poor outcomes." },
+  { planet: "Venus",   lifeArea: "travel", polarity: "unfavorable", text: "Venus unfavorable in travel brings disappointment in pleasure journeys, overspending on trips, or relationship friction that surfaces while away from home." },
+  { planet: "Saturn",  lifeArea: "travel", polarity: "unfavorable", text: "Saturn in an unfavorable travel house — especially the 9th — blocks and delays journeys. Compelled travel under restriction, or trips that cost much and yield little." },
+  { planet: "Rahu",    lifeArea: "travel", polarity: "unfavorable", text: "Rahu in a difficult travel position creates confusion around foreign plans, visa complications, or impulsive relocations that prove destabilising over time." },
+  { planet: "Ketu",    lifeArea: "travel", polarity: "unfavorable", text: "Ketu in an unfavorable travel position causes sudden cancellations, inexplicable obstacles to planned journeys, or unexpected early returns from abroad." },
 
   // ── Unfavorable ── (only the planets that have unfavorable rows in transit.py)
   // Mars unfavorable
@@ -504,8 +544,41 @@ const PLANET_AREA_ADVICE: { planet: string; lifeArea: string; polarity: string; 
                          unfavorable: "withdrawal from family events" },
       self_confidence: { favorable: "clarity through detachment, spiritual insight",
                          unfavorable: "self-doubt via withdrawal" },
+      travel:          { favorable: "spiritual retreats, ashrams, and isolated foreign places are strongly supported — commit to the inner journey",
+                         unfavorable: "inexplicable obstacles to travel are appearing; surrender the plan rather than forcing it" },
     },
   };
+
+  // ── Travel advice rows for the remaining planets ──
+  // Jupiter, Saturn, Mars, Mercury, Venus, Sun, Moon, Rahu already get their
+  // travel entries generated by the loop above because they're in A. We add
+  // travel to each planet's map here (inline above) and also need to patch in
+  // the planets whose travel advice differs from the generic loop output.
+  // Patch: add travel key to each planet block already defined above.
+  type AreaMap = Record<string, { favorable: string; unfavorable: string }>;
+  const travelAdvice: Record<string, { favorable: string; unfavorable: string }> = {
+    Jupiter:  { favorable: "this is your clearest window for visa applications, foreign moves, or long-distance commitments — act before Jupiter moves on",
+                unfavorable: "foreign plans are likely to disappoint; delay big international decisions until Jupiter moves into better territory" },
+    Saturn:   { favorable: "commit to the long relocation or extended posting — Saturn rewards sustained displacement with lasting gains",
+                unfavorable: "travel is blocked or fruitless right now; if you must go, set low expectations and plan contingencies carefully" },
+    Mars:     { favorable: "book the short trip, commit to the adventure — Mars gives decisive momentum and the window is brief",
+                unfavorable: "avoid rushed travel plans and risky journeys; accident and dispute risk during transit is elevated" },
+    Mercury:  { favorable: "handle travel documents, bookings, and logistics now — communication and paperwork flow unusually well",
+                unfavorable: "double-check every booking, document, and itinerary detail; reversal and mix-up risk is high" },
+    Venus:    { favorable: "plan the pleasure trip, honeymoon, or cultural journey — Venus makes travel enjoyable and smooth",
+                unfavorable: "holiday travel may disappoint; budget carefully and manage expectations before you go" },
+    Sun:      { favorable: "purposeful journeys connected to authority or recognition are well-timed — official and government travel flows",
+                unfavorable: "documentation issues and authority friction can derail travel; chase approvals early and don't assume" },
+    Moon:     { favorable: "travel for family, emotional renewal, or comfort works well right now; follow the pull",
+                unfavorable: "emotional restlessness is creating false urgency to travel; wait for a clearer signal before booking" },
+    Rahu:     { favorable: "book that overseas commitment — Rahu periods open foreign doors that close again quickly; don't hesitate",
+                unfavorable: "foreign plans are wrapped in confusion or illusion right now; verify everything independently before committing" },
+    Ketu:     { favorable: "spiritual retreats, ashrams, and isolated foreign places are strongly supported — commit to the inner journey",
+                unfavorable: "inexplicable obstacles to travel are appearing; surrender the plan rather than forcing it" },
+  };
+  for (const [planet, advice] of Object.entries(travelAdvice)) {
+    (A[planet] as AreaMap)["travel"] = advice;
+  }
   const out: { planet: string; lifeArea: string; polarity: string; text: string }[] = [];
   for (const [planet, areaMap] of Object.entries(A)) {
     for (const [lifeArea, polMap] of Object.entries(areaMap)) {
@@ -539,6 +612,7 @@ const LIFE_AREA_LABEL: Record<string, string> = {
   finances:        "money and finances",
   family:          "family",
   self_confidence: "your self-confidence",
+  travel:          "travel and movement",
 };
 
 // ────────────────────────────────────────────────────────────────────────────

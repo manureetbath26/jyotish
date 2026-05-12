@@ -117,6 +117,7 @@ _FALLBACK = RuleSet(
         "career": "career", "love_life": "love and relationships",
         "health": "health and energy", "finances": "money and finances",
         "family": "family", "self_confidence": "your self-confidence",
+        "travel": "travel and movement",
     },
     planet_nature={
         "Sun": "malefic", "Moon": "benefic", "Mars": "malefic",

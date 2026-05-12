@@ -184,7 +184,7 @@ class TransitChartRequest(BaseModel):
     end_date: str = Field(..., description="Date in YYYY-MM-DD format")
     life_areas: Optional[List[str]] = Field(
         default=None,
-        description="Filter by life areas: love_life, health, career, finances, family, self_confidence"
+        description="Filter by life areas: love_life, health, career, finances, family, self_confidence, travel"
     )
 
 
