@@ -21,12 +21,5 @@ export async function POST(req: NextRequest) {
     select: { id: true, email: true, name: true },
   });
 
-  // Adopt any orphan guest sessions matching this email — the user keeps
-  // their chat history (and used-question count) from the free trial.
-  const adopted = await prisma.chatSession.updateMany({
-    where: { userId: null, guestEmail: normalisedEmail },
-    data: { userId: user.id },
-  });
-
-  return Response.json({ ...user, adoptedSessions: adopted.count }, { status: 201 });
+  return Response.json(user, { status: 201 });
 }

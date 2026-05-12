@@ -59,9 +59,6 @@ export function Navbar() {
                 <Link href="/help" className="text-slate-300 hover:text-white transition-colors">
                   Help
                 </Link>
-                <Link href="/chat" className="text-amber-400 hover:text-amber-300 transition-colors">
-                  Ask AI Astrologer
-                </Link>
                 {session.user?.role === "admin" && (
                   <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition-colors">
                     Admin
@@ -88,9 +85,6 @@ export function Navbar() {
                 </Link>
                 <Link href="/help" className="text-slate-300 hover:text-white transition-colors">
                   Help
-                </Link>
-                <Link href="/chat" className="text-amber-400 hover:text-amber-300 transition-colors">
-                  Ask AI Astrologer
                 </Link>
                 <Link
                   href="/auth/signin"

@@ -287,13 +287,6 @@ export default function DailyPerspectivePage() {
           <p className="text-sm font-semibold text-slate-200">Reports</p>
           <p className="text-xs text-slate-500 mt-1">Yoga, Finance, Career, Marriage &amp; more</p>
         </Link>
-        <Link
-          href="/chat"
-          className="bg-slate-900 hover:bg-slate-800/60 border border-slate-800 hover:border-amber-500/30 rounded-xl p-4 transition-colors"
-        >
-          <p className="text-sm font-semibold text-slate-200">Ask</p>
-          <p className="text-xs text-slate-500 mt-1">Chart-grounded answers to your questions</p>
-        </Link>
       </div>
     </div>
   );
