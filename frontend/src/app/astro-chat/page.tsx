@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useActiveProfile } from "@/contexts/ActiveProfileContext";
-import { calculateChart, type ChartResponse } from "@/lib/api";
+import type { ChartResponse } from "@/lib/api";
 import { AstroChatInterface } from "@/components/astroChat/AstroChatInterface";
 import type { BirthData } from "@/lib/astroChat/types";
 
@@ -41,13 +41,18 @@ export default function AstroChatPage() {
     setLoadingChart(true);
     setError(null);
 
-    // Calculate chart then create session
-    calculateChart({
-      date:  bd.date,
-      time:  bd.time,
-      place: bd.place,
-    })
-      .then(async (chartData) => {
+    // Fetch chart from the DB cache — /api/profiles/[id]/chart returns the
+    // stored chart instantly for existing profiles and only calls the backend
+    // when no cache exists. This avoids a cold 2-minute backend compute.
+    fetch(`/api/profiles/${activeProfile.id}/chart`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${r.status}`);
+        }
+        return r.json() as Promise<{ chartData: ChartResponse }>;
+      })
+      .then(async ({ chartData }) => {
         setChart(chartData);
         setBirthData(bd);
 
@@ -120,7 +125,7 @@ export default function AstroChatPage() {
       {activeProfile && loadingChart && (
         <div className="flex-1 flex items-center justify-center space-y-3 flex-col">
           <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Computing your natal chart…</p>
+          <p className="text-sm text-slate-500">Loading your chart…</p>
         </div>
       )}
 
